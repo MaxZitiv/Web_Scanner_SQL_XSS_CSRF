@@ -1,0 +1,42 @@
+# GUI Framework
+PyQt5>=5.15.11,<6.0.0
+qasync>=0.24.0
+
+# Web Scraping and HTTP
+aiohttp>=3.11.18,<4.0.0
+requests>=2.32.3,<3.0.0
+beautifulsoup4>=4.13.3,<5.0.0
+lxml>=5.1.0,<6.0.0
+
+# Security and Authentication
+bcrypt>=4.3.0,<5.0.0
+cryptography>=45.0.4,<46.0.0
+pyotp>=2.9.0,<3.0.0
+
+# Image Processing
+Pillow>=10.4.0,<11.0.0
+
+# PDF Generation
+reportlab>=4.0.8,<5.0.0
+fpdf>=1.7.2,<2.0.0
+
+# Data Visualization
+matplotlib>=3.10.1,<4.0.0
+
+# System Monitoring
+psutil>=5.9.0,<6.0.0
+
+# Time and Date
+pytz>=2023.3
+
+# Development and Testing (optional)
+# pytest>=7.0.0
+# pytest-asyncio>=0.21.0
+# black>=23.0.0
+# flake8>=6.0.0
+
+# Additional dependencies for better error handling
+typing-extensions>=4.0.0
+
+python-dotenv
+cachetools

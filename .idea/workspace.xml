@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="AutoImportSettings">
+    <option name="autoReloadType" value="SELECTIVE" />
+  </component>
+  <component name="ChangeListManager">
+    <list default="true" id="c8a92672-e473-4c09-8a8d-a50b7c922ba0" name="Changes" comment="">
+      <change afterPath="$PROJECT_DIR$/.idea/Web_Scanner_SQL_XSS_CSRF.iml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/.idea/inspectionProfiles/profiles_settings.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/.idea/misc.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/.idea/modules.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/.idea/vcs.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/.vscode/settings.json" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/controllers/auth_controller.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/controllers/scan_controller.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/default_avatar.png" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/export/__init__.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/export/export.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/logs/auth_controller.log" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/logs/database.log" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/logs/login_window.log" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/logs/main.log" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/logs/scan_controller.log" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/logs/scanner.log" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/logs/user_model.log" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/main.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/models/scan_model.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/models/user_model.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/requirements.txt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/scanner.db" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/scanner/__init__.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/styles.qss" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/timesnewromanpsmt.cw127.pkl" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/timesnewromanpsmt.pkl" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/timesnewromanpsmt.ttf" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/ui/__init__.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/ui/edit_credentials_window.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/ui/main_window.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/ui/registration_window.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/utils/__init__.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/utils/database.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/utils/logger.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/utils/vulnerability_scanner.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/views/dashboard_window.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/views/edit_profile_window.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/views/login_window.py" afterDir="false" />
+    </list>
+    <option name="SHOW_DIALOG" value="false" />
+    <option name="HIGHLIGHT_CONFLICTS" value="true" />
+    <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
+    <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="Git.Settings">
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+  </component>
+  <component name="ProjectColorInfo"><![CDATA[{
+  "associatedIndex": 0
+}]]></component>
+  <component name="ProjectId" id="319gdJVNZCvsfuD4Zyah4ztugQg" />
+  <component name="ProjectViewState">
+    <option name="hideEmptyMiddlePackages" value="true" />
+    <option name="showLibraryContents" value="true" />
+  </component>
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "ModuleVcsDetector.initialDetectionPerformed": "true",
+    "Python.main.executor": "Run",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "RunOnceActivity.git.unshallow": "true",
+    "git-widget-placeholder": "master"
+  }
+}]]></component>
+  <component name="SharedIndexes">
+    <attachedChunks>
+      <set>
+        <option value="bundled-python-sdk-e0ed3721d81e-36ea0e71a18c-com.jetbrains.pycharm.pro.sharedIndexes.bundled-PY-251.25410.159" />
+      </set>
+    </attachedChunks>
+  </component>
+  <component name="TaskManager">
+    <task active="true" id="Default" summary="Default task">
+      <changelist id="c8a92672-e473-4c09-8a8d-a50b7c922ba0" name="Changes" comment="" />
+      <created>1754941789624</created>
+      <option name="number" value="Default" />
+      <option name="presentableId" value="Default" />
+      <updated>1754941789624</updated>
+    </task>
+    <servers />
+  </component>
+</project>

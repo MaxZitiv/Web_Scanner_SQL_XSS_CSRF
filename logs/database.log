@@ -1,0 +1,183 @@
+2025-06-23 00:56:35 - database - DEBUG - Logger initialized successfully
+2025-06-23 00:57:30 - database - DEBUG - Logger initialized successfully
+2025-06-23 01:37:47 - database - DEBUG - Logger initialized successfully
+2025-06-23 01:38:36 - database - DEBUG - Logger initialized successfully
+2025-06-23 01:39:31 - database - DEBUG - Logger initialized successfully
+2025-06-23 01:40:29 - database - DEBUG - Logger initialized successfully
+2025-06-23 01:41:31 - database - DEBUG - Logger initialized successfully
+2025-06-23 01:42:44 - database - DEBUG - Logger initialized successfully
+2025-06-23 01:44:03 - database - DEBUG - Logger initialized successfully
+2025-06-23 01:45:35 - database - DEBUG - Logger initialized successfully
+2025-06-23 01:45:48 - database - DEBUG - Logger initialized successfully
+2025-06-23 01:47:11 - database - DEBUG - Logger initialized successfully
+2025-06-23 01:48:45 - database - DEBUG - Logger initialized successfully
+2025-06-23 01:50:22 - database - DEBUG - Logger initialized successfully
+2025-06-23 02:01:33 - database - DEBUG - Logger initialized successfully
+2025-06-23 02:01:47 - database - DEBUG - Logger initialized successfully
+2025-06-23 02:03:45 - database - DEBUG - Logger initialized successfully
+2025-06-23 02:03:51 - database - DEBUG - Logger initialized successfully
+2025-06-23 02:03:57 - database - DEBUG - Logger initialized successfully
+2025-06-23 02:04:12 - database - DEBUG - Logger initialized successfully
+2025-06-23 02:04:31 - database - ERROR - Failed to fetch scans for user 2: no such column: scan_duration
+Traceback (most recent call last):
+  File "e:\Python_Projects\Web_Scanner_SQL_XSS_CSRF\utils\database.py", line 393, in get_scans_by_user
+    cursor.execute(
+sqlite3.OperationalError: no such column: scan_duration
+2025-06-23 02:04:31 - database - ERROR - Failed to fetch scans for user 2: no such column: scan_duration
+Traceback (most recent call last):
+  File "e:\Python_Projects\Web_Scanner_SQL_XSS_CSRF\utils\database.py", line 393, in get_scans_by_user
+    cursor.execute(
+sqlite3.OperationalError: no such column: scan_duration
+2025-06-23 02:05:38 - database - DEBUG - Logger initialized successfully
+2025-06-23 02:05:56 - database - DEBUG - Logger initialized successfully
+2025-06-23 02:06:33 - database - DEBUG - Logger initialized successfully
+2025-06-23 02:34:25 - database - DEBUG - Logger initialized successfully
+2025-06-23 02:43:13 - database - DEBUG - Logger initialized successfully
+2025-06-23 02:43:17 - database - DEBUG - Logger initialized successfully
+2025-06-23 02:43:21 - database - DEBUG - Logger initialized successfully
+2025-06-23 02:43:37 - database - DEBUG - Logger initialized successfully
+2025-06-23 02:46:36 - database - DEBUG - Logger initialized successfully
+2025-06-23 02:50:07 - database - DEBUG - Logger initialized successfully
+2025-06-23 02:54:52 - database - DEBUG - Logger initialized successfully
+2025-06-23 02:55:07 - database - DEBUG - Logger initialized successfully
+2025-06-23 02:55:30 - database - DEBUG - Logger initialized successfully
+2025-06-23 02:56:36 - database - DEBUG - Logger initialized successfully
+2025-06-23 02:57:17 - database - ERROR - Invalid user_id: <models.user_model.UserModel object at 0x000002100470E240>
+2025-06-23 03:01:29 - database - DEBUG - Logger initialized successfully
+2025-06-23 03:02:04 - database - ERROR - Invalid user_id: <models.user_model.UserModel object at 0x000001E9631DCFB0>
+2025-06-23 03:06:03 - database - DEBUG - Logger initialized successfully
+2025-06-23 03:06:32 - database - ERROR - Invalid user_id: <models.user_model.UserModel object at 0x000001E2C986CBC0>
+2025-06-23 03:07:50 - database - DEBUG - Logger initialized successfully
+2025-06-23 03:08:14 - database - ERROR - Invalid user_id: <models.user_model.UserModel object at 0x000002118A9DD580>
+2025-06-23 03:10:35 - database - DEBUG - Logger initialized successfully
+2025-06-23 03:11:03 - database - ERROR - Failed to save scan: SQLite objects created in a thread can only be used in that same thread. The object was created in thread id 4804 and this is thread id 11300.
+Traceback (most recent call last):
+  File "e:\Python_Projects\Web_Scanner_SQL_XSS_CSRF\utils\database.py", line 328, in save_scan
+    cursor = conn.cursor()
+             ^^^^^^^^^^^^^
+sqlite3.ProgrammingError: SQLite objects created in a thread can only be used in that same thread. The object was created in thread id 4804 and this is thread id 11300.
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "e:\Python_Projects\Web_Scanner_SQL_XSS_CSRF\utils\database.py", line 327, in save_scan
+    with get_db_connection() as conn:
+sqlite3.ProgrammingError: SQLite objects created in a thread can only be used in that same thread. The object was created in thread id 4804 and this is thread id 11300.
+2025-06-23 03:11:04 - database - ERROR - Failed to save scan: SQLite objects created in a thread can only be used in that same thread. The object was created in thread id 4804 and this is thread id 26548.
+Traceback (most recent call last):
+  File "e:\Python_Projects\Web_Scanner_SQL_XSS_CSRF\utils\database.py", line 328, in save_scan
+    cursor = conn.cursor()
+             ^^^^^^^^^^^^^
+sqlite3.ProgrammingError: SQLite objects created in a thread can only be used in that same thread. The object was created in thread id 4804 and this is thread id 26548.
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "e:\Python_Projects\Web_Scanner_SQL_XSS_CSRF\utils\database.py", line 327, in save_scan
+    with get_db_connection() as conn:
+sqlite3.ProgrammingError: SQLite objects created in a thread can only be used in that same thread. The object was created in thread id 4804 and this is thread id 26548.
+2025-06-23 03:20:09 - database - DEBUG - Logger initialized successfully
+2025-06-23 03:20:32 - database - INFO - Scan saved successfully: user_id=2, url=https://kasict.ru/, duration=0.00s
+2025-06-23 03:20:33 - database - INFO - Scan saved successfully: user_id=2, url=https://kasict.ru/, duration=0.00s
+2025-06-23 03:17:13 - database - DEBUG - Logger initialized successfully
+2025-06-23 03:17:41 - database - INFO - Scan saved successfully: user_id=2, url=https://kasict.ru/, duration=0.00s
+2025-06-23 03:17:42 - database - INFO - Scan saved successfully: user_id=2, url=https://kasict.ru/, duration=0.00s
+2025-06-23 03:21:34 - database - DEBUG - Logger initialized successfully
+2025-06-23 03:22:04 - database - INFO - Scan saved successfully: user_id=2, url=https://kasict.ru/, duration=0.14s
+2025-06-23 03:22:06 - database - INFO - Scan saved successfully: user_id=2, url=https://kasict.ru/, duration=0.18s
+2025-06-23 03:22:59 - database - DEBUG - Logger initialized successfully
+2025-06-23 03:24:06 - database - DEBUG - Logger initialized successfully
+2025-06-23 03:24:31 - database - INFO - Scan saved successfully: user_id=2, url=https://kasict.ru/, duration=1.12s
+2025-06-23 03:24:32 - database - INFO - Scan saved successfully: user_id=2, url=https://kasict.ru/, duration=1.17s
+2025-06-23 03:25:48 - database - DEBUG - Logger initialized successfully
+2025-06-23 03:26:34 - database - INFO - Scan saved successfully: user_id=2, url=https://kasict.ru/, duration=1.13s
+2025-06-23 03:26:36 - database - INFO - Scan saved successfully: user_id=2, url=https://kasict.ru/, duration=1.17s
+2025-06-23 03:28:58 - database - DEBUG - Logger initialized successfully
+2025-06-23 03:29:34 - database - INFO - Scan saved successfully: user_id=2, url=https://kasict.ru/, duration=0.00s
+2025-06-23 03:29:36 - database - INFO - Scan saved successfully: user_id=2, url=https://kasict.ru/, duration=0.00s
+2025-06-23 03:30:31 - database - DEBUG - Logger initialized successfully
+2025-06-23 03:30:58 - database - INFO - Scan saved successfully: user_id=2, url=https://kasict.ru/, duration=0.01s
+2025-06-23 03:30:59 - database - INFO - Scan saved successfully: user_id=2, url=https://kasict.ru/, duration=0.00s
+2025-06-23 03:32:13 - database - DEBUG - Logger initialized successfully
+2025-06-23 03:42:33 - database - DEBUG - Logger initialized successfully
+2025-06-24 11:40:29 - database - DEBUG - Logger initialized successfully
+2025-06-24 12:06:02 - database - DEBUG - Logger initialized successfully
+2025-06-24 12:23:19 - database - DEBUG - Logger initialized successfully
+2025-06-24 12:23:20 - database - INFO - Encrypted scan saved successfully: user_id=1, url=https://test-encryption.example.com, duration=1.50s
+2025-06-24 12:11:09 - database - DEBUG - Logger initialized successfully
+2025-06-24 12:11:35 - database - INFO - Deleted 0 scans for user 1
+2025-06-24 17:30:03 - database - INFO - Scan saved successfully: user_id=1, url=https://kasict.ru/, duration=19067.70s
+2025-06-24 17:30:24 - database - INFO - Scan saved successfully: user_id=1, url=https://kasict.ru/, duration=19067.88s
+2025-06-24 17:30:29 - database - ERROR - Failed to parse scan result for scan 19: Expecting value: line 1 column 1 (char 0)
+Traceback (most recent call last):
+  File "E:\Python_Projects\Web_Scanner_SQL_XSS_CSRF\utils\database.py", line 451, in get_scans_by_user
+    return None
+                
+  File "C:\Users\Общий\AppData\Local\Programs\Python\Python312\Lib\json\__init__.py", line 346, in loads
+    return _default_decoder.decode(s)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Общий\AppData\Local\Programs\Python\Python312\Lib\json\decoder.py", line 337, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Общий\AppData\Local\Programs\Python\Python312\Lib\json\decoder.py", line 355, in raw_decode
+    raise JSONDecodeError("Expecting value", s, err.value) from None
+json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)
+2025-06-24 17:30:30 - database - ERROR - Failed to parse scan result for scan 19: Expecting value: line 1 column 1 (char 0)
+Traceback (most recent call last):
+  File "E:\Python_Projects\Web_Scanner_SQL_XSS_CSRF\utils\database.py", line 451, in get_scans_by_user
+    return None
+                
+  File "C:\Users\Общий\AppData\Local\Programs\Python\Python312\Lib\json\__init__.py", line 346, in loads
+    return _default_decoder.decode(s)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Общий\AppData\Local\Programs\Python\Python312\Lib\json\decoder.py", line 337, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Общий\AppData\Local\Programs\Python\Python312\Lib\json\decoder.py", line 355, in raw_decode
+    raise JSONDecodeError("Expecting value", s, err.value) from None
+json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)
+2025-06-25 00:43:03 - database - DEBUG - Logger initialized successfully
+2025-06-25 00:43:18 - database - DEBUG - Logger initialized successfully
+2025-06-25 01:03:03 - database - INFO - Encrypted scan saved successfully: user_id=3, url=https://kasict.ru/, duration=1072.05s
+2025-06-25 08:23:19 - database - DEBUG - Logger initialized successfully
+2025-06-25 08:25:04 - database - DEBUG - Logger initialized successfully
+2025-06-25 08:25:56 - database - DEBUG - Logger initialized successfully
+2025-06-25 08:26:04 - database - DEBUG - Logger initialized successfully
+2025-06-25 13:50:49 - database - DEBUG - Logger initialized successfully
+2025-06-25 13:51:28 - database - DEBUG - Logger initialized successfully
+2025-06-25 13:51:36 - database - DEBUG - Logger initialized successfully
+2025-06-25 13:52:52 - database - DEBUG - Logger initialized successfully
+2025-06-25 13:53:00 - database - DEBUG - Logger initialized successfully
+2025-06-25 13:54:25 - database - DEBUG - Logger initialized successfully
+2025-06-25 13:54:38 - database - ERROR - Failed to fetch user Manokuz: no such table: users
+Traceback (most recent call last):
+  File "E:\Python_Projects\Web_Scanner_SQL_XSS_CSRF\utils\database.py", line 223, in get_user_by_username
+    cursor.execute(
+sqlite3.OperationalError: no such table: users
+2025-06-25 13:55:32 - database - DEBUG - Logger initialized successfully
+2025-06-25 13:56:16 - database - DEBUG - Logger initialized successfully
+2025-06-25 13:56:57 - database - ERROR - Failed to fetch user Manokuz: no such column: failed_attempts
+Traceback (most recent call last):
+  File "E:\Python_Projects\Web_Scanner_SQL_XSS_CSRF\utils\database.py", line 223, in get_user_by_username
+    cursor.execute(
+sqlite3.OperationalError: no such column: failed_attempts
+2025-06-25 14:03:33 - database - DEBUG - Logger initialized successfully
+2025-06-25 14:03:46 - database - DEBUG - Logger initialized successfully
+2025-06-25 18:09:21 - database - INFO - Encrypted scan saved successfully: user_id=1, url=https://kasict.ru/, duration=14608.45s
+2025-06-25 20:26:30 - database - ERROR - Error saving scan results: SQLite objects created in a thread can only be used in that same thread. The object was created in thread id 18712 and this is thread id 22756.
+Traceback (most recent call last):
+  File "E:\Python_Projects\Web_Scanner_SQL_XSS_CSRF\utils\database.py", line 304, in _save_scan_in_thread
+    cursor = conn.cursor()
+             ^^^^^^^^^^^^^
+sqlite3.ProgrammingError: SQLite objects created in a thread can only be used in that same thread. The object was created in thread id 18712 and this is thread id 22756.
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "E:\Python_Projects\Web_Scanner_SQL_XSS_CSRF\utils\database.py", line 303, in _save_scan_in_thread
+    with get_db_connection() as conn:
+sqlite3.ProgrammingError: SQLite objects created in a thread can only be used in that same thread. The object was created in thread id 18712 and this is thread id 22756.
+2025-06-26 19:08:54 - database - INFO - Scan results saved successfully for user 1, scan_id: 2
+2025-08-01 23:49:14 - database - INFO - Scan results saved successfully for user 1, scan_id: 7
+2025-08-02 00:04:47 - database - INFO - Scan results saved successfully for user 1, scan_id: 8
+2025-08-06 23:12:37 - database - INFO - Scan results saved successfully for user 1, scan_id: 9

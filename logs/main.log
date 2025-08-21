@@ -1,0 +1,428 @@
+2025-06-23 01:44:04 - main - DEBUG - Logger initialized successfully
+2025-06-23 01:44:04 - main - INFO - Starting application...
+2025-06-23 01:44:04 - main - INFO - Signal handlers configured
+2025-06-23 01:44:04 - main - INFO - Performance monitoring enabled (basic)
+2025-06-23 01:44:04 - main - INFO - QApplication created successfully
+2025-06-23 01:44:04 - main - INFO - Стили успешно загружены
+2025-06-23 01:44:04 - main - CRITICAL - Unexpected error in main: AuthController.__init__() missing 1 required positional argument: 'user_model'
+Traceback (most recent call last):
+  File "E:\Python_Projects\Web_Scanner_SQL_XSS_CSRF\main.py", line 258, in main
+    main_window = MainWindow()
+                  ^^^^^^^^^^^^
+  File "E:\Python_Projects\Web_Scanner_SQL_XSS_CSRF\ui\main_window.py", line 24, in __init__
+    self.login_window = LoginWindow(self)
+                        ^^^^^^^^^^^^^^^^^
+  File "E:\Python_Projects\Web_Scanner_SQL_XSS_CSRF\views\login_window.py", line 18, in __init__
+    self.controller = AuthController()
+                      ^^^^^^^^^^^^^^^^
+TypeError: AuthController.__init__() missing 1 required positional argument: 'user_model'
+2025-06-23 01:45:36 - main - DEBUG - Logger initialized successfully
+2025-06-23 01:45:36 - main - INFO - Starting application...
+2025-06-23 01:45:36 - main - INFO - Signal handlers configured
+2025-06-23 01:45:36 - main - INFO - Performance monitoring enabled (basic)
+2025-06-23 01:45:36 - main - INFO - QApplication created successfully
+2025-06-23 01:45:36 - main - INFO - Стили успешно загружены
+2025-06-23 01:45:49 - main - DEBUG - Logger initialized successfully
+2025-06-23 01:45:49 - main - INFO - Starting application...
+2025-06-23 01:45:49 - main - INFO - Signal handlers configured
+2025-06-23 01:45:49 - main - INFO - Performance monitoring enabled (basic)
+2025-06-23 01:45:49 - main - INFO - QApplication created successfully
+2025-06-23 01:45:49 - main - INFO - Стили успешно загружены
+2025-06-23 01:47:12 - main - DEBUG - Logger initialized successfully
+2025-06-23 01:47:12 - main - INFO - Starting application...
+2025-06-23 01:47:12 - main - INFO - Signal handlers configured
+2025-06-23 01:47:12 - main - INFO - Performance monitoring enabled (basic)
+2025-06-23 01:47:12 - main - INFO - QApplication created or reused successfully
+2025-06-23 01:47:12 - main - INFO - Стили успешно загружены
+2025-06-23 01:47:12 - main - INFO - Application startup completed in 0.50 seconds
+2025-06-23 01:47:12 - main - INFO - Starting application event loop...
+2025-06-23 01:47:44 - main - CRITICAL - Unhandled exception: TypeError: tuple indices must be integers or slices, not str
+NoneType: None
+2025-06-23 01:48:39 - main - INFO - Application shutting down with exit code 0
+2025-06-23 01:48:46 - main - DEBUG - Logger initialized successfully
+2025-06-23 01:48:46 - main - INFO - Starting application...
+2025-06-23 01:48:46 - main - INFO - Signal handlers configured
+2025-06-23 01:48:46 - main - INFO - Performance monitoring enabled (basic)
+2025-06-23 01:48:46 - main - INFO - QApplication created or reused successfully
+2025-06-23 01:48:46 - main - INFO - Стили успешно загружены
+2025-06-23 01:48:46 - main - INFO - Application startup completed in 0.52 seconds
+2025-06-23 01:48:46 - main - INFO - Starting application event loop...
+2025-06-23 01:49:30 - main - CRITICAL - Unhandled exception: AttributeError: 'LoginWindow' object has no attribute 'main_window'
+NoneType: None
+2025-06-23 01:50:20 - main - INFO - Application shutting down with exit code 0
+2025-06-23 01:50:23 - main - DEBUG - Logger initialized successfully
+2025-06-23 01:50:23 - main - INFO - Starting application...
+2025-06-23 01:50:23 - main - INFO - Signal handlers configured
+2025-06-23 01:50:23 - main - INFO - Performance monitoring enabled (basic)
+2025-06-23 01:50:23 - main - INFO - QApplication created or reused successfully
+2025-06-23 01:50:23 - main - INFO - Стили успешно загружены
+2025-06-23 01:50:24 - main - INFO - Application startup completed in 0.49 seconds
+2025-06-23 01:50:24 - main - INFO - Starting application event loop...
+2025-06-23 02:00:10 - main - INFO - Application shutting down with exit code 0
+2025-06-23 02:01:34 - main - DEBUG - Logger initialized successfully
+2025-06-23 02:01:34 - main - INFO - Starting application...
+2025-06-23 02:01:34 - main - INFO - Signal handlers configured
+2025-06-23 02:01:34 - main - INFO - Performance monitoring enabled (basic)
+2025-06-23 02:01:34 - main - INFO - QApplication created or reused successfully
+2025-06-23 02:01:34 - main - INFO - Стили успешно загружены
+2025-06-23 02:01:34 - main - INFO - Application startup completed in 0.53 seconds
+2025-06-23 02:01:34 - main - INFO - Starting application event loop...
+2025-06-23 02:01:45 - main - INFO - Application shutting down with exit code 0
+2025-06-23 02:01:48 - main - DEBUG - Logger initialized successfully
+2025-06-23 02:01:48 - main - INFO - Starting application...
+2025-06-23 02:01:48 - main - INFO - Signal handlers configured
+2025-06-23 02:01:48 - main - INFO - Performance monitoring enabled (basic)
+2025-06-23 02:01:49 - main - INFO - QApplication created or reused successfully
+2025-06-23 02:01:49 - main - INFO - Стили успешно загружены
+2025-06-23 02:01:49 - main - INFO - Application startup completed in 0.52 seconds
+2025-06-23 02:01:49 - main - INFO - Starting application event loop...
+2025-06-23 02:02:37 - main - INFO - Application shutting down with exit code 0
+2025-06-23 02:03:58 - main - DEBUG - Logger initialized successfully
+2025-06-23 02:03:58 - main - INFO - Starting application...
+2025-06-23 02:03:58 - main - INFO - Application exited with code 0
+2025-06-23 02:03:58 - main - INFO - Application shutting down with exit code 0
+2025-06-23 02:04:13 - main - DEBUG - Logger initialized successfully
+2025-06-23 02:04:13 - main - INFO - Starting application...
+2025-06-23 02:04:13 - main - INFO - Signal handlers configured
+2025-06-23 02:04:13 - main - INFO - Performance monitoring enabled (basic)
+2025-06-23 02:04:13 - main - INFO - QApplication created or reused successfully
+2025-06-23 02:04:13 - main - INFO - Стили успешно загружены
+2025-06-23 02:04:13 - main - INFO - Application startup completed in 0.53 seconds
+2025-06-23 02:04:13 - main - INFO - Starting application event loop...
+2025-06-23 02:06:30 - main - INFO - Application shutting down with exit code 0
+2025-06-23 02:06:34 - main - DEBUG - Logger initialized successfully
+2025-06-23 02:06:34 - main - INFO - Starting application...
+2025-06-23 02:06:34 - main - INFO - Signal handlers configured
+2025-06-23 02:06:34 - main - INFO - Performance monitoring enabled (basic)
+2025-06-23 02:06:34 - main - INFO - QApplication created or reused successfully
+2025-06-23 02:06:34 - main - INFO - Стили успешно загружены
+2025-06-23 02:06:34 - main - INFO - Application startup completed in 0.54 seconds
+2025-06-23 02:06:34 - main - INFO - Starting application event loop...
+2025-06-23 02:14:43 - main - INFO - Application shutting down with exit code 0
+2025-06-23 02:34:26 - main - DEBUG - Logger initialized successfully
+2025-06-23 02:34:26 - main - INFO - Starting application...
+2025-06-23 02:34:26 - main - INFO - Signal handlers configured
+2025-06-23 02:34:26 - main - INFO - Performance monitoring enabled (basic)
+2025-06-23 02:34:26 - main - INFO - QApplication created or reused successfully
+2025-06-23 02:34:26 - main - INFO - Стили успешно загружены
+2025-06-23 02:34:27 - main - INFO - Application startup completed in 0.51 seconds
+2025-06-23 02:34:27 - main - INFO - Starting application event loop...
+2025-06-23 02:34:43 - main - INFO - Application shutting down with exit code 0
+2025-06-23 02:46:37 - main - DEBUG - Logger initialized successfully
+2025-06-23 02:46:37 - main - INFO - Starting application...
+2025-06-23 02:46:37 - main - INFO - Signal handlers configured
+2025-06-23 02:46:37 - main - INFO - Performance monitoring enabled (basic)
+2025-06-23 02:46:37 - main - INFO - QApplication created or reused successfully
+2025-06-23 02:46:37 - main - INFO - Стили успешно загружены
+2025-06-23 02:46:37 - main - INFO - Application startup completed in 0.53 seconds
+2025-06-23 02:46:37 - main - INFO - Starting application event loop...
+2025-06-23 02:47:08 - main - INFO - Application shutting down with exit code 0
+2025-06-23 02:50:08 - main - DEBUG - Logger initialized successfully
+2025-06-23 02:50:08 - main - INFO - Starting application...
+2025-06-23 02:50:08 - main - INFO - Signal handlers configured
+2025-06-23 02:50:08 - main - INFO - Performance monitoring enabled (basic)
+2025-06-23 02:50:08 - main - INFO - QApplication created or reused successfully
+2025-06-23 02:50:08 - main - INFO - Стили успешно загружены
+2025-06-23 02:50:08 - main - INFO - Application startup completed in 0.56 seconds
+2025-06-23 02:50:08 - main - INFO - Starting application event loop...
+2025-06-23 02:51:00 - main - INFO - Application shutting down with exit code 0
+2025-06-23 03:06:05 - main - DEBUG - Logger initialized successfully
+2025-06-23 03:06:05 - main - INFO - Starting application...
+2025-06-23 03:06:05 - main - INFO - Signal handlers configured
+2025-06-23 03:06:05 - main - INFO - Performance monitoring enabled (basic)
+2025-06-23 03:06:05 - main - INFO - QApplication created or reused successfully
+2025-06-23 03:06:05 - main - INFO - Стили успешно загружены
+2025-06-23 03:06:05 - main - INFO - Application startup completed in 0.52 seconds
+2025-06-23 03:06:05 - main - INFO - Starting application event loop...
+2025-06-23 03:06:35 - main - INFO - Application shutting down with exit code 0
+2025-06-23 03:20:10 - main - DEBUG - Logger initialized successfully
+2025-06-23 03:20:10 - main - INFO - Starting application...
+2025-06-23 03:20:10 - main - INFO - Signal handlers configured
+2025-06-23 03:20:10 - main - INFO - Performance monitoring enabled (basic)
+2025-06-23 03:20:10 - main - INFO - QApplication created or reused successfully
+2025-06-23 03:20:10 - main - INFO - Стили успешно загружены
+2025-06-23 03:20:11 - main - INFO - Application startup completed in 0.56 seconds
+2025-06-23 03:20:11 - main - INFO - Starting application event loop...
+2025-06-23 03:20:36 - main - INFO - Application shutting down with exit code 0
+2025-06-23 03:17:14 - main - DEBUG - Logger initialized successfully
+2025-06-23 03:17:14 - main - INFO - Starting application...
+2025-06-23 03:17:14 - main - INFO - Signal handlers configured
+2025-06-23 03:17:14 - main - INFO - Performance monitoring enabled (basic)
+2025-06-23 03:17:14 - main - INFO - QApplication created or reused successfully
+2025-06-23 03:17:14 - main - INFO - Стили успешно загружены
+2025-06-23 03:17:15 - main - INFO - Application startup completed in 0.55 seconds
+2025-06-23 03:17:15 - main - INFO - Starting application event loop...
+2025-06-23 03:22:57 - main - INFO - Application shutting down with exit code 0
+2025-06-23 03:21:35 - main - DEBUG - Logger initialized successfully
+2025-06-23 03:21:35 - main - INFO - Starting application...
+2025-06-23 03:21:35 - main - INFO - Signal handlers configured
+2025-06-23 03:21:35 - main - INFO - Performance monitoring enabled (basic)
+2025-06-23 03:21:35 - main - INFO - QApplication created or reused successfully
+2025-06-23 03:21:35 - main - INFO - Стили успешно загружены
+2025-06-23 03:21:36 - main - INFO - Application startup completed in 0.55 seconds
+2025-06-23 03:21:36 - main - INFO - Starting application event loop...
+2025-06-23 03:22:58 - main - INFO - Application shutting down with exit code 0
+2025-06-23 03:23:00 - main - DEBUG - Logger initialized successfully
+2025-06-23 03:23:00 - main - INFO - Starting application...
+2025-06-23 03:23:00 - main - INFO - Signal handlers configured
+2025-06-23 03:23:00 - main - INFO - Performance monitoring enabled (basic)
+2025-06-23 03:23:00 - main - INFO - QApplication created or reused successfully
+2025-06-23 03:23:00 - main - INFO - Стили успешно загружены
+2025-06-23 03:23:01 - main - INFO - Application startup completed in 0.60 seconds
+2025-06-23 03:23:01 - main - INFO - Starting application event loop...
+2025-06-23 03:23:11 - main - INFO - Application shutting down with exit code 0
+2025-06-23 03:24:07 - main - DEBUG - Logger initialized successfully
+2025-06-23 03:24:07 - main - INFO - Starting application...
+2025-06-23 03:24:07 - main - INFO - Signal handlers configured
+2025-06-23 03:24:07 - main - INFO - Performance monitoring enabled (basic)
+2025-06-23 03:24:07 - main - INFO - QApplication created or reused successfully
+2025-06-23 03:24:07 - main - INFO - Стили успешно загружены
+2025-06-23 03:24:07 - main - INFO - Application startup completed in 0.57 seconds
+2025-06-23 03:24:07 - main - INFO - Starting application event loop...
+2025-06-23 03:25:45 - main - INFO - Application shutting down with exit code 0
+2025-06-23 03:25:49 - main - DEBUG - Logger initialized successfully
+2025-06-23 03:25:49 - main - INFO - Starting application...
+2025-06-23 03:25:49 - main - INFO - Signal handlers configured
+2025-06-23 03:25:49 - main - INFO - Performance monitoring enabled (basic)
+2025-06-23 03:25:49 - main - INFO - QApplication created or reused successfully
+2025-06-23 03:25:49 - main - INFO - Стили успешно загружены
+2025-06-23 03:25:50 - main - INFO - Application startup completed in 0.56 seconds
+2025-06-23 03:25:50 - main - INFO - Starting application event loop...
+2025-06-23 03:30:13 - main - INFO - Application shutting down with exit code 0
+2025-06-23 03:28:59 - main - DEBUG - Logger initialized successfully
+2025-06-23 03:28:59 - main - INFO - Starting application...
+2025-06-23 03:28:59 - main - INFO - Signal handlers configured
+2025-06-23 03:28:59 - main - INFO - Performance monitoring enabled (basic)
+2025-06-23 03:28:59 - main - INFO - QApplication created or reused successfully
+2025-06-23 03:28:59 - main - INFO - Стили успешно загружены
+2025-06-23 03:29:00 - main - INFO - Application startup completed in 0.54 seconds
+2025-06-23 03:29:00 - main - INFO - Starting application event loop...
+2025-06-23 03:30:16 - main - INFO - Application shutting down with exit code 0
+2025-06-23 03:30:32 - main - DEBUG - Logger initialized successfully
+2025-06-23 03:30:32 - main - INFO - Starting application...
+2025-06-23 03:30:32 - main - INFO - Signal handlers configured
+2025-06-23 03:30:32 - main - INFO - Performance monitoring enabled (basic)
+2025-06-23 03:30:32 - main - INFO - QApplication created or reused successfully
+2025-06-23 03:30:32 - main - INFO - Стили успешно загружены
+2025-06-23 03:30:33 - main - INFO - Application startup completed in 0.54 seconds
+2025-06-23 03:30:33 - main - INFO - Starting application event loop...
+2025-06-23 03:31:02 - main - INFO - Application shutting down with exit code 0
+2025-06-23 03:32:14 - main - DEBUG - Logger initialized successfully
+2025-06-23 03:32:14 - main - INFO - Starting application...
+2025-06-23 03:32:14 - main - INFO - Signal handlers configured
+2025-06-23 03:32:14 - main - INFO - Performance monitoring enabled (basic)
+2025-06-23 03:32:14 - main - INFO - QApplication created or reused successfully
+2025-06-23 03:32:14 - main - INFO - Стили успешно загружены
+2025-06-23 03:32:14 - main - INFO - Application startup completed in 0.54 seconds
+2025-06-23 03:32:14 - main - INFO - Starting application event loop...
+2025-06-23 03:32:57 - main - INFO - Application shutting down with exit code 02025-06-24 12:06:03 - main - DEBUG - Logger initialized successfully
+2025-06-24 12:06:03 - main - INFO - Starting application...
+2025-06-24 12:06:03 - main - INFO - Signal handlers configured
+2025-06-24 12:06:03 - main - INFO - Performance monitoring enabled (basic)
+2025-06-24 12:06:03 - main - INFO - QApplication created or reused successfully
+2025-06-24 12:06:03 - main - INFO - Стили успешно загружены
+2025-06-24 12:06:04 - main - INFO - Application startup completed in 0.87 seconds
+2025-06-24 12:06:04 - main - INFO - Starting application event loop...
+2025-06-24 12:06:21 - main - INFO - Application shutting down with exit code 0
+2025-06-24 12:11:10 - main - DEBUG - Logger initialized successfully
+2025-06-24 12:11:10 - main - INFO - Starting application...
+2025-06-24 12:11:10 - main - INFO - Signal handlers configured
+2025-06-24 12:11:10 - main - INFO - Performance monitoring enabled (basic)
+2025-06-24 12:11:10 - main - INFO - QApplication created or reused successfully
+2025-06-24 12:11:10 - main - INFO - Стили успешно загружены
+2025-06-24 12:11:10 - main - INFO - Application startup completed in 0.65 seconds
+2025-06-24 12:11:10 - main - INFO - Starting application event loop...
+2025-06-24 17:38:27 - main - INFO - Application shutting down with exit code 0
+2025-06-25 00:43:19 - main - DEBUG - Logger initialized successfully
+2025-06-25 00:43:19 - main - INFO - Starting application...
+2025-06-25 00:43:19 - main - INFO - Signal handlers configured
+2025-06-25 00:43:19 - main - INFO - Performance monitoring enabled (basic)
+2025-06-25 00:43:19 - main - INFO - QApplication created or reused successfully
+2025-06-25 00:43:19 - main - INFO - Стили успешно загружены
+2025-06-25 00:43:20 - main - INFO - Application startup completed in 0.52 seconds
+2025-06-25 00:43:20 - main - INFO - Starting application event loop...
+2025-06-25 01:04:55 - main - INFO - Application shutting down with exit code 0
+2025-06-25 08:23:20 - main - DEBUG - Logger initialized successfully
+2025-06-25 08:23:20 - main - INFO - Starting application...
+2025-06-25 08:23:20 - main - INFO - Signal handlers configured
+2025-06-25 08:23:20 - main - INFO - Performance monitoring enabled (basic)
+2025-06-25 08:23:21 - main - INFO - QApplication created or reused successfully
+2025-06-25 08:23:21 - main - WARNING - Файл стилей styles.qss не найден по пути: C:\Users\Общий\styles.qss
+2025-06-25 08:23:21 - main - INFO - Application startup completed in 0.42 seconds
+2025-06-25 08:23:21 - main - INFO - Starting application event loop...
+2025-06-25 08:24:00 - main - INFO - Application shutting down with exit code 0
+2025-06-25 08:25:05 - main - DEBUG - Logger initialized successfully
+2025-06-25 08:25:05 - main - INFO - Starting application...
+2025-06-25 08:25:05 - main - INFO - Signal handlers configured
+2025-06-25 08:25:05 - main - INFO - Performance monitoring enabled (basic)
+2025-06-25 08:25:05 - main - INFO - QApplication created or reused successfully
+2025-06-25 08:25:05 - main - INFO - Стили успешно загружены
+2025-06-25 08:25:05 - main - INFO - Application startup completed in 0.56 seconds
+2025-06-25 08:25:05 - main - INFO - Starting application event loop...
+2025-06-25 08:25:29 - main - INFO - Application shutting down with exit code 0
+2025-06-25 08:26:05 - main - DEBUG - Logger initialized successfully
+2025-06-25 08:26:05 - main - INFO - Starting application...
+2025-06-25 08:26:05 - main - INFO - Signal handlers configured
+2025-06-25 08:26:05 - main - INFO - Performance monitoring enabled (basic)
+2025-06-25 08:26:05 - main - INFO - QApplication created or reused successfully
+2025-06-25 08:26:05 - main - INFO - Стили успешно загружены
+2025-06-25 08:26:05 - main - INFO - Application startup completed in 0.54 seconds
+2025-06-25 08:26:05 - main - INFO - Starting application event loop...
+2025-06-25 08:26:22 - main - INFO - Application shutting down with exit code 0
+2025-06-25 13:50:51 - main - DEBUG - Logger initialized successfully
+2025-06-25 13:50:51 - main - INFO - Starting application...
+2025-06-25 13:50:51 - main - INFO - Signal handlers configured
+2025-06-25 13:50:51 - main - INFO - Performance monitoring enabled (basic)
+2025-06-25 13:50:51 - main - INFO - QApplication created or reused successfully
+2025-06-25 13:50:51 - main - INFO - Стили успешно загружены
+2025-06-25 13:50:52 - main - INFO - Application startup completed in 1.01 seconds
+2025-06-25 13:50:52 - main - INFO - Starting application event loop...
+2025-06-25 13:51:09 - main - INFO - Application shutting down with exit code 0
+2025-06-25 13:51:37 - main - DEBUG - Logger initialized successfully
+2025-06-25 13:51:37 - main - INFO - Starting application...
+2025-06-25 13:51:37 - main - INFO - Signal handlers configured
+2025-06-25 13:51:37 - main - INFO - Performance monitoring enabled (basic)
+2025-06-25 13:51:37 - main - INFO - QApplication created or reused successfully
+2025-06-25 13:51:37 - main - INFO - Стили успешно загружены
+2025-06-25 13:51:38 - main - INFO - Application startup completed in 0.56 seconds
+2025-06-25 13:51:38 - main - INFO - Starting application event loop...
+2025-06-25 13:51:51 - main - INFO - Application shutting down with exit code 0
+2025-06-25 13:53:01 - main - DEBUG - Logger initialized successfully
+2025-06-25 13:53:01 - main - INFO - Starting application...
+2025-06-25 13:53:01 - main - INFO - Signal handlers configured
+2025-06-25 13:53:01 - main - INFO - Performance monitoring enabled (basic)
+2025-06-25 13:53:01 - main - INFO - QApplication created or reused successfully
+2025-06-25 13:53:01 - main - INFO - Стили успешно загружены
+2025-06-25 13:53:02 - main - INFO - Application startup completed in 0.55 seconds
+2025-06-25 13:53:02 - main - INFO - Starting application event loop...
+2025-06-25 13:53:15 - main - INFO - Application shutting down with exit code 0
+2025-06-25 14:03:47 - main - DEBUG - Logger initialized successfully
+2025-06-25 14:03:47 - main - INFO - Starting application...
+2025-06-25 14:03:47 - main - INFO - Signal handlers configured
+2025-06-25 14:03:47 - main - INFO - Performance monitoring enabled (basic)
+2025-06-25 14:03:48 - main - INFO - QApplication created or reused successfully
+2025-06-25 14:03:48 - main - INFO - Стили успешно загружены
+2025-06-25 14:03:48 - main - INFO - Application startup completed in 0.99 seconds
+2025-06-25 14:03:48 - main - INFO - Starting application event loop...
+2025-06-25 18:23:20 - main - INFO - Application shutting down with exit code 0
+2025-06-25 18:44:37 - main - INFO - Starting application...
+2025-06-25 18:44:37 - main - INFO - Signal handlers configured
+2025-06-25 18:44:37 - main - INFO - Performance monitoring enabled (basic)
+2025-06-25 18:44:37 - main - INFO - QApplication created or reused successfully
+2025-06-25 18:44:37 - main - INFO - Стили успешно загружены
+2025-06-25 18:44:38 - main - INFO - Application startup completed in 0.60 seconds
+2025-06-25 18:44:38 - main - INFO - Starting application event loop...
+2025-06-25 20:26:54 - main - INFO - Application shutting down with exit code 0
+2025-06-26 12:44:25 - main - INFO - Starting application...
+2025-06-26 12:44:25 - main - INFO - Signal handlers configured
+2025-06-26 12:44:25 - main - INFO - Performance monitoring enabled (basic)
+2025-06-26 12:44:25 - main - INFO - QApplication created or reused successfully
+2025-06-26 12:44:25 - main - INFO - Стили успешно загружены
+2025-06-26 12:44:26 - main - INFO - Application startup completed in 1.10 seconds
+2025-06-26 12:44:26 - main - INFO - Starting application event loop...
+2025-06-26 19:13:47 - main - INFO - Application shutting down with exit code 0
+2025-07-01 13:37:35 - main - INFO - FAULTHANDLER ENABLED, MAIN.PY START
+2025-07-01 13:37:35 - main - INFO - Starting application...
+2025-07-01 13:37:35 - main - INFO - Signal handlers configured
+2025-07-01 13:37:35 - main - INFO - Performance monitoring enabled (basic)
+2025-07-01 13:37:35 - main - INFO - QApplication created or reused successfully
+2025-07-01 13:37:35 - main - INFO - Стили успешно загружены
+2025-07-01 13:37:36 - main - INFO - Application startup completed in 1.02 seconds
+2025-07-01 13:37:36 - main - INFO - Starting application event loop...
+2025-07-01 13:41:25 - main - INFO - Application shutting down with exit code 0
+2025-07-01 13:41:48 - main - INFO - FAULTHANDLER ENABLED, MAIN.PY START
+2025-07-01 13:41:48 - main - INFO - Starting application...
+2025-07-01 13:41:48 - main - INFO - Signal handlers configured
+2025-07-01 13:41:48 - main - INFO - Performance monitoring enabled (basic)
+2025-07-01 13:41:48 - main - INFO - QApplication created or reused successfully
+2025-07-01 13:41:48 - main - INFO - Стили успешно загружены
+2025-07-01 13:41:49 - main - INFO - Application startup completed in 0.60 seconds
+2025-07-01 13:41:49 - main - INFO - Starting application event loop...
+2025-07-01 18:27:58 - main - INFO - Application shutting down with exit code 0
+2025-07-28 17:48:58 - main - INFO - FAULTHANDLER ENABLED, MAIN.PY START
+2025-07-28 17:48:58 - main - INFO - Starting application...
+2025-07-28 17:48:58 - main - INFO - Signal handlers configured
+2025-07-28 17:48:58 - main - INFO - Performance monitoring enabled (basic)
+2025-07-28 17:48:59 - main - INFO - QApplication created or reused successfully
+2025-07-28 17:48:59 - main - INFO - Стили успешно загружены
+2025-07-28 17:49:01 - main - INFO - Application startup completed in 2.40 seconds
+2025-07-28 17:49:01 - main - INFO - Starting application event loop...
+2025-07-28 17:49:33 - main - INFO - Application shutting down with exit code 0
+2025-07-28 17:51:29 - main - INFO - FAULTHANDLER ENABLED, MAIN.PY START
+2025-07-28 17:51:29 - main - INFO - Starting application...
+2025-07-28 17:51:29 - main - INFO - Signal handlers configured
+2025-07-28 17:51:29 - main - INFO - Performance monitoring enabled (basic)
+2025-07-28 17:51:29 - main - INFO - QApplication created or reused successfully
+2025-07-28 17:51:29 - main - INFO - Стили успешно загружены
+2025-07-28 17:51:30 - main - INFO - Application startup completed in 0.61 seconds
+2025-07-28 17:51:30 - main - INFO - Starting application event loop...
+2025-07-28 17:52:27 - main - CRITICAL - Unhandled exception: TypeError: a coroutine was expected, got <Task pending name='Task-1' coro=<DashboardWindow.scan_website_sync() running at e:\Python_Projects\Web_Scanner_SQL_XSS_CSRF\views\dashboard_window.py:825> cb=[asyncSlot.<locals>._error_handler() at E:\Python_Projects\Web_Scanner_SQL_XSS_CSRF\.venv\Lib\site-packages\qasync\__init__.py:778]>
+NoneType: None
+2025-07-28 17:58:37 - main - INFO - FAULTHANDLER ENABLED, MAIN.PY START
+2025-07-28 17:58:37 - main - INFO - Starting application...
+2025-07-28 17:58:37 - main - INFO - Signal handlers configured
+2025-07-28 17:58:37 - main - INFO - Performance monitoring enabled (basic)
+2025-07-28 17:58:37 - main - INFO - QApplication created or reused successfully
+2025-07-28 17:58:37 - main - INFO - Стили успешно загружены
+2025-07-28 17:58:38 - main - INFO - Application startup completed in 0.58 seconds
+2025-07-28 17:58:38 - main - INFO - Starting application event loop...
+2025-07-28 17:59:04 - main - CRITICAL - Unhandled exception: TypeError: a coroutine was expected, got <Task pending name='Task-1' coro=<DashboardWindow.scan_website_sync() running at e:\Python_Projects\Web_Scanner_SQL_XSS_CSRF\views\dashboard_window.py:823> cb=[asyncSlot.<locals>._error_handler() at E:\Python_Projects\Web_Scanner_SQL_XSS_CSRF\.venv\Lib\site-packages\qasync\__init__.py:778]>
+NoneType: None
+2025-07-28 18:01:19 - main - INFO - FAULTHANDLER ENABLED, MAIN.PY START
+2025-07-28 18:01:19 - main - INFO - Starting application...
+2025-07-28 18:01:19 - main - INFO - Signal handlers configured
+2025-07-28 18:01:19 - main - INFO - Performance monitoring enabled (basic)
+2025-07-28 18:01:19 - main - INFO - QApplication created or reused successfully
+2025-07-28 18:01:19 - main - INFO - Стили успешно загружены
+2025-07-28 18:01:20 - main - INFO - Application startup completed in 0.58 seconds
+2025-07-28 18:01:20 - main - INFO - Starting application event loop...
+2025-07-28 18:01:57 - main - CRITICAL - Unhandled exception: TypeError: a coroutine was expected, got <Task pending name='Task-1' coro=<DashboardWindow.scan_website_sync() running at e:\Python_Projects\Web_Scanner_SQL_XSS_CSRF\views\dashboard_window.py:823> cb=[asyncSlot.<locals>._error_handler() at E:\Python_Projects\Web_Scanner_SQL_XSS_CSRF\.venv\Lib\site-packages\qasync\__init__.py:778]>
+NoneType: None
+2025-07-28 18:14:06 - main - INFO - FAULTHANDLER ENABLED, MAIN.PY START
+2025-07-28 18:14:06 - main - INFO - Starting application...
+2025-07-28 18:14:06 - main - INFO - Signal handlers configured
+2025-07-28 18:14:06 - main - INFO - Performance monitoring enabled (basic)
+2025-07-28 18:14:06 - main - INFO - QApplication created or reused successfully
+2025-07-28 18:14:06 - main - INFO - Стили успешно загружены
+2025-07-28 18:14:06 - main - INFO - Application startup completed in 0.59 seconds
+2025-07-28 18:14:06 - main - INFO - Starting application event loop...
+2025-07-28 18:14:19 - main - INFO - Application shutting down with exit code 0
+2025-08-01 23:48:06 - main - INFO - FAULTHANDLER ENABLED, MAIN.PY START
+2025-08-01 23:48:06 - main - INFO - Starting application...
+2025-08-01 23:48:06 - main - INFO - Signal handlers configured
+2025-08-01 23:48:06 - main - INFO - Performance monitoring enabled (basic)
+2025-08-01 23:48:06 - main - INFO - QApplication created or reused successfully
+2025-08-01 23:48:06 - main - INFO - Стили успешно загружены
+2025-08-01 23:48:07 - main - INFO - Application startup completed in 0.65 seconds
+2025-08-01 23:48:07 - main - INFO - Starting application event loop...
+2025-08-02 00:03:01 - main - INFO - Application shutting down with exit code 0
+2025-08-02 00:01:47 - main - INFO - FAULTHANDLER ENABLED, MAIN.PY START
+2025-08-02 00:01:47 - main - INFO - Starting application...
+2025-08-02 00:01:47 - main - INFO - Signal handlers configured
+2025-08-02 00:01:47 - main - INFO - Performance monitoring enabled (basic)
+2025-08-02 00:01:48 - main - INFO - QApplication created or reused successfully
+2025-08-02 00:01:48 - main - INFO - Стили успешно загружены
+2025-08-02 00:01:48 - main - INFO - Application startup completed in 0.62 seconds
+2025-08-02 00:01:48 - main - INFO - Starting application event loop...
+2025-08-02 00:05:45 - main - INFO - Application shutting down with exit code 0
+2025-08-06 21:45:39 - main - INFO - FAULTHANDLER ENABLED, MAIN.PY START
+2025-08-06 21:45:39 - main - INFO - Starting application...
+2025-08-06 21:45:39 - main - INFO - Signal handlers configured
+2025-08-06 21:45:39 - main - INFO - Performance monitoring enabled (basic)
+2025-08-06 21:45:39 - main - INFO - QApplication created or reused successfully
+2025-08-06 21:45:39 - main - INFO - Стили успешно загружены
+2025-08-06 21:45:40 - main - INFO - Application startup completed in 0.89 seconds
+2025-08-06 21:45:40 - main - INFO - Starting application event loop...
+2025-08-06 21:46:17 - main - INFO - Application shutting down with exit code 0
+2025-08-06 23:08:33 - main - INFO - FAULTHANDLER ENABLED, MAIN.PY START
+2025-08-06 23:08:33 - main - INFO - Signal handlers set up
+2025-08-06 23:08:33 - main - INFO - Performance monitoring enabled (basic)
+2025-08-06 23:08:33 - main - INFO - Starting GUI application...
+2025-08-06 23:08:33 - main - INFO - Стили успешно загружены из: C:\Users\maxzi\OneDrive\Desktop\Web_Scanner_SQL_XSS_CSRF\styles.qss
+2025-08-06 23:08:34 - main - INFO - Startup complete in 0.98s
+2025-08-06 23:13:06 - main - INFO - Event loop stopped gracefully
+2025-08-06 23:13:06 - main - INFO - Graceful shutdown initiated...
+2025-08-06 23:13:06 - main - INFO - Starting cache cleanup...
+2025-08-06 23:13:06 - main - INFO - Cleanup stats: 0.18s, 0 entries, 0.00MB
+2025-08-06 23:13:06 - main - INFO - Event loop closed
+2025-08-06 23:13:06 - main - INFO - Shutdown complete with exit code 0

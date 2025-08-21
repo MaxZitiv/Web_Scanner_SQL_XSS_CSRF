@@ -1,0 +1,12 @@
+{
+  "name": "Full Scan",
+  "enabled_vulns": [
+    "sql",
+    "xss",
+    "csrf"
+  ],
+  "max_depth": 10,
+  "max_concurrent": 20,
+  "timeout": 30,
+  "stop_on_first_vuln": false
+}

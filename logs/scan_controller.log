@@ -1,0 +1,155 @@
+2025-06-23 00:57:30 - scan_controller - DEBUG - Logger initialized successfully
+2025-06-23 01:44:03 - scan_controller - DEBUG - Logger initialized successfully
+2025-06-23 01:45:35 - scan_controller - DEBUG - Logger initialized successfully
+2025-06-23 01:45:49 - scan_controller - DEBUG - Logger initialized successfully
+2025-06-23 01:47:11 - scan_controller - DEBUG - Logger initialized successfully
+2025-06-23 01:48:45 - scan_controller - DEBUG - Logger initialized successfully
+2025-06-23 01:50:23 - scan_controller - DEBUG - Logger initialized successfully
+2025-06-23 02:01:33 - scan_controller - DEBUG - Logger initialized successfully
+2025-06-23 02:01:48 - scan_controller - DEBUG - Logger initialized successfully
+2025-06-23 02:03:46 - scan_controller - DEBUG - Logger initialized successfully
+2025-06-23 02:03:52 - scan_controller - DEBUG - Logger initialized successfully
+2025-06-23 02:03:57 - scan_controller - DEBUG - Logger initialized successfully
+2025-06-23 02:04:12 - scan_controller - DEBUG - Logger initialized successfully
+2025-06-23 02:04:31 - scan_controller - INFO - Initialized Async ScanController for user 2
+2025-06-23 02:06:33 - scan_controller - DEBUG - Logger initialized successfully
+2025-06-23 02:06:45 - scan_controller - INFO - Initialized Async ScanController for user 2
+2025-06-23 02:34:26 - scan_controller - DEBUG - Logger initialized successfully
+2025-06-23 02:34:37 - scan_controller - INFO - Initialized Async ScanController for user <models.user_model.UserModel object at 0x000001D6DAB07BF0>
+2025-06-23 02:46:36 - scan_controller - DEBUG - Logger initialized successfully
+2025-06-23 02:46:47 - scan_controller - INFO - Initialized Async ScanController for user <models.user_model.UserModel object at 0x00000259E5D2FB30>
+2025-06-23 02:50:07 - scan_controller - DEBUG - Logger initialized successfully
+2025-06-23 02:50:32 - scan_controller - INFO - Initialized Async ScanController for user <models.user_model.UserModel object at 0x000001E5E7AF5610>
+2025-06-23 02:56:36 - scan_controller - DEBUG - Logger initialized successfully
+2025-06-23 02:56:46 - scan_controller - INFO - Initialized Async ScanController for user <models.user_model.UserModel object at 0x000002100470E240>
+2025-06-23 02:57:16 - scan_controller - INFO - Starting scan for URL: https://kasict.ru/ with types: ['SQL Injection', 'XSS', 'CSRF']
+2025-06-23 02:57:17 - scan_controller - ERROR - Failed to save scan result for user <models.user_model.UserModel object at 0x000002100470E240>
+2025-06-23 03:01:29 - scan_controller - DEBUG - Logger initialized successfully
+2025-06-23 03:01:44 - scan_controller - INFO - Initialized Async ScanController for user <models.user_model.UserModel object at 0x000001E9631DCFB0>
+2025-06-23 03:02:03 - scan_controller - INFO - Starting scan for URL: https://kasict.ru/ with types: ['SQL Injection', 'XSS', 'CSRF']
+2025-06-23 03:02:04 - scan_controller - ERROR - Failed to save scan result for user <models.user_model.UserModel object at 0x000001E9631DCFB0>
+2025-06-23 03:06:04 - scan_controller - DEBUG - Logger initialized successfully
+2025-06-23 03:06:12 - scan_controller - INFO - Initialized Async ScanController for user <models.user_model.UserModel object at 0x000001E2C986CBC0>
+2025-06-23 03:06:31 - scan_controller - INFO - Starting scan for URL: https://kasict.ru/ with types: ['SQL Injection', 'XSS', 'CSRF']
+2025-06-23 03:06:32 - scan_controller - ERROR - Failed to save scan result for user <models.user_model.UserModel object at 0x000001E2C986CBC0>
+2025-06-23 03:06:34 - scan_controller - INFO - Scan completed for URL: https://kasict.ru/
+2025-06-23 03:07:51 - scan_controller - DEBUG - Logger initialized successfully
+2025-06-23 03:08:01 - scan_controller - INFO - Initialized Async ScanController for user <models.user_model.UserModel object at 0x000002118A9DD580>
+2025-06-23 03:08:13 - scan_controller - INFO - Starting scan for URL: https://kasict.ru/ with types: ['SQL Injection', 'XSS', 'CSRF']
+2025-06-23 03:08:14 - scan_controller - ERROR - Failed to save scan result for user <models.user_model.UserModel object at 0x000002118A9DD580>
+2025-06-23 03:10:35 - scan_controller - DEBUG - Logger initialized successfully
+2025-06-23 03:10:45 - scan_controller - INFO - Initialized Async ScanController for user 2
+2025-06-23 03:11:03 - scan_controller - INFO - Starting scan for URL: https://kasict.ru/ with types: ['SQL Injection', 'XSS', 'CSRF']
+2025-06-23 03:11:04 - scan_controller - ERROR - Failed to save scan result for user 2
+2025-06-23 03:20:10 - scan_controller - DEBUG - Logger initialized successfully
+2025-06-23 03:20:21 - scan_controller - INFO - Initialized Async ScanController for user 2
+2025-06-23 03:20:31 - scan_controller - INFO - Starting scan for URL: https://kasict.ru/ with types: ['SQL Injection', 'XSS', 'CSRF']
+2025-06-23 03:20:33 - scan_controller - INFO - Scan result saved for user 2
+2025-06-23 03:20:35 - scan_controller - INFO - Scan completed for URL: https://kasict.ru/
+2025-06-23 03:17:14 - scan_controller - DEBUG - Logger initialized successfully
+2025-06-23 03:17:27 - scan_controller - INFO - Initialized Async ScanController for user 2
+2025-06-23 03:17:41 - scan_controller - INFO - Starting scan for URL: https://kasict.ru/ with types: ['SQL Injection', 'XSS', 'CSRF']
+2025-06-23 03:17:42 - scan_controller - INFO - Scan result saved for user 2
+2025-06-23 03:17:45 - scan_controller - INFO - Scan completed for URL: https://kasict.ru/
+2025-06-23 03:21:35 - scan_controller - DEBUG - Logger initialized successfully
+2025-06-23 03:21:55 - scan_controller - INFO - Initialized Async ScanController for user 2
+2025-06-23 03:22:04 - scan_controller - INFO - Starting scan for URL: https://kasict.ru/ with types: ['SQL Injection', 'XSS', 'CSRF']
+2025-06-23 03:22:06 - scan_controller - INFO - Scan result saved for user 2
+2025-06-23 03:22:09 - scan_controller - INFO - Scan completed for URL: https://kasict.ru/
+2025-06-23 03:23:00 - scan_controller - DEBUG - Logger initialized successfully
+2025-06-23 03:24:06 - scan_controller - DEBUG - Logger initialized successfully
+2025-06-23 03:24:16 - scan_controller - INFO - Initialized Async ScanController for user 2
+2025-06-23 03:24:29 - scan_controller - INFO - Starting scan for URL: https://kasict.ru/ with types: ['SQL Injection', 'XSS', 'CSRF']
+2025-06-23 03:24:32 - scan_controller - INFO - Scan result saved for user 2
+2025-06-23 03:24:34 - scan_controller - INFO - Scan completed for URL: https://kasict.ru/
+2025-06-23 03:25:49 - scan_controller - DEBUG - Logger initialized successfully
+2025-06-23 03:26:15 - scan_controller - INFO - Initialized Async ScanController for user 2
+2025-06-23 03:26:33 - scan_controller - INFO - Starting scan for URL: https://kasict.ru/ with types: ['SQL Injection', 'XSS', 'CSRF']
+2025-06-23 03:26:36 - scan_controller - INFO - Scan result saved for user 2
+2025-06-23 03:26:38 - scan_controller - INFO - Scan completed for URL: https://kasict.ru/
+2025-06-23 03:28:59 - scan_controller - DEBUG - Logger initialized successfully
+2025-06-23 03:29:19 - scan_controller - INFO - Initialized Async ScanController for user 2
+2025-06-23 03:29:34 - scan_controller - INFO - Starting scan for URL: https://kasict.ru/ with types: ['SQL Injection', 'XSS', 'CSRF']
+2025-06-23 03:29:37 - scan_controller - INFO - Scan result saved for user 2
+2025-06-23 03:29:39 - scan_controller - INFO - Scan completed for URL: https://kasict.ru/
+2025-06-23 03:30:32 - scan_controller - DEBUG - Logger initialized successfully
+2025-06-23 03:30:44 - scan_controller - INFO - Initialized Async ScanController for user 2
+2025-06-23 03:30:58 - scan_controller - INFO - Starting scan for URL: https://kasict.ru/ with types: ['SQL Injection', 'XSS', 'CSRF']
+2025-06-23 03:30:59 - scan_controller - INFO - Scan result saved for user 2
+2025-06-23 03:31:00 - scan_controller - INFO - Scan completed for URL: https://kasict.ru/
+2025-06-23 03:32:13 - scan_controller - DEBUG - Logger initialized successfully
+2025-06-23 03:32:23 - scan_controller - INFO - Initialized Async ScanController for user 1
+2025-06-23 03:32:35 - scan_controller - INFO - Starting scan for URL: https://kasict.ru/ with types: ['SQL Injection', 'XSS', 'CSRF']
+2025-06-23 03:42:33 - scan_controller - DEBUG - Logger initialized successfully
+2025-06-24 12:06:02 - scan_controller - DEBUG - Logger initialized successfully
+2025-06-24 12:11:09 - scan_controller - DEBUG - Logger initialized successfully
+2025-06-24 12:11:21 - scan_controller - INFO - Initialized Async ScanController for user 1
+2025-06-24 12:12:16 - scan_controller - INFO - Starting scan for URL: https://kasict.ru/ with types: ['SQL Injection', 'XSS', 'CSRF']
+2025-06-24 17:29:19 - scan_controller - INFO - Paused scan for https://kasict.ru/
+2025-06-24 17:29:19 - scan_controller - INFO - Paused 1 active scans
+2025-06-24 17:29:22 - scan_controller - INFO - Resumed scan for https://kasict.ru/
+2025-06-24 17:29:22 - scan_controller - INFO - Resumed 1 active scans
+2025-06-24 17:29:47 - scan_controller - INFO - Stopped scan for https://kasict.ru/
+2025-06-24 17:29:47 - scan_controller - INFO - Stopped all active scans (1 total)
+2025-06-24 17:30:24 - scan_controller - INFO - Scan result saved for user 1
+2025-06-24 17:30:30 - scan_controller - INFO - Scan completed for URL: https://kasict.ru/
+2025-06-25 00:43:19 - scan_controller - DEBUG - Logger initialized successfully
+2025-06-25 00:43:27 - scan_controller - INFO - Initialized Async ScanController for user 1
+2025-06-25 00:44:11 - scan_controller - INFO - Initialized Async ScanController for user 3
+2025-06-25 00:45:09 - scan_controller - INFO - Starting scan for URL: https://kasict.ru/ with types: ['SQL Injection', 'XSS', 'CSRF']
+2025-06-25 01:02:59 - scan_controller - INFO - Stopped scan for https://kasict.ru/
+2025-06-25 01:02:59 - scan_controller - INFO - Stopped all active scans (1 total)
+2025-06-25 01:03:04 - scan_controller - INFO - Scan result saved for user 3
+2025-06-25 01:03:17 - scan_controller - INFO - Scan completed for URL: https://kasict.ru/
+2025-06-25 01:04:44 - scan_controller - INFO - Stopped all active scans (0 total)
+2025-06-25 08:23:20 - scan_controller - DEBUG - Logger initialized successfully
+2025-06-25 08:25:04 - scan_controller - DEBUG - Logger initialized successfully
+2025-06-25 08:25:21 - scan_controller - INFO - Initialized Async ScanController for user 1
+2025-06-25 08:26:04 - scan_controller - DEBUG - Logger initialized successfully
+2025-06-25 08:26:18 - scan_controller - INFO - Initialized Async ScanController for user 1
+2025-06-25 13:50:50 - scan_controller - DEBUG - Logger initialized successfully
+2025-06-25 13:51:02 - scan_controller - INFO - Initialized Async ScanController for user 1
+2025-06-25 13:51:37 - scan_controller - DEBUG - Logger initialized successfully
+2025-06-25 13:51:47 - scan_controller - INFO - Initialized Async ScanController for user 1
+2025-06-25 13:53:01 - scan_controller - DEBUG - Logger initialized successfully
+2025-06-25 13:53:12 - scan_controller - INFO - Initialized Async ScanController for user 1
+2025-06-25 14:03:47 - scan_controller - DEBUG - Logger initialized successfully
+2025-06-25 14:04:10 - scan_controller - INFO - Initialized Async ScanController for user 1
+2025-06-25 14:05:33 - scan_controller - INFO - Starting scan for URL: https://kasict.ru/ with types: ['SQL Injection', 'XSS', 'CSRF']
+2025-06-25 18:08:38 - scan_controller - INFO - Paused scan for https://kasict.ru/
+2025-06-25 18:08:38 - scan_controller - INFO - Paused 1 active scans
+2025-06-25 18:08:50 - scan_controller - INFO - Stopped scan for https://kasict.ru/
+2025-06-25 18:08:50 - scan_controller - INFO - Stopped all active scans (1 total)
+2025-06-25 18:09:23 - scan_controller - INFO - Scan result saved for user 1
+2025-06-25 18:10:48 - scan_controller - INFO - Scan completed for URL: https://kasict.ru/
+2025-06-25 18:14:03 - scan_controller - INFO - Stopped all active scans (0 total)
+2025-06-25 18:44:47 - scan_controller - INFO - Initialized Async ScanController for user 1
+2025-06-25 18:45:34 - scan_controller - INFO - Starting scan for URL: https://kasict.ru/ with types: ['SQL Injection', 'XSS', 'CSRF']
+2025-06-25 20:26:13 - scan_controller - INFO - Paused scan for URL: https://kasict.ru/
+2025-06-25 20:26:18 - scan_controller - INFO - Stopped scan for URL: https://kasict.ru/
+2025-06-25 20:26:31 - scan_controller - ERROR - Failed to save scan result for URL: https://kasict.ru/
+2025-06-25 20:26:44 - scan_controller - INFO - Scan completed for URL: https://kasict.ru/
+2025-06-26 12:44:36 - scan_controller - INFO - Initialized Async ScanController for user 1
+2025-06-26 12:45:08 - scan_controller - INFO - Starting scan for URL: https://kasict.ru/ with types: ['SQL Injection', 'XSS', 'CSRF']
+2025-06-26 19:08:14 - scan_controller - INFO - Paused scan for URL: https://kasict.ru/
+2025-06-26 19:08:26 - scan_controller - INFO - Stopped scan for URL: https://kasict.ru/
+2025-06-26 19:08:54 - scan_controller - INFO - Scan result saved successfully for URL: https://kasict.ru/
+2025-06-26 19:09:06 - scan_controller - INFO - Scan completed for URL: https://kasict.ru/
+2025-07-01 13:37:51 - scan_controller - INFO - Initialized Async ScanController for user 1
+2025-07-01 13:41:58 - scan_controller - INFO - Initialized Async ScanController for user 1
+2025-07-28 18:14:14 - scan_controller - INFO - Initialized Async ScanController for user 1
+2025-08-01 23:48:28 - scan_controller - INFO - Initialized Async ScanController for user 1
+2025-08-01 23:49:13 - scan_controller - INFO - Starting scan for URL: https://kasict.ru/ with types: ['sql', 'xss', 'csrf']
+2025-08-01 23:49:14 - scan_controller - INFO - Scan result saved successfully for URL: https://kasict.ru/
+2025-08-01 23:49:14 - scan_controller - INFO - Scan completed for URL: https://kasict.ru/
+2025-08-02 00:02:07 - scan_controller - INFO - Initialized Async ScanController for user 1
+2025-08-02 00:02:35 - scan_controller - INFO - Starting scan for URL: https://kasict.ru/ with types: ['sql', 'xss', 'csrf']
+2025-08-02 00:04:46 - scan_controller - INFO - Stopped scan for URL: https://kasict.ru/
+2025-08-02 00:04:47 - scan_controller - INFO - Scan result saved successfully for URL: https://kasict.ru/
+2025-08-02 00:04:47 - scan_controller - INFO - Scan completed for URL: https://kasict.ru/
+2025-08-06 21:45:55 - scan_controller - INFO - Initialized Async ScanController for user 1
+2025-08-06 23:08:48 - scan_controller - INFO - Initialized Async ScanController for user 1
+2025-08-06 23:09:23 - scan_controller - INFO - Starting scan for URL: https://kasict.ru/ with types: ['sql', 'xss', 'csrf']
+2025-08-06 23:12:36 - scan_controller - INFO - Stopped scan for URL: https://kasict.ru/
+2025-08-06 23:12:37 - scan_controller - INFO - Scan result saved successfully for URL: https://kasict.ru/
+2025-08-06 23:12:37 - scan_controller - INFO - Scan completed for URL: https://kasict.ru/

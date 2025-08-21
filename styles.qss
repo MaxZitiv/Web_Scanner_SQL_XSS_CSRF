@@ -1,0 +1,79 @@
+/* Общий фон с градиентом */
+QWidget {
+    background-color: qlineargradient(
+        spread:pad, x1:0, y1:0, x2:1, y2:1,
+        stop:0 #0a0a0a, stop:1 #1c1c1c
+    );
+    color: #00ffcc;
+    font-family: 'Consolas', monospace;
+}
+
+/* Заголовки */
+QLabel {
+    color: #00ffcc;
+    font-size: 16px;
+    font-weight: bold;
+}
+
+/* Поля ввода */
+QLineEdit, QPlainTextEdit, QTextEdit {
+    background-color: #262626;
+    border: 1px solid #00ffcc;
+    border-radius: 4px;
+    padding: 4px;
+    color: #00ffcc;
+}
+
+/* Кнопки */
+QPushButton {
+    background-color: qlineargradient(
+        spread:pad, x1:0, y1:0, x2:1, y2:1,
+        stop:0 #005f5f, stop:1 #008080
+    );
+    border: 2px solid #00ffcc;
+    border-radius: 5px;
+    padding: 5px 10px;
+    color: #ffffff;
+    font-weight: bold;
+}
+
+QPushButton:hover {
+    background-color: qlineargradient(
+        spread:pad, x1:0, y1:0, x2:1, y2:1,
+        stop:0 #007f7f, stop:1 #00cccc
+    );
+}
+
+/* Прогресс-бар */
+QProgressBar {
+    border: 1px solid #00ffcc;
+    border-radius: 5px;
+    text-align: center;
+    background-color: #262626;
+}
+
+QProgressBar::chunk {
+    background-color: #00ffcc;
+    border-radius: 5px;
+}
+
+/* Таблица вкладок */
+QTabWidget::pane {
+    border: 1px solid #00ffcc;
+}
+
+QTabBar::tab {
+    background: #262626;
+    border: 1px solid #00ffcc;
+    padding: 10px;
+    margin: 1px;
+    border-top-left-radius: 5px;
+    border-top-right-radius: 5px;
+}
+
+QTabBar::tab:selected {
+    background: qlineargradient(
+        spread:pad, x1:0, y1:0, x2:1, y2:0,
+        stop:0 #008080, stop:1 #00ffcc
+    );
+}

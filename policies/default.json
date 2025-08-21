@@ -1,0 +1,18 @@
+{
+    "name": "Default",
+    "enabled_vulns": [
+        "sql",
+        "xss",
+        "csrf"
+    ],
+    "sql_payloads": "standard",
+    "xss_payloads": "standard",
+    "max_depth": 3,
+    "max_concurrent": 5,
+    "timeout": 30,
+    "exclude_urls": [],
+    "custom_headers": {},
+    "respect_robots_txt": true,
+    "rate_limit": 0,
+    "stop_on_first_vuln": false
+}
