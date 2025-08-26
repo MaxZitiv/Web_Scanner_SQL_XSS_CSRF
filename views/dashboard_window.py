@@ -1,31 +1,25 @@
-import time
 import asyncio
 from datetime import datetime
+import threading
+import time
 from typing import Optional
 import json
-import csv
 import os
-import sys
-import matplotlib.pyplot as plt
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
-                             QPushButton, QTextEdit, QLineEdit, QCheckBox, 
-                             QTabWidget, QProgressBar, QSpinBox, QMessageBox,
-                             QFileDialog, QComboBox, QTableWidget, QTableWidgetItem,
-                             QHeaderView, QSplitter, QFrame, QGroupBox, QGridLayout,
-                             QScrollArea, QTextBrowser, QListWidget, QListWidgetItem,
-                             QDateEdit, QDateTimeEdit, QDialog, QDialogButtonBox, QTreeWidget, QTreeWidgetItem, QApplication,
+                             QPushButton, QLineEdit, QCheckBox, 
+                             QTabWidget, QSpinBox, QMessageBox,
+                             QFileDialog, QComboBox, QTableWidgetItem,
+                             QGroupBox, QDateTimeEdit, QDialog, QDialogButtonBox, QTreeWidgetItem, QApplication,
                              QFormLayout)
-from PyQt5.QtCore import Qt, QTimer, pyqtSignal, QDate, QDateTime, QTime
-from PyQt5.QtGui import QPixmap, QFont, QIcon, QColor
+from PyQt5.QtCore import Qt, QTimer, QDateTime, QTime, QMetaObject
+from PyQt5.QtGui import QPixmap, QIcon, QColor
 from controllers.scan_controller import ScanController
-from controllers.auth_controller import AuthController
 from views.edit_profile_window import EditProfileWindow
 from utils.database import db
 from utils.logger import logger, log_and_notify
-from utils.vulnerability_scanner import scan_sql_injection, scan_xss, scan_csrf
 import sqlite3
-from utils.performance import measure_time, performance_monitor, get_local_timestamp, extract_time_from_timestamp
-from utils.security import validate_password_strength, is_safe_url, sanitize_filename
+from utils.performance import performance_monitor, get_local_timestamp, extract_time_from_timestamp
+from utils.security import is_safe_url, sanitize_filename
 from utils.error_handler import error_handler
 from views.tabs.scan_tab import ScanTabWidget
 from views.tabs.reports_tab import ReportsTabWidget
@@ -37,9 +31,6 @@ matplotlib.use('Qt5Agg')
 # Импорт matplotlib с обработкой ошибок
 try:
     from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
-    from matplotlib.figure import Figure
-    import matplotlib.pyplot as plt
-    import matplotlib.gridspec as gridspec
     MATPLOTLIB_AVAILABLE = True
 except ImportError as e:
     logger.warning(f"matplotlib not available: {e}")
@@ -51,14 +42,16 @@ from qasync import asyncSlot
 from policies.policy_manager import PolicyManager
 
 class DashboardWindow(QWidget):
-    def __init__(self, user_id, username, parent=None):
+    def __init__(self, user_id: int, username, parent=None):
         super().__init__(parent)
         self.scan_tab: Optional[QWidget] = None
         self.tabs: Optional[QTabWidget] = None
         self.scan_button: Optional[QPushButton] = None
         self.setWindowTitle("Web Scanner - Control Panel")
         self.user_id = user_id
+        self.tabs_initialized = False
         self.username = username
+        self.avatar_label = None
         self.avatar_path = "default_avatar.png"
         self.scan_controller = ScanController(user_id)
         self._scan_start_time = None
@@ -72,7 +65,33 @@ class DashboardWindow(QWidget):
         self.selected_policy = None
         self.setup_ui()
         self.load_policies_to_combobox()
+
+        # Инициализация stats_canvas
+        self.stats_canvas = None
+        if MATPLOTLIB_AVAILABLE and FigureCanvas is not None:
+            from matplotlib.figure import Figure
+            self.stats_canvas = FigureCanvas(Figure())
+
         logger.info(f"Opened control panel for user '{self.username}' (ID: {self.user_id})")
+
+    def initialize_tabs(self):
+        if not self.tabs_initialized:
+            # Убеждаемся, что tabs инициализирован
+            if self.tabs is None:
+                self.tabs = QTabWidget()
+                self.main_layout.addWidget(self.tabs)
+            
+            self.profile_tab = ProfileTabWidget(self.user_id, self)
+            self.scan_tab = ScanTabWidget(self.user_id, self)
+            self.reports_tab = ReportsTabWidget(self.user_id, self)
+            self.stats_tab = StatsTabWidget(self.user_id, self)
+
+            self.tabs.addTab(self.scan_tab, "Сканирование")
+            self.tabs.addTab(self.reports_tab, "Отчёты")
+            self.tabs.addTab(self.stats_tab, "Статистика")
+            self.tabs.addTab(self.profile_tab, "Профиль")
+
+            self.tabs_initialized = True
 
     def format_duration(self, seconds):
         """Форматирует время в часы, минуты и секунды"""
@@ -93,35 +112,22 @@ class DashboardWindow(QWidget):
         try:
             self.setWindowTitle("Панель управления")
             self.setMinimumSize(800, 600)
-
+            
             self.main_layout = QVBoxLayout(self)
-            self.tabs = QTabWidget()
-
-            # Создаем все вкладки
-            self.scan_tab = QWidget()
-            self.reports_tab = QWidget()
-            self.stats_tab = QWidget()
-            self.profile_tab = QWidget()
-
-            # Настраиваем содержимое вкладок
-            self.scan_tab = ScanTabWidget(self.user_id, self)
-            self.reports_tab = ReportsTabWidget(self.user_id, self)
-            self.stats_tab = StatsTabWidget(self.user_id, self)
-            self.profile_tab = ProfileTabWidget(self.user_id, self)
-
-            # Добавляем вкладки в нужном порядке
-            self.tabs.addTab(self.scan_tab, "Сканирование")
-            self.tabs.addTab(self.reports_tab, "Отчёты")
-            self.tabs.addTab(self.stats_tab, "Статистика")
-            self.tabs.addTab(self.profile_tab, "Профиль")
-
+            
+            # Убеждаемся, что tabs инициализирован
+            if self.tabs is None:
+                self.tabs = QTabWidget()
+            
+            # Отложенная инициализация вкладок
+            self.initialize_tabs()
+            
             self.main_layout.addWidget(self.tabs)
             self.setLayout(self.main_layout)
             
-            # Загружаем аватар после создания всех виджетов
             self.load_avatar()
             
-        except (ValueError, sqlite3.Error, KeyError, AttributeError) as e:
+        except Exception as e:
             logger.exception(f"Error when configuring the interface: {str(e)}")
             QMessageBox.warning(self, "Ошибка", f"Ошибка при настройке интерфейса: {str(e)}")
         
@@ -139,638 +145,6 @@ class DashboardWindow(QWidget):
     def update_profile_info(self):
         """Обновляет информацию профиля"""
         self.username_label.setText(f"Добро пожаловать, {self.username}!")
-
-    def setup_scan_tab(self):
-        """Настраивает вкладку сканирования"""
-        layout = QVBoxLayout(self.scan_tab)
-
-        # 1) Ввод URL
-        url_group = QGroupBox("URL для сканирования")
-        url_layout = QVBoxLayout()
-        self.url_input = QLineEdit()
-        self.url_input.setPlaceholderText("Введите URL (например: https://example.com)")
-        url_layout.addWidget(self.url_input)
-        url_group.setLayout(url_layout)
-        layout.addWidget(url_group)
-
-        # 2) Выбор типов уязвимостей
-        vuln_group = QGroupBox("Типы уязвимостей")
-        vuln_layout = QHBoxLayout()
-        self.sql_checkbox = QCheckBox("SQL Injection")
-        self.xss_checkbox = QCheckBox("XSS")
-        self.csrf_checkbox = QCheckBox("CSRF")
-        for cb in (self.sql_checkbox, self.xss_checkbox, self.csrf_checkbox):
-            vuln_layout.addWidget(cb)
-        vuln_group.setLayout(vuln_layout)
-        layout.addWidget(vuln_group)
-
-        # 3) Настройки производительности
-        perf_group = QGroupBox("Настройки производительности")
-        perf_layout = QVBoxLayout()
-        
-        # Глубина обхода
-        depth_layout = QHBoxLayout()
-        depth_layout.addWidget(QLabel("Глубина обхода:"))
-        self.depth_spinbox = QSpinBox()
-        self.depth_spinbox.setRange(0, 10)
-        self.depth_spinbox.setValue(3)
-        self.depth_spinbox.setToolTip("Количество уровней вложенности для обхода ссылок")
-        depth_layout.addWidget(self.depth_spinbox)
-        depth_layout.addStretch()
-        perf_layout.addLayout(depth_layout)
-        
-        # Параллельные запросы
-        concurrent_layout = QHBoxLayout()
-        concurrent_layout.addWidget(QLabel("Параллельные запросы:"))
-        self.concurrent_spinbox = QSpinBox()
-        self.concurrent_spinbox.setRange(1, 20)
-        self.concurrent_spinbox.setValue(5)
-        self.concurrent_spinbox.setToolTip("Максимальное количество одновременных запросов")
-        concurrent_layout.addWidget(self.concurrent_spinbox)
-        concurrent_layout.addStretch()
-        perf_layout.addLayout(concurrent_layout)
-        
-        # Таймаут
-        timeout_layout = QHBoxLayout()
-        timeout_layout.addWidget(QLabel("Таймаут (сек):"))
-        self.timeout_spinbox = QSpinBox()
-        self.timeout_spinbox.setRange(5, 60)
-        self.timeout_spinbox.setValue(30)
-        self.timeout_spinbox.setToolTip("Время ожидания ответа от сервера")
-        timeout_layout.addWidget(self.timeout_spinbox)
-        timeout_layout.addStretch()
-        perf_layout.addLayout(timeout_layout)
-        
-        # Настройки логирования
-        logging_layout = QHBoxLayout()
-        self.clear_log_checkbox = QCheckBox("Очищать лог при старте")
-        self.clear_log_checkbox.setChecked(True)
-        self.clear_log_checkbox.setToolTip("Автоматически очищает файл scanner.log для экономии места на диске")
-        logging_layout.addWidget(self.clear_log_checkbox)
-        logging_layout.addStretch()
-        perf_layout.addLayout(logging_layout)
-        
-        # Настройки очистки кэшей
-        cache_layout = QHBoxLayout()
-        self.clear_cache_checkbox = QCheckBox("Очищать кэши при выходе из программы")
-        self.clear_cache_checkbox.setChecked(True)
-        self.clear_cache_checkbox.setToolTip("Автоматически очищает все кэши приложения для освобождения памяти")
-        cache_layout.addWidget(self.clear_cache_checkbox)
-        cache_layout.addStretch()
-        perf_layout.addLayout(cache_layout)
-        
-        # Турбо-режим
-        turbo_layout = QHBoxLayout()
-        self.turbo_checkbox = QCheckBox("Турбо-режим (максимальная скорость)")
-        self.turbo_checkbox.setToolTip("Включает максимальную скорость сканирования: максимум параллельных запросов, минимальный таймаут, отключение подробного лога. Не рекомендуется для слабых ПК или при сканировании нестабильных сайтов.")
-        self.turbo_checkbox.stateChanged.connect(self._on_turbo_mode_changed)
-        turbo_layout.addWidget(self.turbo_checkbox)
-        turbo_layout.addStretch()
-        perf_layout.addLayout(turbo_layout)
-        
-        # Максимальное покрытие
-        maxcov_layout = QHBoxLayout()
-        self.max_coverage_checkbox = QCheckBox("Максимальное покрытие (все страницы)")
-        self.max_coverage_checkbox.setToolTip("Пытается просканировать все возможные страницы сайта: максимальная глубина, максимальное количество параллельных запросов, максимальный таймаут, повторные попытки для ошибок. Может занять много времени и создать большую нагрузку на сайт.")
-        self.max_coverage_checkbox.stateChanged.connect(self._on_max_coverage_mode_changed)
-        maxcov_layout.addWidget(self.max_coverage_checkbox)
-        maxcov_layout.addStretch()
-        perf_layout.addLayout(maxcov_layout)
-        
-        perf_group.setLayout(perf_layout)
-        layout.addWidget(perf_group)
-
-        # 4) Кнопки управления
-        control_group = QGroupBox("Управление")
-        control_layout = QHBoxLayout()
-
-        self.scan_button = QPushButton("Начать сканирование")
-        self.scan_button.clicked.connect(self.scan_website_sync) # type: ignore
-        self.scan_button.setStyleSheet("""
-            QPushButton {
-                background-color: #4CAF50;
-                color: white;
-                border: none;
-                padding: 10px 20px;
-                border-radius: 5px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #45a049;
-            }
-            QPushButton:disabled {
-                background-color: #cccccc;
-            }
-        """)
-        
-        self.pause_button = QPushButton("⏸️ Пауза")
-        self.pause_button.clicked.connect(self.pause_scan)
-        self.pause_button.setEnabled(False)
-        self.pause_button.setStyleSheet("""
-            QPushButton {
-                background-color: #ff9800;
-                color: white;
-                border: none;
-                padding: 10px 20px;
-                border-radius: 5px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #f57c00;
-            }
-            QPushButton:disabled {
-                background-color: #cccccc;
-            }
-        """)
-        
-        self.stop_button = QPushButton("Остановить")
-        self.stop_button.clicked.connect(self.stop_scan)
-        self.stop_button.setEnabled(False)
-        self.stop_button.setStyleSheet("""
-            QPushButton {
-                background-color: #f44336;
-                color: white;
-                border: none;
-                padding: 10px 20px;
-                border-radius: 5px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #da190b;
-            }
-            QPushButton:disabled {
-                background-color: #cccccc;
-            }
-        """)
-        
-        control_layout.addWidget(self.scan_button)
-        control_layout.addWidget(self.pause_button)
-        control_layout.addWidget(self.stop_button)
-        control_group.setLayout(control_layout)
-        layout.addWidget(control_group)
-
-        # 5) Прогресс-бар
-        progress_group = QGroupBox("Прогресс")
-        progress_layout = QVBoxLayout()
-        
-        # Статус
-        self.scan_status = QLabel("Готов к сканированию")
-        self.scan_status.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.scan_status.setStyleSheet("""
-            QLabel {
-                font-weight: bold;
-                color: #333;
-                padding: 5px;
-                border: 1px solid #ccc;
-                border-radius: 3px;
-                background-color: #f9f9f9;
-            }
-        """)
-        progress_layout.addWidget(self.scan_status)
-        
-        # Прогресс-бар
-        progress_bar_layout = QHBoxLayout()
-        self.scan_progress = QProgressBar()
-        self.scan_progress.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.scan_progress.setTextVisible(False)
-        self.scan_progress.setStyleSheet("""
-            QProgressBar {
-                border: 2px solid grey;
-                border-radius: 5px;
-                text-align: center;
-                color: black;
-                background-color: #f0f0f0;
-            }
-            QProgressBar::chunk {
-                background-color: #4CAF50;
-                width: 10px;
-                margin: 0.5px;
-            }
-        """)
-        progress_bar_layout.addWidget(self.scan_progress)
-        
-        # Метка прогресса
-        self.progress_label = QLabel("0%")
-        self.progress_label.setMinimumWidth(50)
-        self.progress_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.progress_label.setStyleSheet("""
-            QLabel {
-                font-weight: bold;
-                color: #333;
-                padding: 5px;
-                border: 1px solid #ccc;
-                border-radius: 3px;
-                background-color: #f9f9f9;
-            }
-        """)
-        progress_bar_layout.addWidget(self.progress_label)
-        
-        progress_layout.addLayout(progress_bar_layout)
-        progress_group.setLayout(progress_layout)
-        layout.addWidget(progress_group)
-
-        # 6) Расширенный лог сканирования (OWASP ZAP стиль)
-        log_group = QGroupBox("🔍 Детальный просмотр сканирования")
-        log_group.setStyleSheet("""
-            QGroupBox {
-                font-weight: bold;
-                font-size: 11pt;
-                color: #2c3e50;
-                border: 2px solid #bdc3c7;
-                border-radius: 8px;
-                margin-top: 10px;
-                padding-top: 10px;
-            }
-            QGroupBox::title {
-                subcontrol-origin: margin;
-                left: 10px;
-                padding: 0 5px 0 5px;
-                background-color: #ecf0f1;
-            }
-        """)
-        
-        # Создаем разделенный вид (splitter) для древовидного представления и лога
-        log_splitter = QSplitter(Qt.Orientation.Horizontal)
-        
-        # Левая панель: Древовидное представление
-        left_panel = QWidget()
-        left_layout = QVBoxLayout(left_panel)
-        
-        # Заголовок для дерева
-        tree_header = QLabel("🌐 Структура сайта")
-        tree_header.setStyleSheet("""
-            QLabel {
-                font-weight: bold;
-                color: #2c3e50;
-                padding: 5px;
-                background-color: #ecf0f1;
-                border-radius: 3px;
-            }
-        """)
-        left_layout.addWidget(tree_header)
-        
-        # Древовидное представление URL и форм
-        self.site_tree = QTreeWidget()
-        self.site_tree.setHeaderLabels(["Ресурс", "Тип", "Статус"])
-        self.site_tree.setColumnWidth(0, 300)
-        self.site_tree.setColumnWidth(1, 80)
-        self.site_tree.setColumnWidth(2, 100)
-        self.site_tree.setStyleSheet("""
-            QTreeWidget {
-                background-color: #000000;
-                color: #00ffcc;
-                border: 1px solid #bdc3c7;
-                border-radius: 5px;
-                font-size: 9pt;
-            }
-            QTreeWidget::item {
-                padding: 3px;
-                border-bottom: 1px solid #222222;
-                color: #00ffcc;
-            }
-            QTreeWidget::item:selected {
-                background-color: #3498db;
-                color: #000000;
-            }
-            QTreeWidget::item:hover {
-                background-color: #222222;
-            }
-        """)
-        left_layout.addWidget(self.site_tree)
-        
-        # Статистика в реальном времени
-        stats_group = QGroupBox("📊 Статистика")
-        stats_group.setStyleSheet("""
-            QGroupBox {
-                font-weight: bold;
-                font-size: 10pt;
-                color: #2c3e50;
-                border: 1px solid #bdc3c7;
-                border-radius: 5px;
-                margin-top: 5px;
-                padding-top: 5px;
-            }
-            QGroupBox::title {
-                subcontrol-origin: margin;
-                left: 10px;
-                padding: 0 5px 0 5px;
-                background-color: #ffffff;
-            }
-        """)
-        stats_layout = QVBoxLayout(stats_group)
-        
-        # Метки статистики
-        self.stats_labels = {}
-        stats_items = [
-            ("urls_found", "Найдено URL:", "0"),
-            ("urls_scanned", "Просканировано URL:", "0"),
-            ("forms_found", "Найдено форм:", "0"),
-            ("forms_scanned", "Просканировано форм:", "0"),
-            ("vulnerabilities", "Уязвимостей:", "0"),
-            ("requests_sent", "Запросов отправлено:", "0"),
-            ("errors", "Ошибок:", "0"),
-            ("scan_time", "Время сканирования:", "00:00:00")
-        ]
-        
-        for key, label_text, default_value in stats_items:
-            label_layout = QHBoxLayout()
-            label = QLabel(label_text)
-            label.setStyleSheet("font-weight: bold; color: #2c3e50;")
-            value = QLabel(default_value)
-            value.setStyleSheet("color: #3498db; font-weight: bold;")
-            label_layout.addWidget(label)
-            label_layout.addWidget(value)
-            label_layout.addStretch()
-            stats_layout.addLayout(label_layout)
-            self.stats_labels[key] = value
-        
-        left_layout.addWidget(stats_group)
-        
-        # Правая панель: Детальный лог
-        right_panel = QWidget()
-        right_layout = QVBoxLayout(right_panel)
-        
-        # Заголовок для лога
-        log_header = QLabel("📋 Детальный лог")
-        log_header.setStyleSheet("""
-            QLabel {
-                font-weight: bold;
-                color: #2c3e50;
-                padding: 5px;
-                background-color: #ecf0f1;
-                border-radius: 3px;
-            }
-        """)
-        right_layout.addWidget(log_header)
-        
-        # Панель фильтров
-        filter_panel = QWidget()
-        filter_layout = QHBoxLayout(filter_panel)
-        
-        # Фильтр по уровню
-        filter_layout.addWidget(QLabel("Фильтр:"))
-        self.log_filter = QComboBox()
-        self.log_filter.addItems(["Все", "DEBUG", "INFO", "WARNING", "ERROR", "VULNERABILITY", "REQUEST", "RESPONSE", "PROGRESS", "SKIP_FILE", "ADD_LINK"])
-        self.log_filter.setCurrentText("Все")  # Устанавливаем значение по умолчанию
-        self.log_filter.currentTextChanged.connect(self._filter_log)
-        filter_layout.addWidget(self.log_filter)
-        
-        
-        # Поиск в логе
-        filter_layout.addWidget(QLabel("Поиск:"))
-        self.log_search = QLineEdit()
-        self.log_search.setPlaceholderText("Введите текст для поиска...")
-        self.log_search.textChanged.connect(self._search_in_log)
-        filter_layout.addWidget(self.log_search)
-        
-        # Кнопка очистки поиска
-        self.clear_search_button = QPushButton("🗑️")
-        self.clear_search_button.setToolTip("Очистить поиск")
-        self.clear_search_button.clicked.connect(self._clear_search)
-        self.clear_search_button.setMaximumWidth(30)
-        filter_layout.addWidget(self.clear_search_button)
-        
-        filter_layout.addStretch()
-        right_layout.addWidget(filter_panel)
-        
-        # Детальный лог с цветовой кодировкой
-        self.detailed_log = QTextEdit()
-        self.detailed_log.setReadOnly(True)
-        self.detailed_log.setMinimumHeight(400)
-        self.detailed_log.setMaximumHeight(800)
-        
-        # Устанавливаем моноширинный шрифт для лучшей читаемости
-        font = self.detailed_log.font()
-        font.setFamily("Consolas")
-        font.setPointSize(9)
-        self.detailed_log.setFont(font)
-        
-        # Стилизация лога с темной темой
-        self.detailed_log.setStyleSheet("""
-            QTextEdit {
-                background-color: #1e1e1e;
-                color: #ffffff;
-                border: 2px solid #3c3c3c;
-                border-radius: 5px;
-                padding: 10px;
-                font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
-                font-size: 9pt;
-                line-height: 1.4;
-            }
-            QTextEdit:focus {
-                border: 2px solid #0078d4;
-            }
-        """)
-        right_layout.addWidget(self.detailed_log)
-        
-        # --- КНОПКИ УПРАВЛЕНИЯ ЛОГОМ ---
-        self.clear_log_button = QPushButton("🗑️ Очистить лог")
-        self.clear_log_button.setStyleSheet("""
-            QPushButton {
-                background-color: #e74c3c;
-                color: white;
-                border: none;
-                padding: 8px 15px;
-                border-radius: 4px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #c0392b;
-            }
-            QPushButton:pressed {
-                background-color: #a93226;
-            }
-        """)
-        self.clear_log_button.clicked.connect(self.clear_scan_log)
-
-        self.export_log_button = QPushButton("📤 Экспорт лога")
-        self.export_log_button.setStyleSheet("""
-            QPushButton {
-                background-color: #3498db;
-                color: white;
-                border: none;
-                padding: 8px 15px;
-                border-radius: 4px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #2980b9;
-            }
-            QPushButton:pressed {
-                background-color: #21618c;
-            }
-        """)
-        self.export_log_button.clicked.connect(self.export_scan_log)
-
-        self.auto_scroll_checkbox = QCheckBox("Автоскролл")
-        self.auto_scroll_checkbox.setChecked(True)
-        self.auto_scroll_checkbox.setStyleSheet("""
-            QCheckBox {
-                color: #2c3e50;
-                font-weight: bold;
-            }
-        """)
-
-        self.load_full_log_button = QPushButton("🔄 Загрузить полный лог")
-        self.load_full_log_button.setToolTip("Загружает весь файл scanner.log. Может занять время.")
-        self.load_full_log_button.clicked.connect(lambda: self.load_scanner_log_to_ui(full=True))
-
-        # --- ДОБАВЛЯЕМ КНОПКИ В filter_layout ---
-        filter_layout.addWidget(self.clear_log_button)
-        filter_layout.addWidget(self.export_log_button)
-        filter_layout.addWidget(self.load_full_log_button)
-        filter_layout.addWidget(self.auto_scroll_checkbox)
-
-        # --- ОСТАЛЬНОЕ ОСТАВЛЯЕМ БЕЗ ИЗМЕНЕНИЙ ---
-        filter_layout.addStretch()
-        right_layout.addWidget(filter_panel)
-        
-        # Детальный лог с цветовой кодировкой
-        self.detailed_log = QTextEdit()
-        self.detailed_log.setReadOnly(True)
-        self.detailed_log.setMinimumHeight(400)
-        self.detailed_log.setMaximumHeight(800)
-        
-        # Устанавливаем моноширинный шрифт для лучшей читаемости
-        font = self.detailed_log.font()
-        font.setFamily("Consolas")
-        font.setPointSize(9)
-        self.detailed_log.setFont(font)
-        
-        # Стилизация лога с темной темой
-        self.detailed_log.setStyleSheet("""
-            QTextEdit {
-                background-color: #1e1e1e;
-                color: #ffffff;
-                border: 2px solid #3c3c3c;
-                border-radius: 5px;
-                padding: 10px;
-                font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
-                font-size: 9pt;
-                line-height: 1.4;
-            }
-            QTextEdit:focus {
-                border: 2px solid #0078d4;
-            }
-        """)
-        right_layout.addWidget(self.detailed_log)
-        
-        # Кнопки управления логом
-        log_buttons_layout = QHBoxLayout()
-        
-        # Кнопка экспорта лога
-        self.export_log_button = QPushButton("📤 Экспорт лога")
-        self.export_log_button.setStyleSheet("""
-            QPushButton {
-                background-color: #3498db;
-                color: white;
-                border: none;
-                padding: 8px 15px;
-                border-radius: 4px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #2980b9;
-            }
-            QPushButton:pressed {
-                background-color: #21618c;
-            }
-        """)
-        self.export_log_button.clicked.connect(self.export_scan_log)
-        
-        # Кнопка автоскролла
-        self.auto_scroll_checkbox = QCheckBox("Автоскролл")
-        self.auto_scroll_checkbox.setChecked(True)
-        self.auto_scroll_checkbox.setStyleSheet("""
-            QCheckBox {
-                color: #2c3e50;
-                font-weight: bold;
-            }
-        """)
-        
-        # --- Новые элементы для управления загрузкой лога ---
-        self.load_full_log_button = QPushButton("🔄 Загрузить полный лог")
-        self.load_full_log_button.setToolTip("Загружает весь файл scanner.log. Может занять время.")
-        self.load_full_log_button.clicked.connect(lambda: self.load_scanner_log_to_ui(full=True))
-        
-        self.log_status_label = QLabel("Отображены последние 500 строк")
-        self.log_status_label.setStyleSheet("color: #7f8c8d; font-style: italic;")
-
-        log_buttons_layout.addWidget(self.clear_log_button)
-        log_buttons_layout.addWidget(self.export_log_button)
-        log_buttons_layout.addWidget(self.load_full_log_button) # Добавляем новую кнопку
-        log_buttons_layout.addWidget(self.auto_scroll_checkbox)
-        log_buttons_layout.addStretch()
-
-        right_layout.addLayout(log_buttons_layout)
-        right_layout.addWidget(self.log_status_label) # Добавляем новую метку
-        
-        # Добавляем панели в splitter
-        log_splitter.addWidget(left_panel)
-        log_splitter.addWidget(right_panel)
-        log_splitter.setSizes([400, 600])  # Начальные размеры панелей
-        
-        log_layout = QVBoxLayout()
-        log_layout.addWidget(log_splitter)
-        log_group.setLayout(log_layout)
-        layout.addWidget(log_group)
-
-        # Инициализируем переменные для отслеживания прогресса
-        self._scan_start_time = None
-        self._total_urls = 0
-        self._completed_urls = 0
-        self._total_progress = 0
-        self._active_workers = 0
-        self._worker_progress = {}
-        
-        # Переменные для детального лога
-        self._log_entries = []
-        self._filtered_log_entries = []
-        self._current_filter = "Все"
-        self._search_text = ""
-        
-        # Переменные для статистики
-        self._stats = {
-            'urls_found': 0,
-            'urls_scanned': 0,
-            'forms_found': 0,
-            'forms_scanned': 0,
-            'vulnerabilities': 0,
-            'requests_sent': 0,
-            'errors': 0,
-        }
-        
-        # Переменные для управления сканированием
-        self._scan_start_time = None
-        self._total_urls = 0
-        self._completed_urls = 0
-        self._total_progress = 0
-        self._active_workers = 0
-        self._worker_progress = {}
-        self._is_paused = False  # Состояние паузы
-
-        # === Политики сканирования ===
-        policy_group = QGroupBox("Политика сканирования")
-        policy_layout = QHBoxLayout()
-        self.policy_combobox = QComboBox()
-        self.policy_combobox.setToolTip("Выберите политику сканирования (набор параметров)")
-        self.policy_combobox.currentIndexChanged.connect(self.on_policy_selected)
-        policy_layout.addWidget(QLabel("Профиль:"))
-        policy_layout.addWidget(self.policy_combobox)
-        self.add_policy_btn = QPushButton("+")
-        self.add_policy_btn.setToolTip("Создать новую политику")
-        self.add_policy_btn.clicked.connect(self.create_policy_dialog)
-        self.edit_policy_btn = QPushButton("✎")
-        self.edit_policy_btn.setToolTip("Редактировать выбранную политику")
-        self.edit_policy_btn.clicked.connect(self.edit_policy_dialog)
-        self.delete_policy_btn = QPushButton("🗑")
-        self.delete_policy_btn.setToolTip("Удалить выбранную политику")
-        self.delete_policy_btn.clicked.connect(self.delete_policy)
-        policy_layout.addWidget(self.add_policy_btn)
-        policy_layout.addWidget(self.edit_policy_btn)
-        policy_layout.addWidget(self.delete_policy_btn)
-        policy_group.setLayout(policy_layout)
-        layout.addWidget(policy_group)
 
     def load_policies_to_combobox(self):
         self.policy_combobox.clear()
@@ -1056,8 +430,11 @@ class DashboardWindow(QWidget):
             
             color = color_map.get(level, "#ffffff")
             
-            # Формируем HTML для записи
-            html_entry = f'<div style="margin: 2px 0;"><span style="color: {color}; font-weight: bold;">[{timestamp}] {level}</span>'
+            # Формируем HTML для записи c использование шаблона для оптимизации
+            html_entry = (
+                f'<div style="margin: 2px 0;">'
+                f'<span style="color: {color}; font-weight: bold;">{timestamp} [{level}]</span>'
+            )
             
             if url:
                 html_entry += f' <span style="color: #3498db;">{url}</span>'
@@ -1081,11 +458,22 @@ class DashboardWindow(QWidget):
             
             self._log_entries.append(log_entry)
             
-            # Обновляем отфильтрованный список
-            self._apply_filters()
+            # Обновляем отфильтрованный список только если фильтры активны
+            if hasattr(self, '_current_filter') and self._current_filter != "Все" or \
+               hasattr(self, '_search_text') and self._search_text:
+                self._apply_filters()
+            else:
+                # Если фильтры не активны, добавляем запись в отфильтрованный список
+                self._filtered_log_entries.append(log_entry)
             
-            # Обновляем отображение
-            self._update_log_display()
+            # Обновляем отображение с ограничением частоты обновлений
+            if not hasattr(self, '_last_log_update'):
+                self._last_log_update = 0
+
+            current_time = time.time()
+            if current_time - self._last_log_update > 0.5: # Обновляем не чаще, чем раз в 0.5 секунды
+                self._update_log_display()
+                self._last_log_update = current_time
             
             # Автоскролл если включен
             if hasattr(self, 'auto_scroll_checkbox') and self.auto_scroll_checkbox.isChecked():
@@ -1160,8 +548,28 @@ class DashboardWindow(QWidget):
         """Обновляет статистику"""
         if key in self._stats:
             self._stats[key] = value
-            if key in self.stats_labels:
-                self.stats_labels[key].setText(str(value))
+            
+            # Используем пакетное обновление UI
+            if not hasattr(self, '_pending_stats_updates'):
+                self._pending_stats_updates = {}
+
+            self._pending_stats_updates[key] = value
+
+            # Запланируем обновление UI, если ещё не заплпанировано
+            if not hasattr(self, '_stats_update_timer') or not self._stats_update_timer.isActive():
+                self._stats_update_timer = QTimer(self)
+                self._stats_update_timer.setSingleShot(True)
+                self._stats_update_timer.timeout.connect(self._flush_stats_updates)
+                self._stats_update_timer.start(100)  # Обновляем не чаще чем раз в 100 мс
+
+    def _flush_stats_updates(self):
+        """Применяет все накопленные обновления статистики к UI"""
+        if hasattr(self, '_pending_stats_updates'):
+            for key, value in self._pending_stats_updates.items():
+                if key in self.stats_labels:
+                    self.stats_labels[key].setText(str(value))
+
+            self._pending_stats_updates.clear()
 
     def update_forms_counters(self, forms_found: int = 0, forms_scanned: int = 0):
         """Принудительно обновляет счетчики форм"""
@@ -1471,8 +879,23 @@ class DashboardWindow(QWidget):
             log_and_notify('error', f"Error in _on_scan_progress_with_forms: {e}")
 
     def load_avatar(self):
-        pixmap = QPixmap(self.avatar_path).scaled(100, 100, Qt.AspectRatioMode.KeepAspectRatio)
-        self.avatar_label.setPixmap(pixmap)
+        """Загрузка аватара пользователя"""
+        try:
+            # Получаем путь к аватару
+            avatar_path = self.get_avatar_path()
+            if avatar_path and avatar_path.exists():
+                pixmap = QPixmap(str(avatar_path))
+                if not pixmap.isNull():
+                    # Устанавливаем аватар
+                    self.profile_tab.set_avatar(pixmap)
+                else:
+                    logger.warning("Failed to load avatar image")
+            else:
+                logger.info("No avatar found, using default")
+                self.profile_tab.set_default_avatar()
+        except Exception as e:
+            logger.exception(f"Error loading avatar: {str(e)}")
+
 
     def handle_scan(self):
         url = self.url_input.text()
@@ -1488,168 +911,6 @@ class DashboardWindow(QWidget):
             asyncio.create_task(self.scan_controller.start_scan(url, scan_types))
 
     # ----------------------- Отчёты -----------------------
-    def setup_reports_tab(self):
-        layout = QVBoxLayout()
-
-        # Фильтры
-        filter_group = QGroupBox("Фильтры")
-        filter_layout = QVBoxLayout()
-        
-        self.filter_input = QLineEdit()
-        self.filter_input.setPlaceholderText("Фильтр по URL")
-        filter_layout.addWidget(self.filter_input)
-
-        self.filter_sql_cb = QCheckBox("SQL Injection")
-        self.filter_xss_cb = QCheckBox("XSS")
-        self.filter_csrf_cb = QCheckBox("CSRF")
-        cb_layout = QHBoxLayout()
-        cb_layout.addWidget(self.filter_sql_cb)
-        cb_layout.addWidget(self.filter_xss_cb)
-        cb_layout.addWidget(self.filter_csrf_cb)
-        filter_layout.addLayout(cb_layout)
-
-        date_layout = QHBoxLayout()
-        from PyQt5.QtWidgets import QDateTimeEdit
-        self.date_from = QDateTimeEdit()
-        self.date_from.setCalendarPopup(True)
-        self.date_from.setDisplayFormat("yyyy-MM-dd HH:mm:ss")
-        self.date_from.setDateTime(QDateTime.currentDateTime().addDays(-30))
-        date_layout.addWidget(QLabel("С: "))
-        date_layout.addWidget(self.date_from)
-        
-        # Кнопки быстрого выбора времени для "С"
-        from_time_buttons = QHBoxLayout()
-        from_start_day_btn = QPushButton("00:00")
-        from_start_day_btn.setMaximumWidth(50)
-        from_start_day_btn.clicked.connect(lambda: self._set_time_to_start_of_day(self.date_from))
-        from_time_buttons.addWidget(from_start_day_btn)
-        date_layout.addLayout(from_time_buttons)
-        
-        self.date_to = QDateTimeEdit()
-        self.date_to.setCalendarPopup(True)
-        self.date_to.setDisplayFormat("yyyy-MM-dd HH:mm:ss")
-        self.date_to.setDateTime(QDateTime.currentDateTime())
-        date_layout.addWidget(QLabel("По: "))
-        date_layout.addWidget(self.date_to)
-        
-        # Кнопки быстрого выбора времени для "По"
-        to_time_buttons = QHBoxLayout()
-        to_end_day_btn = QPushButton("23:59")
-        to_end_day_btn.setMaximumWidth(50)
-        to_end_day_btn.clicked.connect(lambda: self._set_time_to_end_of_day(self.date_to))
-        to_time_buttons.addWidget(to_end_day_btn)
-        to_now_btn = QPushButton("Сейчас")
-        to_now_btn.setMaximumWidth(50)
-        to_now_btn.clicked.connect(lambda: self._set_time_to_now(self.date_to))
-        to_time_buttons.addWidget(to_now_btn)
-        date_layout.addLayout(to_time_buttons)
-
-        filter_layout.addLayout(date_layout)
-
-        filter_group.setLayout(filter_layout)
-        layout.addWidget(filter_group)
-
-        # Таблица со сканированиями
-        table_group = QGroupBox("Список сканирований")
-        table_layout = QVBoxLayout()
-        
-        self.scans_table = QTableWidget()
-        self.scans_table.setColumnCount(7)
-        self.scans_table.setHorizontalHeaderLabels([
-            "ID", "URL", "Дата", "Тип", "Статус", "Длительность", "Уязвимости"
-        ])
-        
-        # Настраиваем ширину колонок
-        header = self.scans_table.horizontalHeader()
-        if header is not None:
-            header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-            header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-            header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
-            header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
-            header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
-            header.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
-            header.setSectionResizeMode(6, QHeaderView.ResizeMode.ResizeToContents)
-        
-        self.scans_table.setSelectionBehavior(QTableWidget.SelectRows)
-        self.scans_table.setSelectionMode(QTableWidget.SingleSelection)
-        self.scans_table.itemSelectionChanged.connect(self.on_scan_selected)
-        table_layout.addWidget(self.scans_table)
-        
-        # Кнопки для работы с выбранным сканированием
-        selected_scan_layout = QHBoxLayout()
-        self.export_selected_json_button = QPushButton("Экспорт в JSON")
-        self.export_selected_json_button.clicked.connect(self.export_selected_scan_json)
-        selected_scan_layout.addWidget(self.export_selected_json_button)
-
-        self.export_selected_csv_button = QPushButton("Экспорт в CSV")
-        self.export_selected_csv_button.clicked.connect(self.export_selected_scan_csv)
-        selected_scan_layout.addWidget(self.export_selected_csv_button)
-
-        self.export_selected_pdf_button = QPushButton("Экспорт в PDF")
-        self.export_selected_pdf_button.clicked.connect(self.export_selected_scan_pdf)
-        selected_scan_layout.addWidget(self.export_selected_pdf_button)
-
-        self.export_selected_html_button = QPushButton("Экспорт в HTML")
-        self.export_selected_html_button.clicked.connect(self.export_selected_scan_html)
-        selected_scan_layout.addWidget(self.export_selected_html_button)
-        
-        self.export_selected_txt_button = QPushButton("Экспорт в TXT")
-        self.export_selected_txt_button.clicked.connect(self.export_selected_scan_txt)
-        selected_scan_layout.addWidget(self.export_selected_txt_button)
-        table_layout.addLayout(selected_scan_layout)
-        table_group.setLayout(table_layout)
-        layout.addWidget(table_group)
-
-        # Текстовый отчет
-        report_group = QGroupBox("Сводный отчет")
-        report_layout = QVBoxLayout()
-        
-        self.reports_text = QTextEdit()
-        self.reports_text.setReadOnly(True)
-        report_layout.addWidget(self.reports_text)
-
-        self.refresh_reports_button = QPushButton("Обновить отчёты")
-        self.refresh_reports_button.clicked.connect(self.refresh_reports)
-
-        self.clear_reports_button = QPushButton("Очистить отчёты")
-        self.clear_reports_button.clicked.connect(self.clear_reports_text)
-
-        self.export_json_button = QPushButton("Экспорт всех в JSON")
-        self.export_json_button.clicked.connect(self.export_to_json)
-
-        self.export_csv_button = QPushButton("Экспорт всех в CSV")
-        self.export_csv_button.clicked.connect(self.export_to_csv)
-
-        self.export_pdf_button = QPushButton("Экспорт всех в PDF")
-        self.export_pdf_button.clicked.connect(self.export_to_pdf)
-
-        self.export_html_button = QPushButton("Экспорт всех в HTML")
-        self.export_html_button.clicked.connect(self.export_to_html)
-
-        self.export_txt_button = QPushButton("Экспорт всех в TXT")
-        self.export_txt_button.clicked.connect(self.export_to_txt)
-
-        self.generate_detailed_report_button = QPushButton("Создать детальный отчет")
-        self.generate_detailed_report_button.clicked.connect(self.generate_detailed_report)
-
-        button_layout = QHBoxLayout()
-        button_layout.addWidget(self.refresh_reports_button)
-        button_layout.addWidget(self.clear_reports_button)
-        button_layout.addWidget(self.export_json_button)
-        button_layout.addWidget(self.export_csv_button)
-        button_layout.addWidget(self.export_pdf_button)
-        button_layout.addWidget(self.export_html_button)
-        button_layout.addWidget(self.export_txt_button)
-        button_layout.addWidget(self.generate_detailed_report_button)
-        
-        report_layout.addLayout(button_layout)
-        report_group.setLayout(report_layout)
-        layout.addWidget(report_group)
-
-        self.reports_tab.setLayout(layout)
-        
-        # Загружаем данные при создании
-        self.refresh_reports()
 
     def reset_filters(self):
         self.filter_input.clear()
@@ -1886,8 +1147,9 @@ class DashboardWindow(QWidget):
     def populate_scans_table(self, scans, url_filter, selected_types, from_dt, to_dt):
         """Заполняет таблицу сканирований с учетом фильтров"""
         try:
-            self.scans_table.setRowCount(0)
-            filtered_scans = []
+            # Сохраняем отфильтрованные данные, но не загружаем все в таблицу сразу
+            self._filtered_scans_data = []
+
             for scan in scans:
                 scan_dt = datetime.strptime(scan["timestamp"], "%Y-%m-%d %H:%M:%S")
                 if not (from_dt <= scan_dt <= to_dt):
@@ -1908,76 +1170,144 @@ class DashboardWindow(QWidget):
                             break
                     if not has_selected_type:
                         continue
-                filtered_scans.append(scan)
-            self.scans_table.setRowCount(len(filtered_scans))
-            for row, scan in enumerate(filtered_scans):
-                scan_results = scan.get("result", scan.get("results", []))
-                if isinstance(scan_results, str):
-                    try:
-                        scan_results = json.loads(scan_results)
-                    except (json.JSONDecodeError, TypeError):
-                        scan_results = []
-                
-                # Подсчитываем уязвимости по типам
-                vulnerability_counts = {
-                    'SQL Injection': 0,
-                    'XSS': 0,
-                    'CSRF': 0
-                }
-                
-                for result in scan_results:
-                    vuln_type = result.get('type', '')
-                    if vuln_type in vulnerability_counts:
-                        vulnerability_counts[vuln_type] += 1
-                
-                # Формируем строку с детальной информацией об уязвимостях
-                vuln_details = []
-                total_vulns = 0
-                for vuln_type, count in vulnerability_counts.items():
-                    if count > 0:
-                        vuln_details.append(f"{vuln_type}: {count}")
-                        total_vulns += count
-                
-                if vuln_details:
-                    vuln_text = " | ".join(vuln_details)
-                else:
-                    vuln_text = "Нет уязвимостей"
-                
-                self.scans_table.setItem(row, 0, QTableWidgetItem(str(scan['id'])))
-                self.scans_table.setItem(row, 1, QTableWidgetItem(scan['url']))
-                self.scans_table.setItem(row, 2, QTableWidgetItem(scan['timestamp']))
-                self.scans_table.setItem(row, 3, QTableWidgetItem(scan['scan_type']))
-                self.scans_table.setItem(row, 4, QTableWidgetItem(scan['status']))
-                self.scans_table.setItem(row, 5, QTableWidgetItem(self.format_duration(scan.get('scan_duration', 0))))
-                
-                # Создаем элемент с детальной информацией об уязвимостях
-                vuln_item = QTableWidgetItem(vuln_text)
-                self.scans_table.setItem(row, 6, vuln_item)
-                
-                # Устанавливаем цвет фона в зависимости от наличия уязвимостей
-                if total_vulns > 0:
-                    vuln_item.setBackground(QColor("red"))
-                    vuln_item.setForeground(QColor("white"))
-                else:
-                    vuln_item.setBackground(QColor("green"))
-                    vuln_item.setForeground(QColor("black"))
-                
-                # Устанавливаем подсказку с дополнительной информацией
-                if total_vulns > 0:
-                    tooltip_text = f"Всего уязвимостей: {total_vulns}\n"
-                    for vuln_type, count in vulnerability_counts.items():
-                        if count > 0:
-                            tooltip_text += f"• {vuln_type}: {count}\n"
-                    vuln_item.setToolTip(tooltip_text.strip())
-                else:
-                    vuln_item.setToolTip("Уязвимостей не обнаружено")
+
+                # Предварительно обрабатываем данные для отображения
+                processed_scan = self._process_scan_for_display(scan)
+                self._filtered_scans_data.append(processed_scan)
             
-            self.filtered_scans = filtered_scans
-            logger.info(f"Populated scans table: {len(filtered_scans)} scans found")
-            self.on_scan_selected()
+            # Устанавливаем общее количество строк
+            self.scans_table.setRowCount(len(self._filtered_scans_data))
+
+            # Создаем таймер для отложенной загрузки видимых строк
+            self._visible_rows_timer = QTimer()
+            self._visible_rows_timer.setSingleShot(True)
+            self._visible_rows_timer.timeout.connect(self._load_visible_rows)
+            self._visible_rows_timer.start(50)  # Задержка 50 мс перед загрузкой видимых строк
+
+            # Подключаем обработчик прокрутки
+            self.scans_table.verticalScrollBar().valueChanged.connect(self._on_table_scroll)
+
         except Exception as e:
             error_handler.handle_database_error(e, "populate_scans_table")
-            log_and_notify('error', f"Error populating scans table: {e}")
+
+    def _load_visible_rows(self):
+        """Загружает только видимые в данный момент строки таблицы"""
+        try:
+            if not hasattr(self, '_filtered_scans_data') or not self._filtered_scans_data:
+                return
+            
+            # Определяем видимый диапазон строк
+            viewport = self.scans_table.viewport()
+            scroll_bar = self.scans_table.verticalScrollBar()
+            row_height = self.scans_table.rowHeight(0) if self.scans_table.rowCount() > 0 else 25
+
+            visible_start = scroll_bar.value() // row_height
+            visible_end = visible_start + viewport.height() // row_height + 1
+
+            # Добавляем небольшой запас строк для плавной прокрутки
+            buffer = 10
+            visible_start = max(0, visible_start - buffer)
+            visible_end = min(len(self._filtered_scans_data) - 1, visible_end + buffer)
+
+            # Загружаем только видимые строки
+            for row in range(visible_start, visible_end + 1):
+                if row < len(self._filtered_scans_data):
+                    scan_data = self._filtered_scans_data[row]
+
+                    # Проверяем, не загружена ли уже эта строка
+                    item = self.scans_table.item(row, 0)
+                    if item is None or item.text() == "":
+                        # Загружаем данные для строки
+                        self._load_scan_row(row, scan_data)
+        
+        except Exception as e:
+            log_and_notify('error', f"Error loading visible rows: {e}")
+
+    def _on_table_scroll(self):
+        """Обработчик события прокрутки таблицы"""
+        # Перезапускаем таймер загрузки видимых строк
+        if hasattr(self, '_visible_rows_timer') and self._visible_rows_timer.isActive():
+            self._visible_rows_timer.stop()
+            
+        self._visible_rows_timer.start(50)  # Задержка 50 мс перед загрузкой видимых строк
+
+    def _process_scan_for_display(self, scan):
+        """Предварительно обрабатывает данные сканирования для отображения"""
+        scan_results = scan.get("result", scan.get("results", []))
+        if isinstance(scan_results, str):
+            try:
+                scan_results = json.loads(scan_results)
+            except (json.JSONDecodeError, TypeError):
+                scan_results = []
+        
+        # Подсчитываем уязвимости по типам
+        vulnerability_counts = {
+            'SQL Injection': 0,
+            'XSS': 0,
+            'CSRF': 0
+        }
+        
+        for result in scan_results:
+            vuln_type = result.get('type', '')
+            if vuln_type in vulnerability_counts:
+                vulnerability_counts[vuln_type] += 1
+
+        # Формируем строку с детальной информацией об уязвимостях
+        vuln_details = []
+        total_vulns = 0
+        for vuln_type, count in vulnerability_counts.items():
+            if count > 0:
+                vuln_details.append(f"{vuln_type}: {count}")
+                total_vulns += count
+
+        if vuln_details:
+            vuln_text = " | ".join(vuln_details)
+        else:
+            vuln_text = "Нет уязвимостей"
+
+        # Возвращаем отфильтрованные данные
+        return {
+            'id': str(scan['id']),
+            'url': scan['url'],
+            'timestamp': scan['timestamp'],
+            'scan_type': scan['scan_type'],
+            'status': scan['status'],
+            'duration': self.format_duration(scan.get('scan_duration', 0)),
+            'vuln_text': vuln_text,
+            'total_vulns': total_vulns,
+            'vuln_details': vulnerability_counts
+        }
+    
+    def _load_scan_row(self, row, scan_data):
+        """Загружает данные в указанную строку таблицы"""
+        self.scans_table.setItem(row, 0, QTableWidgetItem(scan_data['id']))
+        self.scans_table.setItem(row, 1, QTableWidgetItem(scan_data['url']))
+        self.scans_table.setItem(row, 2, QTableWidgetItem(scan_data['timestamp']))
+        self.scans_table.setItem(row, 3, QTableWidgetItem(scan_data['scan_type']))
+        self.scans_table.setItem(row, 4, QTableWidgetItem(scan_data['status']))
+        self.scans_table.setItem(row, 5, QTableWidgetItem(scan_data['duration']))
+        
+        # Создаем элемент с детальной информацией об уязвимостях
+        vuln_item = QTableWidgetItem(scan_data['vuln_text'])
+        self.scans_table.setItem(row, 6, vuln_item)
+        
+        # Устанавливаем цвет фона в зависимости от наличия уязвимостей
+        if scan_data['total_vulns'] > 0:
+            vuln_item.setBackground(QColor("red"))
+            vuln_item.setForeground(QColor("white"))
+        else:
+            vuln_item.setBackground(QColor("green"))
+            vuln_item.setForeground(QColor("black"))
+        
+        # Устанавливаем подсказку с дополнительной информацией
+        if scan_data['total_vulns'] > 0:
+            tooltip_text = f"Всего уязвимостей: {scan_data['total_vulns']}\n"
+            for vuln_type, count in scan_data['vuln_details'].items():
+                if count > 0:
+                    tooltip_text += f"• {vuln_type}: {count}\n"
+            vuln_item.setToolTip(tooltip_text.strip())
+        else:
+            vuln_item.setToolTip("Уязвимостей не обнаружено")
 
     def on_scan_selected(self):
         """Обработчик выбора сканирования в таблице"""
@@ -2503,24 +1833,6 @@ class DashboardWindow(QWidget):
             return False
 
     # ----------------------- Статистика -----------------------
-    def setup_stats_tab(self):
-        layout = QVBoxLayout()
-
-        self.refresh_stats_button = QPushButton("Обновить статистику")
-        self.refresh_stats_button.clicked.connect(self.refresh_stats)
-        if MATPLOTLIB_AVAILABLE and FigureCanvas is not None and Figure is not None:
-            self.stats_canvas = FigureCanvas(Figure(figsize=(5, 4)))
-            layout.addWidget(self.refresh_stats_button)
-            layout.addWidget(self.stats_canvas)
-        else:
-            # Альтернативный виджет для статистики без matplotlib
-            self.stats_text = QTextEdit()
-            self.stats_text.setReadOnly(True)
-            layout.addWidget(self.refresh_stats_button)
-            layout.addWidget(QLabel("Статистика (matplotlib недоступен):"))
-            layout.addWidget(self.stats_text)
-
-        self.stats_tab.setLayout(layout)
 
     def refresh_stats(self):
         scans = db.get_scans_by_user(self.user_id)
@@ -2541,16 +1853,40 @@ class DashboardWindow(QWidget):
             self._refresh_stats_text_only(scans)
 
     def _refresh_stats_with_matplotlib(self, scans):
-        """Обновление статистики с использованием matplotlib"""
+        """Обновление статистики с использованием matplotlib с оптимизацией"""
         try:
             if not scans:
-                logger.warning("No scan data avalible")
+                logger.warning("No scan data available")
                 return
             
+            # Проверяем, нужно ли вообще обновлять график
+            if hasattr(self, '_last_stats_update') and hasattr(self, '_last_stats_count'):
+                current_time = time.time()
+                # Если прошло меньше 5 секунд и количество сканирований не изменилось, пропускаем обновление
+                if current_time - self._last_stats_update < 5 and len(scans) == self._last_stats_count:
+                    return
+            
+            self._last_stats_update = time.time()
+            self._last_stats_count = len(scans)
+
+            # Проверяем доступность matplotlib
+            if not MATPLOTLIB_AVAILABLE or FigureCanvas is None:
+                logger.warning("Matplotlib not available, cannot display statistics graph")
+                return
+            
+            # Проверяем и инициализируем stats_canvas при необходимости
+            if not hasattr(self, 'stats_canvas') or self.stats_canvas is None:
+                from matplotlib.figure import Figure
+                self.stats_canvas = FigureCanvas(Figure())
+                # Добавляем canvas в layout, если он еще не добавлен
+                if hasattr(self, 'stats_layout') and self.stats_layout is not None:
+                    self.stats_layout.addWidget(self.stats_canvas)
+
+            # Используем существующий FigureCanvas
             self.stats_canvas.figure.clear()
             ax = self.stats_canvas.figure.add_subplot(111)
-
-            # Подготовка данных
+            
+            # Подготовка данных с оптимизацией
             dates = []
             vulnerability_counts = {"SQL Injection": 0, "XSS": 0, "CSRF": 0}
             date_vulnerability_counts = {}
@@ -2563,31 +1899,32 @@ class DashboardWindow(QWidget):
                 if not scan_result:
                     continue
                 
-                # Парсим результаты сканирования
+                # Парсим результаты сканирования с обработкой ошибок
                 try:
                     results = json.loads(scan_result) if isinstance(scan_result, str) else scan_result
                 except (json.JSONDecodeError, TypeError) as e:
                     logger.warning(f"Failed to parse scan result: {e}")
                     continue
                 
-                # Обновляем общие счетчики
+                # Оптимизированная обработка результатов
                 if isinstance(results, list):
                     for result in results:
-                        # Проверяем разные возможные структуры результатов
-                        vuln_type = None
-                        if isinstance(result, dict):
-                            vuln_type = result.get('type') or result.get('vuln_type')
-                            # Если нет прямого типа, проверяем в vulnerabilities
-                            if not vuln_type and 'vulnerabilities' in result:
-                                for vuln_cat, vulns in result['vulnerabilities'].items():
-                                    if vulns:  # Если есть уязвимости в этой категории
-                                        if vuln_cat == 'sql':
-                                            vuln_type = 'SQL Injection'
-                                        elif vuln_cat == 'xss':
-                                            vuln_type = 'XSS'
-                                        elif vuln_cat == 'csrf':
-                                            vuln_type = 'CSRF'
-                                        break
+                        if not isinstance(result, dict):
+                            continue
+                            
+                        vuln_type = result.get('type') or result.get('vuln_type')
+                        
+                        # Проверяем vulnerabilities в новой структуре
+                        if not vuln_type and 'vulnerabilities' in result:
+                            for vuln_cat, vulns in result['vulnerabilities'].items():
+                                if isinstance(vulns, list) and vulns:
+                                    if vuln_cat == 'sql':
+                                        vuln_type = 'SQL Injection'
+                                    elif vuln_cat == 'xss':
+                                        vuln_type = 'XSS'
+                                    elif vuln_cat == 'csrf':
+                                        vuln_type = 'CSRF'
+                                    break
                         
                         if vuln_type and vuln_type in vulnerability_counts:
                             vulnerability_counts[vuln_type] += 1
@@ -2596,33 +1933,35 @@ class DashboardWindow(QWidget):
                             if date not in date_vulnerability_counts:
                                 date_vulnerability_counts[date] = {"SQL Injection": 0, "XSS": 0, "CSRF": 0}
 
-                            if vuln_type and vuln_type in date_vulnerability_counts[date]:
+                            if vuln_type in date_vulnerability_counts[date]:
                                 date_vulnerability_counts[date][vuln_type] += 1
-                elif isinstance(results, dict):
-                    # Если результат - это словарь с vulnerabilities
-                    if 'vulnerabilities' in results:
-                        for vuln_cat, vulns in results['vulnerabilities'].items():
-                            if isinstance(vulns, list) and vulns:
-                                vuln_type = None
-                                if vuln_cat == 'sql':
-                                    vuln_type = 'SQL Injection'
-                                elif vuln_cat == 'xss':
-                                    vuln_type = 'XSS'
-                                elif vuln_cat == 'csrf':
-                                    vuln_type = 'CSRF'
+                elif isinstance(results, dict) and 'vulnerabilities' in results:
+                    # Оптимизированная обработка словаря с vulnerabilities
+                    for vuln_cat, vulns in results['vulnerabilities'].items():
+                        if isinstance(vulns, list) and vulns:
+                            vuln_type = None
+                            if vuln_cat == 'sql':
+                                vuln_type = 'SQL Injection'
+                            elif vuln_cat == 'xss':
+                                vuln_type = 'XSS'
+                            elif vuln_cat == 'csrf':
+                                vuln_type = 'CSRF'
+                            
+                            if vuln_type and vuln_type in vulnerability_counts:
+                                vulnerability_counts[vuln_type] += len(vulns)
                                 
-                                if vuln_type and vuln_type in vulnerability_counts:
-                                    vulnerability_counts[vuln_type] += len(vulns)
-                                    
-                                    # Обновляем счетчики по датам
-                                    if date not in date_vulnerability_counts:
-                                        date_vulnerability_counts[date] = {"SQL Injection": 0, "XSS": 0, "CSRF": 0}
-                                    date_vulnerability_counts[date][vuln_type] += len(vulns)
+                                # Обновляем счетчики по датам
+                                if date not in date_vulnerability_counts:
+                                    date_vulnerability_counts[date] = {"SQL Injection": 0, "XSS": 0, "CSRF": 0}
+                                date_vulnerability_counts[date][vuln_type] += len(vulns)
 
             # Сортируем даты
             sorted_dates = sorted(set(dates))
-
-            # Линейный график по датам
+            
+            # Очищаем график перед построением нового
+            ax.clear()
+            
+            # Линейный график по датам с оптимизацией
             for vuln_type in vulnerability_counts.keys():
                 counts = [date_vulnerability_counts.get(date, {}).get(vuln_type, 0) for date in sorted_dates]
                 ax.plot(sorted_dates, counts, marker='o', linestyle='-', label=vuln_type)
@@ -2633,15 +1972,18 @@ class DashboardWindow(QWidget):
             ax.grid(True)
             ax.legend()
 
+            # Оптимизированное обновление холста
             self.stats_canvas.figure.tight_layout()
-            self.stats_canvas.draw()
+            self.stats_canvas.draw_idle()  # Используем draw_idle вместо draw для оптимизации
+            
         except (ValueError, sqlite3.Error, KeyError, AttributeError) as e:
             log_and_notify('error', f"Error updating matplotlib stats: {e}")
             self.stats_canvas.figure.clear()
             ax = self.stats_canvas.figure.add_subplot(111)
             ax.text(0.5, 0.5, f"Ошибка отображения статистики: {str(e)}", 
-                   horizontalalignment='center', verticalalignment='center')
-            self.stats_canvas.draw()
+                horizontalalignment='center', verticalalignment='center')
+            self.stats_canvas.draw_idle()
+
 
     def _refresh_stats_text_only(self, scans):
         """Обновление статистики в текстовом виде (без matplotlib)"""
@@ -2822,56 +2164,6 @@ class DashboardWindow(QWidget):
         self.stats_text.setText("\n".join(stats_lines))
 
     # ----------------------- Профиль -----------------------
-    def setup_profile_tab(self):
-        layout = QVBoxLayout()
-
-        # Приветствие над аватаром
-        self.username_label = QLabel(f"Добро пожаловать, {self.username}!")
-        self.username_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.username_label.setStyleSheet("""
-            QLabel {
-                font-size: 16px;
-                font-weight: bold;
-                color: #00ffcc;
-                margin-bottom: 10px;
-            }
-        """)
-        layout.addWidget(self.username_label)
-
-        # Аватар
-        self.avatar_label = QLabel()
-        layout.addWidget(self.avatar_label, alignment=Qt.AlignmentFlag.AlignCenter)
-
-        self.load_avatar()
-
-        # Кнопка смены аватара
-        self.change_avatar_button = QPushButton("Сменить аватар")
-        self.change_avatar_button.clicked.connect(self.change_avatar)
-        layout.addWidget(self.change_avatar_button)
-
-        # Кнопка редактирования профиля
-        self.edit_profile_button = QPushButton("Редактировать учетные данные")
-        self.edit_profile_button.clicked.connect(self.edit_profile)
-        layout.addWidget(self.edit_profile_button)
-
-        # Кнопка выхода
-        self.logout_button = QPushButton("Выйти из аккаунта")
-        self.logout_button.clicked.connect(self.logout)
-        layout.addWidget(self.logout_button)
-
-        # --- История активности ---
-        layout.addWidget(QLabel("История активности:"))
-        self.activity_log = QTextEdit()
-        self.activity_log.setReadOnly(True)
-        layout.addWidget(self.activity_log)
-
-        self.refresh_activity_button = QPushButton("Обновить историю")
-        self.refresh_activity_button.clicked.connect(self.refresh_activity_log)
-        layout.addWidget(self.refresh_activity_button)
-
-        self.profile_tab.setLayout(layout)
-
-        self.refresh_activity_log()
 
     def refresh_activity_log(self):
         scans = db.get_scans_by_user(self.user_id)
@@ -3394,7 +2686,7 @@ class DashboardWindow(QWidget):
 
     def load_scanner_log_to_ui(self, full: bool = False):
         """
-        Загружает scanner.log в детальный лог UI.
+        Загружает scanner.log в детальный лог UI с оптимизацией.
         По умолчанию загружает только последние 500 строк.
         """
         try:
@@ -3409,37 +2701,22 @@ class DashboardWindow(QWidget):
                 self.log_status_label.setText("Файл лога отсутствует.")
                 return
 
+            # Используем отложенную загрузку для больших файлов
             if full:
                 self.log_status_label.setText("Идет загрузка полного лога...")
-                QApplication.processEvents() # Обновляем UI
-                with open(log_path, "r", encoding="utf-8", errors="replace") as f:
-                    log_content = f.read()
-                self.log_status_label.setText(f"Полный лог загружен ({len(log_content.splitlines())} строк).")
-            else:
-                log_content = self._read_log_tail(log_path, lines=500)
-                self.log_status_label.setText("Отображены последние 500 строк.")
-
-            # Очищаем старые записи и добавляем новые
-            self.detailed_log.clear()
-            self._log_entries.clear()
-            
-            # Добавляем новые записи, чтобы фильтры работали
-            for line in log_content.splitlines():
-                if not line.strip():  # Пропускаем пустые строки
-                    continue
-                    
-                # Простая эвристика для разбора уровня лога
-                level = "INFO" # По умолчанию
-                if "ERROR" in line: level = "ERROR"
-                elif "WARNING" in line: level = "WARNING"
-                elif "DEBUG" in line: level = "DEBUG"
-                elif "VULNERABILITY" in line: level = "VULNERABILITY"
+                QApplication.processEvents()
                 
-                try:
-                    self._add_log_entry(level, line)
-                except Exception as e:
-                    logger.warning(f"Failed to add log entry: {e}")
-                    continue
+                # Запускаем загрузку в отдельном потоке для больших файлов
+                self._log_loader_thread = threading.Thread(target=self._load_full_log, args=(log_path,))
+                self._log_loader_thread.daemon = True
+                self._log_loader_thread.start()
+            else:
+                # Для частичной загрузки используем оптимизированный метод
+                self.log_status_label.setText("Загрузка последних строк...")
+                QApplication.processEvents()
+                
+                log_content = self._read_log_tail(log_path, lines=500)
+                self._process_log_content(log_content, "Отображены последние 500 строк.")
                 
         except Exception as e:
             log_and_notify('error', f"Failed to load scanner.log: {e}")
@@ -3447,6 +2724,79 @@ class DashboardWindow(QWidget):
                 self._on_scan_log(f"Ошибка загрузки scanner.log: {e}")
             if hasattr(self, 'log_status_label'):
                 self.log_status_label.setText("Ошибка загрузки лога.")
+
+    def _load_full_log(self, log_path):
+        """Загружает полный лог в отдельном потоке"""
+        try:
+            with open(log_path, "r", encoding="utf-8", errors="replace") as f:
+                log_content = f.read()
+            
+            # Используем сигнал для обновления UI из основного потока
+            if hasattr(self, '_log_loaded_signal'):
+                self._log_loaded_signal.emit(log_content, len(log_content.splitlines()))
+            else:
+                # Если сигнал не определен, используем QMetaObject.invokeMethod
+                QMetaObject.invokeMethod(self, "_process_log_content", 
+                                        Qt.QueuedConnection,
+                                        Q_ARG(str, log_content),
+                                        Q_ARG(str, f"Полный лог загружен ({len(log_content.splitlines())} строк)."))
+        except Exception as e:
+            log_and_notify('error', f"Error loading full log: {e}")
+            if hasattr(self, '_on_scan_log'):
+                QMetaObject.invokeMethod(self, "_on_scan_log", 
+                                        Qt.QueuedConnection,
+                                        Q_ARG(str, f"Ошибка загрузки полного лога: {e}"))
+
+    def _process_log_content(self, log_content, status_message):
+        """Обрабатывает загруженный контент лога и обновляет UI"""
+        try:
+            # Очищаем старые записи
+            self.detailed_log.clear()
+            self._log_entries.clear()
+            self._filtered_log_entries.clear()
+            
+            # Обрабатываем строки пакетами для оптимизации
+            batch_size = 100
+            lines = log_content.splitlines()
+            total_lines = len(lines)
+            
+            for i in range(0, total_lines, batch_size):
+                batch = lines[i:i+batch_size]
+                
+                for line in batch:
+                    if not line.strip():  # Пропускаем пустые строки
+                        continue
+                        
+                    # Простая эвристика для разбора уровня лога
+                    level = "INFO"  # По умолчанию
+                    if "ERROR" in line: 
+                        level = "ERROR"
+                    elif "WARNING" in line: 
+                        level = "WARNING"
+                    elif "DEBUG" in line: 
+                        level = "DEBUG"
+                    elif "VULNERABILITY" in line: 
+                        level = "VULNERABILITY"
+                    
+                    try:
+                        self._add_log_entry(level, line)
+                    except Exception as e:
+                        logger.warning(f"Failed to add log entry: {e}")
+                        continue
+                
+                # Обновляем UI после каждой партии для отзывчивости
+                QApplication.processEvents()
+            
+            # Обновляем статус
+            self.log_status_label.setText(status_message)
+            
+        except Exception as e:
+            log_and_notify('error', f"Error processing log content: {e}")
+            if hasattr(self, '_on_scan_log'):
+                self._on_scan_log(f"Ошибка обработки лога: {e}")
+            if hasattr(self, 'log_status_label'):
+                self.log_status_label.setText("Ошибка обработки лога.")
+
 
     def _read_log_tail(self, filepath: str, lines: int = 500, buffer_size: int = 4096) -> str:
         """Эффективно читает последние N строк из файла."""
