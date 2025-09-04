@@ -1,9 +1,9 @@
 from typing import Optional
-from PyQt5.QtWidgets import QMainWindow, QStackedWidget, QGraphicsOpacityEffect, QWidget
+from PyQt5.QtWidgets import QMainWindow, QStackedWidget, QGraphicsOpacityEffect, QWidget, QMessageBox
 from PyQt5.QtCore import QPropertyAnimation, QEasingCurve
 from PyQt5.QtGui import QIcon, QCloseEvent
 
-from utils import performance
+from utils import error_handler, performance
 from utils.performance import measure_time
 from views.login_window import LoginWindow
 from ui.registration_window import RegistrationWindow
@@ -40,6 +40,38 @@ class MainWindow(QMainWindow):
 
         # Центрируем окно на экране
         self.center_window()
+
+        # Инициализируем компоненты
+        self.init_ui_components()
+
+    def init_ui_components(self):
+        """Инициализация всех необходимых UI компонентов"""
+        try:
+            # Проверяем stack
+            if not hasattr(self, 'stack') or not isinstance(self.stack, QStackedWidget):
+                raise ValueError("Stack widget not properly initialized")
+                
+            # Проверяем login_window
+            if not hasattr(self, 'login_window') or not isinstance(self.login_window, LoginWindow):
+                raise ValueError("Login window not properly initialized")
+                
+            # Проверяем registration_window
+            if not hasattr(self, 'registration_window') or not isinstance(self.registration_window, RegistrationWindow):
+                raise ValueError("Registration window not properly initialized")
+                
+            # Проверяем dashboard_window (может быть None, это нормально)
+            if hasattr(self, 'dashboard_window') and self.dashboard_window is not None and not isinstance(self.dashboard_window, DashboardWindow):
+                raise ValueError("Dashboard window not properly initialized")
+                
+            # Проверяем подключение сигналов
+            if not hasattr(self, 'login_window') or not self.login_window.receivers(self.login_window.login_successful):
+                raise ValueError("Login signal not properly connected")
+                
+            logger.info("All UI components initialized successfully")
+            
+        except Exception as e:
+            logger.error(f"Failed to initialize UI components: {e}")
+            raise
 
     def safe_resize_window(self, widget: QWidget):
         """Безопасно изменяет размер окна с учетом ограничений экрана"""
@@ -122,7 +154,18 @@ class MainWindow(QMainWindow):
         self._current_animation = animation
 
     def go_to_registration(self):
-        self.fade_to_widget(self.registration_window)
+        try:
+            # Проверка инициализации компонентов
+            if not hasattr(self, 'stack') or not hasattr(self, 'registration_window'):
+                logger.error("Stack or registration window not initialized")
+                return
+        
+            self.stack.setCurrentWidget(self.registration_window)
+            self.safe_resize_window(self.registration_window)
+    
+        except Exception as e:
+            logger.error(f"Error navigating to registration: {e}")
+            error_handler.show_error_message("Ошибка", f"Не удалось перейти к регистрации: {e}")
 
     def go_to_login(self):
         # Сначала скрываем dashboard_window если он существует
@@ -138,29 +181,23 @@ class MainWindow(QMainWindow):
 
     @measure_time
     def go_to_dashboard(self, user_id, username):
-        # Удаляем старый dashboard_window если он существует
-        def remove_old_dashboard():
-            if self.dashboard_window is not None:
-                self.dashboard_window.hide()
-                self.stack.removeWidget(self.dashboard_window)
-                self.dashboard_window.deleteLater()
+        try:
+            # Проверка инициализации компонентов
+            if not hasattr(self, 'stack'):
+                logger.error("Stack not initialized")
+                return
+            
+            # Создаем dashboard_window при первом обращении
+            if not hasattr(self, 'dashboard_window') or self.dashboard_window is None:
+                self.dashboard_window = DashboardWindow(user_id, username, self)
+                self.stack.addWidget(self.dashboard_window)
+            
+            self.stack.setCurrentWidget(self.dashboard_window)
+            self.safe_resize_window(self.dashboard_window)
         
-        performance.monitor_performance(remove_old_dashboard)()
-        
-        # Создаем новый dashboard_window
-        def create_new_dashboard():
-            self.dashboard_window = DashboardWindow(user_id, username, self)
-            self.stack.addWidget(self.dashboard_window)
-        
-        performance.monitor_performance(create_new_dashboard)()
-        
-        # Переключаемся на dashboard
-        def switch_to_dashboard():
-            self.fade_to_widget(self.dashboard_window)
-            # Безопасно максимизируем окно
-            self.safe_maximize_window()
-        
-        performance.monitor_performance(switch_to_dashboard)()
+        except Exception as e:
+            logger.error(f"Error navigating to dashboard: {e}")
+            error_handler.show_error_message("Ошибка", f"Не удалось перейти к панели управления: {e}")
 
 
     def safe_maximize_window(self):
@@ -239,5 +276,27 @@ class MainWindow(QMainWindow):
             super().closeEvent(a0)
 
     def show_dashboard(self, user_id, username):
-        self.go_to_dashboard(user_id, username)
+        """Показывает главное окно приложения после успешной аутентификации"""
+        try:
+            # Создаем экземпляр UserModel, если его нет
+            if not hasattr(self, 'user_model') or self.user_model is None:
+                from models.user_model import UserModel
+                self.user_model = UserModel()
+                
+            # Проверка инициализации компонентов
+            if not hasattr(self, 'stack'):
+                logger.error("Stack not initialized")
+                return
+            
+            # Создаем dashboard_window при первом обращении
+            if not hasattr(self, 'dashboard_window') or self.dashboard_window is None:
+                self.dashboard_window = DashboardWindow(user_id, username, self.user_model, self)
+                self.stack.addWidget(self.dashboard_window)
+            
+            self.stack.setCurrentWidget(self.dashboard_window)
+            self.safe_resize_window(self.dashboard_window)
+        
+        except Exception as e:
+            logger.error(f"Error showing dashboard: {e}")
+            error_handler.show_error_message("Ошибка", f"Не удалось показать панель управления: {e}")
 

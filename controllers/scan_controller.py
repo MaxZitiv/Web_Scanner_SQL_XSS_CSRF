@@ -199,7 +199,7 @@ class ScanController:
             if on_vulnerability:
                 worker.signals.vulnerability_found.connect(on_vulnerability)
             
-            # Добавляем в активные сканирования
+            # Добавляем в активные сканировании
             self.active_scans[url] = worker
             
             # Запускаем сканирование

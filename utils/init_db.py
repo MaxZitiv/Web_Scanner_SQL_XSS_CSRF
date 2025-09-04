@@ -1,7 +1,7 @@
 import sqlite3
 import os
-from .logger import logger, log_and_notify
-from .database import db
+from utils.logger import logger, log_and_notify
+from utils.database import db
 
 
 def create_base_tables():

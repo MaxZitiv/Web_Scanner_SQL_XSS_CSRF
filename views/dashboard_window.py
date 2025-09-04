@@ -1,32 +1,39 @@
 import asyncio
-from datetime import datetime
-import threading
-import time
-from typing import Optional
 import json
 import os
-from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
-                             QPushButton, QLineEdit, QCheckBox, 
+import sqlite3
+import threading
+import time
+from datetime import datetime
+from pathlib import Path
+from typing import Optional
+
+import matplotlib
+from PyQt5.QtCore import Qt, QTimer, QDateTime, QTime, QMetaObject, Q_ARG, pyqtSignal
+from PyQt5.QtGui import QPixmap, QIcon, QColor
+from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
+                             QPushButton, QLineEdit, QCheckBox,
                              QTabWidget, QSpinBox, QMessageBox,
                              QFileDialog, QComboBox, QTableWidgetItem,
                              QGroupBox, QDateTimeEdit, QDialog, QDialogButtonBox, QTreeWidgetItem, QApplication,
-                             QFormLayout)
-from PyQt5.QtCore import Qt, QTimer, QDateTime, QTime, QMetaObject
-from PyQt5.QtGui import QPixmap, QIcon, QColor
+                             QFormLayout, QTextEdit, QScrollArea)
+
 from controllers.scan_controller import ScanController
-from views.edit_profile_window import EditProfileWindow
+from utils import error_handler
 from utils.database import db
+from utils.error_handler import ErrorHandler
 from utils.logger import logger, log_and_notify
-import sqlite3
 from utils.performance import performance_monitor, get_local_timestamp, extract_time_from_timestamp
 from utils.security import is_safe_url, sanitize_filename
-from utils.error_handler import error_handler
-from views.tabs.scan_tab import ScanTabWidget
-from views.tabs.reports_tab import ReportsTabWidget
-from views.tabs.stats_tab import StatsTabWidget
+from views.edit_profile_window import EditProfileWindow
 from views.tabs.profile_tab import ProfileTabWidget
-import matplotlib
+from views.tabs.reports_tab import ReportsTabWidget
+from views.tabs.scan_tab import ScanTabWidget
+from views.tabs.stats_tab import StatsTabWidget
+
 matplotlib.use('Qt5Agg')
+
+error_handler: ErrorHandler = error_handler
 
 # Импорт matplotlib с обработкой ошибок
 try:
@@ -42,13 +49,35 @@ from qasync import asyncSlot
 from policies.policy_manager import PolicyManager
 
 class DashboardWindow(QWidget):
-    def __init__(self, user_id: int, username, parent=None):
+    # Определяем сигнал
+    _log_loaded_signal: pyqtSignal = pyqtSignal(str, int)
+    def __init__(self, user_id: int, username, user_model, parent=None):
         super().__init__(parent)
+        self._log_loader_thread = None
+        self.edit_window = None
+        self._visible_rows_timer = None
+        self._filtered_scans_data = None
+        self._scan_timer = None
+        self._scanned_forms = None
+        self._scanned_urls = None
+        self.policy_combobox = None
+        self._stats = None
+        self.log_status_label = None
+        self._filtered_log_entries = None
+        self._log_entries = None
+        self.detailed_log = None
+        self._is_paused = None
+        self.username_label = None
+        self.main_layout = None
         self.scan_tab: Optional[QWidget] = None
+        self.reports_tab: Optional[QWidget] = None
+        self.stats_tab: Optional[QWidget] = None
+        self.profile_tab: Optional[QWidget] = None
         self.tabs: Optional[QTabWidget] = None
         self.scan_button: Optional[QPushButton] = None
         self.setWindowTitle("Web Scanner - Control Panel")
         self.user_id = user_id
+        self.user_model = user_model
         self.tabs_initialized = False
         self.username = username
         self.avatar_label = None
@@ -60,40 +89,150 @@ class DashboardWindow(QWidget):
         self._total_progress = 0
         self._active_workers = 0
         self._estimated_total_time = 0
-        self._worker_progress = {}  # Словарь для отслеживания прогресса каждого воркера
+        self._worker_progress = {}
         self.policy_manager = PolicyManager()
         self.selected_policy = None
+        self._log_loaded_signal.connect(self._process_log_content)
+
+        # Адаптация размера окна под размер экрана
+        screen = QApplication.primaryScreen()
+        if screen is not None:
+            geometry = screen.geometry()
+            width = min(geometry.width() - 100, 1200)  # Максимальна ширина 1200px
+            height = min(geometry.height() - 100, 800)  # Максимальна висота 800px
+            self.resize(width, height)
+        else:
+            # Значения по умолчанию при ошибке доступа к геометрии экрана
+            logger.warning("Primary screen not available, using default window size")
+            self.resize(1200, 800)
+
+        # Инициализация компонентов
+        self.init_components()
+
+        # Настройка UI
         self.setup_ui()
+
+        # Загрузка политик
         self.load_policies_to_combobox()
 
-        # Инициализация stats_canvas
-        self.stats_canvas = None
-        if MATPLOTLIB_AVAILABLE and FigureCanvas is not None:
-            from matplotlib.figure import Figure
-            self.stats_canvas = FigureCanvas(Figure())
+        try:
+            # Инициализация вкладок
+            self.initialize_tabs()
 
+            # Инициализация stats_canvas
+            self.stats_canvas = None
+            if MATPLOTLIB_AVAILABLE and FigureCanvas is not None:
+                try:
+                    from matplotlib.figure import Figure
+                    self.stats_canvas = FigureCanvas(Figure())
+                except Exception as matplotlib_error:
+                    logger.warning(f"Failed to initialize matplotlib canvas: {matplotlib_error}")
+                    self.stats_canvas = None
+
+            # Загружаем аватар после создания всех компонентов
+            if hasattr(self, 'avatar_label') and self.avatar_label is not None:
+                self.load_avatar()
+            else:
+                logger.error("Avatar label not initialized after setup_ui")
+
+        except Exception as init_error:
+            logger.error(f"Failed to initialize dashboard window: {init_error}")
+            QMessageBox.critical(self, "Error", f"Failed to initialize dashboard window: {e}")
+            raise
         logger.info(f"Opened control panel for user '{self.username}' (ID: {self.user_id})")
 
     def initialize_tabs(self):
-        if not self.tabs_initialized:
-            # Убеждаемся, что tabs инициализирован
-            if self.tabs is None:
-                self.tabs = QTabWidget()
-                self.main_layout.addWidget(self.tabs)
+        try:
+            if not self.tabs_initialized:
+                # Проверка инициализации вкладок
+                if not hasattr(self, 'tabs') or self.tabs is None:
+                    self.tabs = QTabWidget()
+                    if hasattr(self, 'main_layout') and self.main_layout is not None:
+                        self.main_layout.addWidget(self.tabs)
+                    else:
+                        logger.error("Main layout not initialized")
+                        return
+                
+                # Проверка инициализации компонентов
+                if not hasattr(self, 'user_id'):
+                    logger.error("User ID not initialized")
+                    return
+                
+                self.scan_tab = ScanTabWidget(self.user_id, self)
+                self.reports_tab = ReportsTabWidget(self.user_id, self)
+                self.stats_tab = StatsTabWidget(self.user_id, self)
+                self.profile_tab = ProfileTabWidget(self.user_id, self)
+
+                # Проверка, что все вкладки созданы
+                if not all([self.scan_tab, self.reports_tab, self.stats_tab, self.profile_tab]):
+                    raise ValueError("Failed to initialize one or more tabs")
+
+                # Добавляем вкладки в QTabWidget
+                self.tabs.addTab(self.scan_tab, "Сканирование")
+                self.tabs.addTab(self.reports_tab, "Отчёты")
+                self.tabs.addTab(self.stats_tab, "Статистика")
+                self.tabs.addTab(self.profile_tab, "Профиль")
+
+                self.tabs_initialized = True
+                logger.info("Tabs initialized successfully")
+        
+        except Exception as tabs_error:
+            logger.error(f"Error initializing tabs: {tabs_error}")
+            error_handler.show_error_message("Ошибка", f"Не удалось инициализировать вкладки: {e}")
+
+    def init_components(self):
+        """Инициализация всех необходимых компонентов"""
+        try:
+            # Инициализация базовых компонентов
+            self.main_layout = QVBoxLayout(self)
+            self.tabs = QTabWidget()
+            self.avatar_label = QLabel()
+            self.username_label = QLabel()
             
-            self.profile_tab = ProfileTabWidget(self.user_id, self)
-            self.scan_tab = ScanTabWidget(self.user_id, self)
-            self.reports_tab = ReportsTabWidget(self.user_id, self)
-            self.stats_tab = StatsTabWidget(self.user_id, self)
+            # Инициализация контроллера
+            self.scan_controller = ScanController(self.user_id)
+            
+            # Инициализация состояния
+            self._scan_start_time = None
+            self._total_urls = 0
+            self._completed_urls = 0
+            self._total_progress = 0
+            self._active_workers = 0
+            self._worker_progress = {}
+            self._is_paused = False
+            
+            # Инициализация менеджера политик
+            self.policy_manager = PolicyManager()
+            self.selected_policy = None
 
-            self.tabs.addTab(self.scan_tab, "Сканирование")
-            self.tabs.addTab(self.reports_tab, "Отчёты")
-            self.tabs.addTab(self.stats_tab, "Статистика")
-            self.tabs.addTab(self.profile_tab, "Профиль")
+            # Инициализация компонентов лога
+            self.detailed_log = QTextEdit()
+            self._log_entries = []
+            self._filtered_log_entries = []
+            self.log_status_label = QLabel()
 
-            self.tabs_initialized = True
+            # Инициализация статистики
+            self._stats = {
+                'urls_found': 0,
+                'urls_scanned': 0,
+                'forms_found': 0,
+                'forms_scanned': 0,
+                'vulnerabilities': 0,
+                'requests_sent': 0,
+                'errors': 0,
+            }
 
-    def format_duration(self, seconds):
+            # Инициализация комбобокса политик
+            self.policy_combobox = QComboBox()
+            
+            logger.info("Dashboard components initialized successfully")
+            
+        except Exception as e:
+            logger.error(f"Failed to initialize dashboard components: {e}")
+            raise
+
+    @staticmethod
+    def format_duration(seconds):
         """Форматирует время в часы, минуты и секунды"""
         if seconds < 60:
             return f"{seconds:.1f} сек"
@@ -112,20 +251,73 @@ class DashboardWindow(QWidget):
         try:
             self.setWindowTitle("Панель управления")
             self.setMinimumSize(800, 600)
-            
-            self.main_layout = QVBoxLayout(self)
+
+            # Создаем основной контейнер с прокруткой
+            scroll = QScrollArea()
+            scroll.setWidgetResizable(True)
+
+            # Создаем виджет-контейнер для всего содержимого
+            content_widget = QWidget()
+            content_widget.setMinimumSize(800, 600)
+
+            # Проверка инициализации основного layout
+            if not hasattr(self, 'main_layout') or self.main_layout is None:
+                self.main_layout = QVBoxLayout(content_widget)
+                self.main_layout.addWidget(scroll)
+
+            # Добавление комбобокса политик
+            policy_layout = QHBoxLayout()
+            policy_label = QLabel("Политика сканирования:")
+            self.policy_combobox = QComboBox()
+            policy_layout.addWidget(policy_label)
+            policy_layout.addWidget(self.policy_combobox)
+            self.main_layout.addLayout(policy_layout)
+
+            # Загрузка политик после создания комбобокса
+            self.load_policies_to_combobox()
             
             # Убеждаемся, что tabs инициализирован
             if self.tabs is None:
                 self.tabs = QTabWidget()
+
+            # Создаем виджет для аватара и информации о пользователе
+            user_info_widget = QWidget()
+            user_info_layout = QHBoxLayout(user_info_widget)
+            
+            # Создаем QLabel для аватара
+            self.avatar_label = QLabel()
+            self.avatar_label.setFixedSize(200, 200)
+            self.avatar_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.avatar_label.setStyleSheet("border: 1px solid gray; border-radius: 5px;")
+            user_info_layout.addWidget(self.avatar_label)
+            
+            # Добавляем информацию о пользователе
+            user_text_layout = QVBoxLayout()
+            self.username_label = QLabel(f"Добро пожаловать, {self.username}!")
+            self.username_label.setStyleSheet("font-size: 16px; font-weight: bold;")
+            user_text_layout.addWidget(self.username_label)
+            user_text_layout.addStretch()
+            user_info_layout.addLayout(user_text_layout)
+            
+            # Добавляем виджет информации о пользователе в основной layout
+            self.main_layout.addWidget(user_info_widget)
             
             # Отложенная инициализация вкладок
             self.initialize_tabs()
             
             self.main_layout.addWidget(self.tabs)
             self.setLayout(self.main_layout)
+
+            # Проверяем, что все необходимые компоненты инициализированы
+            if not all([hasattr(self, 'main_layout'), hasattr(self, 'tabs'), hasattr(self, 'username_label'), hasattr(self, 'avatar_label')]):
+                logger.error("Some components are not initialized")
+                return
             
+            # Загружаем аватар после создания всех компонентов
             self.load_avatar()
+
+            # Загружаем лог сканера
+            self.load_scanner_log_to_ui()
             
         except Exception as e:
             logger.exception(f"Error when configuring the interface: {str(e)}")
@@ -144,42 +336,51 @@ class DashboardWindow(QWidget):
 
     def update_profile_info(self):
         """Обновляет информацию профиля"""
-        self.username_label.setText(f"Добро пожаловать, {self.username}!")
+        if hasattr(self, 'username_label') and self.username_label is not None:
+            self.username_label.setText(f"Добро пожаловать, {self.username}!")
+        else:
+            logger.error("Username label is not initialized")
 
     def load_policies_to_combobox(self):
-        self.policy_combobox.clear()
-        policies = self.policy_manager.list_policies()
-        if not policies:
-            # Если нет политик, создаём и добавляем дефолтную
-            default_policy = self.policy_manager.get_default_policy()
-            self.policy_manager.save_policy("default", default_policy)
-            policies = ["default"]
-        self.policy_combobox.addItems(policies)
-        self.selected_policy = self.policy_manager.load_policy(policies[0])
+        """Загружает политики в комбобокс"""
+        # Проверяем, что объект инициализирован
+        if self.policy_combobox is not None:
+            self.policy_combobox.clear()
+            policies = self.policy_manager.list_policies()
+            if not policies:
+                # Если нет политик, создаём и добавляем дефолтную
+                default_policy = self.policy_manager.get_default_policy()
+                self.policy_manager.save_policy("default", default_policy)
+                policies = ["default"]
+            self.policy_combobox.addItems(policies)
+            self.selected_policy = self.policy_manager.load_policy(policies[0])
+        else:
+            logger.error("policy_combobox is not initialized")
 
     def on_policy_selected(self, idx):
-        name = self.policy_combobox.currentText()
-        if name:
-            self.selected_policy = self.policy_manager.load_policy(name)
-            logger.info(f"Selected policy: {name} - {self.selected_policy}")
-            
-            # Применяем настройки политики к UI
-            if self.selected_policy:
-                # Обновляем настройки производительности
-                if 'max_depth' in self.selected_policy:
-                    self.depth_spinbox.setValue(self.selected_policy['max_depth'])
-                if 'max_concurrent' in self.selected_policy:
-                    self.concurrent_spinbox.setValue(self.selected_policy['max_concurrent'])
-                if 'timeout' in self.selected_policy:
-                    self.timeout_spinbox.setValue(self.selected_policy['timeout'])
-                
-                # Обновляем типы уязвимостей
-                enabled_vulns = self.selected_policy.get('enabled_vulns', [])
-                self.sql_checkbox.setChecked('sql' in enabled_vulns)
-                self.xss_checkbox.setChecked('xss' in enabled_vulns)
-                self.csrf_checkbox.setChecked('csrf' in enabled_vulns)
-                
-                logger.info(f"Applied policy settings: depth={self.depth_spinbox.value()}, concurrent={self.concurrent_spinbox.value()}, timeout={self.timeout_spinbox.value()}")
+        if idx >= 0 and self.policy_combobox is not None:
+            name = self.policy_combobox.itemText(idx)
+            if name:
+                self.selected_policy = self.policy_manager.load_policy(name)
+                logger.info(f"Selected policy: {name} - {self.selected_policy}")
+
+                # Применяем настройки политики к UI
+                if self.selected_policy:
+                    # Обновляем настройки производительности
+                    if 'max_depth' in self.selected_policy:
+                        self.depth_spinbox.setValue(self.selected_policy['max_depth'])
+                    if 'max_concurrent' in self.selected_policy:
+                        self.concurrent_spinbox.setValue(self.selected_policy['max_concurrent'])
+                    if 'timeout' in self.selected_policy:
+                        self.timeout_spinbox.setValue(self.selected_policy['timeout'])
+
+                    # Обновляем типы уязвимостей
+                    enabled_vulns = self.selected_policy.get('enabled_vulns', [])
+                    self.sql_checkbox.setChecked('sql' in enabled_vulns)
+                    self.xss_checkbox.setChecked('xss' in enabled_vulns)
+                    self.csrf_checkbox.setChecked('csrf' in enabled_vulns)
+
+                    logger.info(f"Applied policy settings: depth={self.depth_spinbox.value()}, concurrent={self.concurrent_spinbox.value()}, timeout={self.timeout_spinbox.value()}")
 
     def create_policy_dialog(self):
         dlg = PolicyEditDialog(self)
@@ -191,11 +392,15 @@ class DashboardWindow(QWidget):
                 return
             self.policy_manager.save_policy(name, policy)
             self.load_policies_to_combobox()
-            idx = self.policy_combobox.findText(name)
-            if idx >= 0:
-                self.policy_combobox.setCurrentIndex(idx)
+            if self.policy_combobox is not None:
+                idx = self.policy_combobox.findText(name)
+                if idx >= 0:
+                    self.policy_combobox.setCurrentIndex(idx)
 
     def edit_policy_dialog(self):
+        if self.policy_combobox is None:
+            log_and_notify('error', "policy_combobox is not initialized")
+            return
         name = self.policy_combobox.currentText()
         if not name:
             return
@@ -205,11 +410,15 @@ class DashboardWindow(QWidget):
             new_policy = dlg.get_policy()
             self.policy_manager.save_policy(name, new_policy)
             self.load_policies_to_combobox()
-            idx = self.policy_combobox.findText(name)
-            if idx >= 0:
-                self.policy_combobox.setCurrentIndex(idx)
+            if self.policy_combobox is not None:
+                idx = self.policy_combobox.findText(name)
+                if idx >= 0:
+                    self.policy_combobox.setCurrentIndex(idx)
 
     def delete_policy(self):
+        if self.policy_combobox is None:
+            log_and_notify('error', "policy_combobox is not initialized")
+            return
         name = self.policy_combobox.currentText()
         if name:
             self.policy_manager.delete_policy(name)
@@ -220,9 +429,9 @@ class DashboardWindow(QWidget):
         """Асинхронный метод для подключения к кнопке"""
         try:
             await self.scan_website()
-        except Exception as e:
-            error_handler.handle_validation_error(e, "scan_website_sync")
-            log_and_notify('error', f"Error in scan_website_sync: {e}")
+        except Exception as scan_error:
+            error_handler.handle_validation_error(scan_error, "scan_website_sync")
+            log_and_notify('error', f"Error in scan_website_sync: {scan_error}")
 
     async def scan_website(self):
         """Запускает сканирование веб-сайта"""
@@ -272,15 +481,15 @@ class DashboardWindow(QWidget):
                 self._clear_scanner_log_file()
             
             # Сбрасываем интерфейс
-            if self.scan_progress:
+            if self.scan_progress is not None:
                 self.scan_progress.setValue(0)
-            if self.scan_status:
+            if self.scan_status is not None:
                 self.scan_status.setText("Подготовка к сканированию...")
-            if self.scan_button:
+            if self.scan_button is not None:
                 self.scan_button.setEnabled(False)
-            if self.pause_button:
+            if self.pause_button is not None:
                 self.pause_button.setEnabled(True)
-            if self.stop_button:
+            if self.stop_button is not None:
                 self.stop_button.setEnabled(True)
             
             # Сбрасываем состояние паузы
@@ -289,8 +498,10 @@ class DashboardWindow(QWidget):
             
             # Очищаем древовидное представление и статистику
             self.site_tree.clear()
-            self._log_entries.clear()
-            self._filtered_log_entries.clear()
+            if self._log_entries is not None:
+                self._log_entries.clear()
+            if self._filtered_log_entries is not None:
+                self._filtered_log_entries.clear()
             self._scanned_urls = set()  # Множество для отслеживания уникальных просканированных URL
             self._scanned_forms = set()  # Множество для отслеживания уникальных просканированных форм
             self._stats = {
@@ -344,7 +555,7 @@ class DashboardWindow(QWidget):
                 on_vulnerability=self._on_vulnerability_found,
                 on_result=self._on_scan_result,
                 max_coverage_mode=max_coverage_mode,
-                # username=self.username  # если потребуется, добавить в ScanController
+                # username=self.username # если потребуется, добавить в ScanController
             )
             
             # Записываем метрики производительности
@@ -352,7 +563,7 @@ class DashboardWindow(QWidget):
             
         except Exception as e:
             # Останавливаем таймер при ошибке
-            if hasattr(self, '_scan_timer'):
+            if hasattr(self, '_scan_timer') and self._scan_timer is not None:
                 self._scan_timer.stop()
             
             error_handler.handle_network_error(e, "start_scan")
@@ -401,6 +612,27 @@ class DashboardWindow(QWidget):
     def _add_log_entry(self, level: str, message: str, url: str = "", details: str = ""):
         """Добавляет запись в детальный лог с цветовой кодировкой"""
         try:
+            if not hasattr(self, '_log_entries') or self._log_entries is None:
+                self._log_entries = []
+
+            if not hasattr(self, '_filtered_log_entries') or self._filtered_log_entries is None:
+                self._filtered_log_entries = []
+
+            # Получаем временную метку и извлекаем только время HH:MM:SS
+            timestamp = extract_time_from_timestamp(get_local_timestamp())
+            
+            # Проверяем, что все необходимые атрибуты инициализированы
+            if not hasattr(self, '_stats') or self._stats is None:
+                self._stats = {
+                    'urls_found': 0,
+                    'urls_scanned': 0,
+                    'forms_found': 0,
+                    'forms_scanned': 0,
+                    'vulnerabilities': 0,
+                    'requests_sent': 0,
+                    'errors': 0,
+                }
+
             # Получаем временную метку и извлекаем только время HH:MM:SS
             timestamp = extract_time_from_timestamp(get_local_timestamp())
             
@@ -522,8 +754,8 @@ class DashboardWindow(QWidget):
                 html_content += entry['html']
             
             self.detailed_log.setHtml(html_content)
-        except Exception as e:
-            log_and_notify('error', f"Error in _update_log_display: {e}")
+        except Exception as update_error:
+            log_and_notify('error', f"Error in _update_log_display: {update_error}")
 
     def _filter_log(self, filter_text: str):
         """Обработчик изменения фильтра"""
@@ -546,6 +778,17 @@ class DashboardWindow(QWidget):
 
     def _update_stats(self, key: str, value):
         """Обновляет статистику"""
+        if not hasattr(self, '_stats') or self._stats is None:
+            self._stats = {
+                'urls_found': 0,
+                'urls_scanned': 0,
+                'forms_found': 0,
+                'forms_scanned': 0,
+                'vulnerabilities': 0,
+                'requests_sent': 0,
+                'errors': 0,
+            }
+        
         if key in self._stats:
             self._stats[key] = value
             
@@ -877,25 +1120,57 @@ class DashboardWindow(QWidget):
             
         except Exception as e:
             log_and_notify('error', f"Error in _on_scan_progress_with_forms: {e}")
-
+            
     def load_avatar(self):
         """Загрузка аватара пользователя"""
         try:
-            # Получаем путь к аватару
-            avatar_path = self.get_avatar_path()
-            if avatar_path and avatar_path.exists():
-                pixmap = QPixmap(str(avatar_path))
-                if not pixmap.isNull():
-                    # Устанавливаем аватар
-                    self.profile_tab.set_avatar(pixmap)
+            # Проверка инициализации компонентов
+            if not hasattr(self, 'avatar_label') or self.avatar_label is None:
+                logger.error("Avatar label not initialized")
+                return
+            
+            if not hasattr(self, 'user_id'):
+                logger.error("User ID not initialized")
+                return
+            
+            # Получение пути к аватару из базы данных
+            user_data = db.get_user_by_id(self.user_id)
+            logger.info(f"User data from DB: {user_data}")
+            if user_data:
+                avatar_path = user_data.get('avatar_path', '')
+                logger.info(f"Avatar path from DB: {avatar_path}")
+                if avatar_path and os.path.exists(avatar_path):
+                    logger.info(f"Avatar path exists: {avatar_path}")
+                    pixmap = QPixmap(avatar_path)
+                    if not pixmap.isNull():
+                        if self.avatar_label is not None:
+                            self.avatar_label.setPixmap(pixmap.scaled(200, 200, Qt.AspectRatioMode.KeepAspectRatio))
+                        else:
+                            logger.error("Avatar label is None when trying to set avatar")
+                    else:
+                        logger.warning(f"Failed to load pixmap from path: {avatar_path}")
+                        # Устанавливаем аватар по умолчанию
+                        default_avatar_path = "default_avatar.png"
+                        self._set_default_avatar()
                 else:
-                    logger.warning("Failed to load avatar image")
-            else:
-                logger.info("No avatar found, using default")
-                self.profile_tab.set_default_avatar()
+                    logger.info(f"Avatar path not found or empty: {avatar_path}")
+                    self._set_default_avatar()
         except Exception as e:
-            logger.exception(f"Error loading avatar: {str(e)}")
+            logger.error(f"Error loading avatar: {e}")
+            error_handler.show_error_message("Ошибка", f"Не удалось загрузить аватар: {e}")
 
+    def _set_default_avatar(self):
+        """Установка аватара по умолчанию"""
+        default_avatar_path = "default_avatar.png"
+        if os.path.exists(default_avatar_path):
+            default_pixmap = QPixmap(default_avatar_path)
+            if self.avatar_label:
+                self.avatar_label.setPixmap(default_pixmap.scaled(200, 200, Qt.AspectRatioMode.KeepAspectRatio))
+                logger.info(f"Default avatar loaded")
+            else:
+                logger.error("Avatar label is None when trying to set default avatar")
+        else:
+            logger.warning("Default avatar file not found")
 
     def handle_scan(self):
         url = self.url_input.text()
@@ -938,17 +1213,11 @@ class DashboardWindow(QWidget):
         self.populate_scans_table(scans, url_filter, selected_types, from_dt, to_dt)
 
         # Обновляем текстовый отчет
-        report_lines = []
+        report_lines = ["=" * 80, "ОТЧЕТ О СКАНИРОВАНИИ УЯЗВИМОСТЕЙ", "=" * 80, f"Период: {from_dt} - {to_dt}",
+                        f"Фильтр URL: {url_filter if url_filter else 'Все'}",
+                        f"Типы уязвимостей: {', '.join(selected_types) if selected_types else 'Все'}", "=" * 80, ""]
         
         # Добавляем заголовок отчета
-        report_lines.append("=" * 80)
-        report_lines.append("ОТЧЕТ О СКАНИРОВАНИИ УЯЗВИМОСТЕЙ")
-        report_lines.append("=" * 80)
-        report_lines.append(f"Период: {from_dt} - {to_dt}")
-        report_lines.append(f"Фильтр URL: {url_filter if url_filter else 'Все'}")
-        report_lines.append(f"Типы уязвимостей: {', '.join(selected_types) if selected_types else 'Все'}")
-        report_lines.append("=" * 80)
-        report_lines.append("")
 
         filtered_scans = []
         total_vulnerabilities = 0
@@ -1317,7 +1586,7 @@ class DashboardWindow(QWidget):
     def get_selected_scan(self):
         """Получает выбранное сканирование"""
         current_row = self.scans_table.currentRow()
-        if current_row >= 0 and hasattr(self, 'filtered_scans') and current_row < len(self.filtered_scans):
+        if 0 <= current_row < len(self.filtered_scans) and hasattr(self, 'filtered_scans'):
             selected_scan = self.filtered_scans[current_row]
             logger.info(f"Selected scan: ID={selected_scan.get('id')}, URL={selected_scan.get('url')}")
             return selected_scan
@@ -1742,11 +2011,13 @@ class DashboardWindow(QWidget):
             log_and_notify('error', f"Error in generate_detailed_report: {e}")
             QMessageBox.critical(self, "Ошибка", f"Произошла ошибка при создании отчета: {str(e)}")
 
-    def _on_period_changed(self, period_combo, custom_period_widget):
+    @staticmethod
+    def _on_period_changed(period_combo, custom_period_widget):
         """Обработчик изменения периода"""
         custom_period_widget.setVisible(period_combo.currentText() == "Произвольный период")
 
-    def _filter_scans_for_report(self, scans, from_date, to_date, vuln_types, risk_levels, url_filter):
+    @staticmethod
+    def _filter_scans_for_report(scans, from_date, to_date, vuln_types, risk_levels, url_filter):
         """Фильтрует сканирования согласно настройкам отчета"""
         filtered_scans = []
         
@@ -1796,7 +2067,8 @@ class DashboardWindow(QWidget):
         
         return filtered_scans
 
-    def _generate_enhanced_report(self, scans, format_type, filename, sections, include_charts, include_colors, sort_option):
+    @staticmethod
+    def _generate_enhanced_report(scans, format_type, filename, sections, include_charts, include_colors, sort_option):
         """Генерирует расширенный отчет с дополнительными настройками"""
         try:
             # Сортируем сканирования
@@ -1837,14 +2109,17 @@ class DashboardWindow(QWidget):
     def refresh_stats(self):
         scans = db.get_scans_by_user(self.user_id)
         if not scans:
-            if MATPLOTLIB_AVAILABLE and FigureCanvas is not None:
+            if MATPLOTLIB_AVAILABLE and FigureCanvas is not None and self.stats_canvas is not None:
                 self.stats_canvas.figure.clear()
                 ax = self.stats_canvas.figure.add_subplot(111)
                 ax.text(0.5, 0.5, "Нет данных для отображения", 
                        horizontalalignment='center', verticalalignment='center')
                 self.stats_canvas.draw()
             else:
-                self.stats_text.setText("Нет данных для отображения")
+                if hasattr(self, 'stats_text') and self.stats_text is not None:
+                    self.stats_text.setText("Нет данных для отображения")
+                else:
+                    logger.error("stats_text is not initialized")
             return
 
         if MATPLOTLIB_AVAILABLE and FigureCanvas is not None:
@@ -1978,24 +2253,24 @@ class DashboardWindow(QWidget):
             
         except (ValueError, sqlite3.Error, KeyError, AttributeError) as e:
             log_and_notify('error', f"Error updating matplotlib stats: {e}")
-            self.stats_canvas.figure.clear()
-            ax = self.stats_canvas.figure.add_subplot(111)
-            ax.text(0.5, 0.5, f"Ошибка отображения статистики: {str(e)}", 
-                horizontalalignment='center', verticalalignment='center')
-            self.stats_canvas.draw_idle()
+            if self.stats_canvas is not None:
+                self.stats_canvas.figure.clear()
+                ax = self.stats_canvas.figure.add_subplot(111)
+                ax.text(0.5, 0.5, f"Ошибка отображения статистики: {str(e)}", 
+                    horizontalalignment='center', verticalalignment='center')
+                self.stats_canvas.draw_idle()
 
 
     def _refresh_stats_text_only(self, scans):
         """Обновление статистики в текстовом виде (без matplotlib)"""
         if not scans:
-            self.stats_text.setText("Нет данных для отображения")
+            if hasattr(self, 'stats_text') and self.stats_text is not None:
+                self.stats_text.setText("Нет данных для отображения")
+            else:
+                logger.error("stats_text is not initialized")
             return
 
-        stats_lines = []
-        stats_lines.append("=" * 60)
-        stats_lines.append("СТАТИСТИКА СКАНИРОВАНИЙ")
-        stats_lines.append("=" * 60)
-        stats_lines.append("")
+        stats_lines = ["=" * 60, "СТАТИСТИКА СКАНИРОВАНИЙ", "=" * 60, ""]
 
         # Общая статистика
         total_scans = len(scans)
@@ -2021,8 +2296,18 @@ class DashboardWindow(QWidget):
                         for vuln_cat, vulns in result['vulnerabilities'].items():
                             if isinstance(vulns, list) and vulns:
                                 scan_vulnerabilities += len(vulns)
+                                # Обновляем счетчики по типам уязвимостей
+                                if vuln_cat == 'sql':
+                                    vuln_by_type['SQL Injection'] += len(vulns)
+                                elif vuln_cat == 'xss':
+                                    vuln_by_type['XSS'] += len(vulns)
+                                elif vuln_cat == 'csrf':
+                                    vuln_by_type['CSRF'] += len(vulns)
                     # Проверяем старую структуру
                     elif result.get('type') or result.get('vuln_type'):
+                        vuln_type = result.get('type', result.get('vuln_type', ''))
+                        if vuln_type in vuln_by_type:
+                            vuln_by_type[vuln_type] += 1
                         scan_vulnerabilities += 1
             
             total_vulnerabilities += scan_vulnerabilities
@@ -2046,29 +2331,22 @@ class DashboardWindow(QWidget):
             # Анализируем по типам
             for result in results:
                 if isinstance(result, dict):
-                    vuln_type = None
                     if 'vulnerabilities' in result:
                         # Новая структура
                         for vuln_cat, vulns in result['vulnerabilities'].items():
                             if isinstance(vulns, list) and vulns:
                                 if vuln_cat == 'sql':
-                                    vuln_type = 'SQL Injection'
+                                    vuln_by_severity["HIGH"] += len(vulns)
                                 elif vuln_cat == 'xss':
-                                    vuln_type = 'XSS'
+                                    vuln_by_severity["HIGH"] += len(vulns)
                                 elif vuln_cat == 'csrf':
-                                    vuln_type = 'CSRF'
-                                break
+                                    vuln_by_severity["HIGH"] += len(vulns)
                     else:
                         # Старая структура
                         vuln_type = result.get('type', 'Unknown')
-                    
-                    if vuln_type and vuln_type in vuln_by_type:
-                        vuln_by_type[vuln_type] += 1
-                    
-                    # Определяем серьезность
-                    if vuln_type and vuln_type in vuln_by_type:
-                        if 'SQL Injection' in vuln_type or 'XSS' in vuln_type:
-                            vuln_by_severity["HIGH"] += 1
+                        if vuln_type in vuln_by_type:
+                            if 'SQL Injection' in vuln_type or 'XSS' in vuln_type:
+                                vuln_by_severity["HIGH"] += 1
                         elif 'CSRF' in vuln_type:
                             vuln_by_severity["MEDIUM"] += 1
                         else:
@@ -2181,12 +2459,41 @@ class DashboardWindow(QWidget):
         self.edit_window.show()
 
     def change_avatar(self):
-        path, _ = QFileDialog.getOpenFileName(self, "Выберите аватар", "", "Image Files (*.png *.jpg *.bmp)")
-        if path:
-            self.avatar_path = path
-            self.load_avatar()
-            logger.info(f"User '{self.username}' changed his avatar to: {path}")
-            QMessageBox.information(self, "Аватар обновлён", "Ваш аватар успешно обновлён.")
+        """Изменение аватара пользователя"""
+        try:
+            file_path, _ = QFileDialog.getOpenFileName(
+                self, "Выберите аватар", "", "Image Files (*.png *.jpg *.jpeg *.bmp)"
+            )
+            if file_path:
+                # Создаем директорию для аватаров, если она не существует
+                avatar_dir = os.path.join("data", "avatars", str(self.user_id))
+                os.makedirs(avatar_dir, exist_ok=True)
+                
+                # Генерируем уникальное имя файла
+                import uuid
+                file_ext = os.path.splitext(file_path)[1]
+                avatar_name = f"avatar_{uuid.uuid4().hex}{file_ext}"
+                avatar_path = os.path.join(avatar_dir, avatar_name)
+                
+                # Копируем файл
+                import shutil
+                shutil.copy2(file_path, avatar_path)
+                
+                # Обновляем базу данных
+                with db.get_db_connection_cm() as conn:
+                    conn.execute(
+                        "UPDATE users SET avatar_path = ? WHERE id = ?",
+                        (avatar_path, self.user_id)
+                    )
+                
+                # Обновляем интерфейс
+                self.load_avatar()
+                
+                log_and_notify('info', "Avatar updated successfully")
+                logger.info(f"Avatar updated for user {self.username}: {avatar_path}")
+        except Exception as e:
+            error_handler.handle_file_error(e, "change_avatar")
+            log_and_notify('error', f"Error changing avatar: {e}")
 
     def logout(self):
         logger.info(f"User '{self.username}' has logged out of the account")
@@ -2210,8 +2517,8 @@ class DashboardWindow(QWidget):
                     close_method = getattr(parent_widget, 'close', None)
                     if close_method is not None and callable(close_method):
                         close_method()
-            except Exception as e:
-                log_and_notify('error', f"Error in logout: {e}")
+            except Exception as logout_error:
+                log_and_notify('error', f"Error in logout: {logout_error}")
                 # В случае ошибки закрываем текущее окно
                 self.close()
         else:
@@ -2445,8 +2752,10 @@ class DashboardWindow(QWidget):
         """Очищает лог сканирования"""
         self._log_entries.clear()
         self._filtered_log_entries.clear()
-        self.detailed_log.clear()
-        self.site_tree.clear()
+        if hasattr(self, 'detailed_log') and self.detailed_log is not None:
+            self.detailed_log.clear()
+        if hasattr(self, 'site_tree') and self.site_tree is not None:
+            self.site_tree.clear()
         
         # Сбрасываем статистику
         for key in self.stats_labels:
@@ -2664,7 +2973,8 @@ class DashboardWindow(QWidget):
             self._update_stats('urls_scanned', self._stats['urls_scanned'])
 
     # Методы для работы с временем в отчетах
-    def _set_time_to_start_of_day(self, datetime_edit):
+    @staticmethod
+    def _set_time_to_start_of_day(datetime_edit):
         """Устанавливает время на начало дня (00:00:00)"""
         current_datetime = datetime_edit.dateTime()
         new_datetime = QDateTime(current_datetime.date(), QTime(0, 0, 0))
@@ -2674,13 +2984,15 @@ class DashboardWindow(QWidget):
         """Устанавливает время на полночь (00:00:00)"""
         self._set_time_to_start_of_day(datetime_edit)
 
-    def _set_time_to_end_of_day(self, datetime_edit):
+    @staticmethod
+    def _set_time_to_end_of_day(datetime_edit):
         """Устанавливает время на конец дня (23:59:59)"""
         current_datetime = datetime_edit.dateTime()
         new_datetime = QDateTime(current_datetime.date(), QTime(23, 59, 59))
         datetime_edit.setDateTime(new_datetime)
 
-    def _set_time_to_now(self, datetime_edit):
+    @staticmethod
+    def _set_time_to_now(datetime_edit):
         """Устанавливает время на текущий момент"""
         datetime_edit.setDateTime(QDateTime.currentDateTime())
 
@@ -2724,6 +3036,15 @@ class DashboardWindow(QWidget):
                 self._on_scan_log(f"Ошибка загрузки scanner.log: {e}")
             if hasattr(self, 'log_status_label'):
                 self.log_status_label.setText("Ошибка загрузки лога.")
+
+    def get_avatar_path(self):
+        """Получить путь к аватару пользователя"""
+        # Если установлен пользовательский путь к аватару, вернуть этот путь
+        if hasattr(self, 'avatar_path') and self.avatar_path != "default_avatar.png":
+            return Path(self.avatar_path)
+        # Иначе вернуть путь к аватару по умолчанию
+        return Path("default_avatar.png")
+
 
     def _load_full_log(self, log_path):
         """Загружает полный лог в отдельном потоке"""
@@ -2798,7 +3119,8 @@ class DashboardWindow(QWidget):
                 self.log_status_label.setText("Ошибка обработки лога.")
 
 
-    def _read_log_tail(self, filepath: str, lines: int = 500, buffer_size: int = 4096) -> str:
+    @staticmethod
+    def _read_log_tail(filepath: str, lines: int = 500, buffer_size: int = 4096) -> str:
         """Эффективно читает последние N строк из файла."""
         try:
             with open(filepath, "r", encoding="utf-8", errors="replace") as f:

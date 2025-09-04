@@ -5,46 +5,36 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="c8a92672-e473-4c09-8a8d-a50b7c922ba0" name="Changes" comment="">
-      <change afterPath="$PROJECT_DIR$/.idea/Web_Scanner_SQL_XSS_CSRF.iml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/inspectionProfiles/profiles_settings.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/misc.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/modules.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/vcs.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.vscode/settings.json" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/controllers/auth_controller.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/controllers/scan_controller.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/default_avatar.png" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/export/__init__.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/export/export.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/logs/auth_controller.log" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/logs/database.log" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/logs/login_window.log" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/logs/main.log" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/logs/scan_controller.log" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/logs/scanner.log" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/logs/user_model.log" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/main.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/models/scan_model.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/models/user_model.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/requirements.txt" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/scanner.db" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/scanner/__init__.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/styles.qss" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/timesnewromanpsmt.cw127.pkl" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/timesnewromanpsmt.pkl" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/timesnewromanpsmt.ttf" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/ui/__init__.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/ui/edit_credentials_window.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/ui/main_window.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/ui/registration_window.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/utils/__init__.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/utils/database.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/utils/logger.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/utils/vulnerability_scanner.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/views/dashboard_window.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/views/edit_profile_window.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/views/login_window.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/ENCRYPTION_README.md" beforeDir="false" afterPath="$PROJECT_DIR$/ENCRYPTION_README.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/OPTIMIZATION_README.md" beforeDir="false" afterPath="$PROJECT_DIR$/OPTIMIZATION_README.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/URL_ENCRYPTION_README.md" beforeDir="false" afterPath="$PROJECT_DIR$/URL_ENCRYPTION_README.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/controllers/auth_controller.py" beforeDir="false" afterPath="$PROJECT_DIR$/controllers/auth_controller.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/controllers/scan_controller.py" beforeDir="false" afterPath="$PROJECT_DIR$/controllers/scan_controller.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/scanner.db" beforeDir="false" afterPath="$PROJECT_DIR$/data/scanner.db" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/export/export.py" beforeDir="false" afterPath="$PROJECT_DIR$/export/export.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/export/report_generator.py" beforeDir="false" afterPath="$PROJECT_DIR$/export/report_generator.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/logs/auth_controller.log" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/logs/database.log" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/logs/login_window.log" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/logs/main.log" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/logs/scan_controller.log" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/logs/scanner.log" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/logs/user_model.log" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/main.py" beforeDir="false" afterPath="$PROJECT_DIR$/main.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/migrate_db.py" beforeDir="false" afterPath="$PROJECT_DIR$/migrate_db.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/models/scan_model.py" beforeDir="false" afterPath="$PROJECT_DIR$/models/scan_model.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/models/user_model.py" beforeDir="false" afterPath="$PROJECT_DIR$/models/user_model.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/requirements.txt" beforeDir="false" afterPath="$PROJECT_DIR$/requirements.txt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/scanner.db" beforeDir="false" afterPath="$PROJECT_DIR$/scanner.db" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/scanner/scanner_fixed.py" beforeDir="false" afterPath="$PROJECT_DIR$/scanner/scanner_fixed.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/ui/main_window.py" beforeDir="false" afterPath="$PROJECT_DIR$/ui/main_window.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/utils/database.py" beforeDir="false" afterPath="$PROJECT_DIR$/utils/database.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/utils/init_db.py" beforeDir="false" afterPath="$PROJECT_DIR$/utils/init_db.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/utils/logger.py" beforeDir="false" afterPath="$PROJECT_DIR$/utils/logger.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/views/dashboard_window.py" beforeDir="false" afterPath="$PROJECT_DIR$/views/dashboard_window.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/views/tabs/profile_tab.py" beforeDir="false" afterPath="$PROJECT_DIR$/views/tabs/profile_tab.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/views/tabs/scan_tab.py" beforeDir="false" afterPath="$PROJECT_DIR$/views/tabs/scan_tab.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -54,23 +44,23 @@
   <component name="Git.Settings">
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
   </component>
-  <component name="ProjectColorInfo"><![CDATA[{
-  "associatedIndex": 0
-}]]></component>
+  <component name="ProjectColorInfo">{
+  &quot;associatedIndex&quot;: 0
+}</component>
   <component name="ProjectId" id="319gdJVNZCvsfuD4Zyah4ztugQg" />
   <component name="ProjectViewState">
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent"><![CDATA[{
-  "keyToString": {
-    "ModuleVcsDetector.initialDetectionPerformed": "true",
-    "Python.main.executor": "Run",
-    "RunOnceActivity.ShowReadmeOnStart": "true",
-    "RunOnceActivity.git.unshallow": "true",
-    "git-widget-placeholder": "master"
+  <component name="PropertiesComponent">{
+  &quot;keyToString&quot;: {
+    &quot;ModuleVcsDetector.initialDetectionPerformed&quot;: &quot;true&quot;,
+    &quot;Python.main.executor&quot;: &quot;Run&quot;,
+    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;master&quot;
   }
-}]]></component>
+}</component>
   <component name="SharedIndexes">
     <attachedChunks>
       <set>

@@ -15,7 +15,8 @@ class ScanModel:
         self.conn = db.get_db_connection()
         logger.info('ScanModel initialized')
 
-    def save_scan_result(self, user_id: int, url: str, results: List[Dict], scan_type: str = "general", scan_duration: float = 0.0) -> bool:
+    @staticmethod
+    def save_scan_result(user_id: int, url: str, results: List[Dict], scan_type: str = "general", scan_duration: float = 0.0) -> bool:
         """
         Сохраняет результат сканирования в базу данных.
         
@@ -60,7 +61,8 @@ class ScanModel:
             log_and_notify('error', f'Error saving scan result: {e}')
             return False
 
-    def get_user_scans(self, user_id: int, limit: int = 50) -> List[Dict]:
+    @staticmethod
+    def get_user_scans(user_id: int, limit: int = 50) -> List[Dict]:
         """
         Получает сканирования пользователя с ограничением.
         
@@ -88,7 +90,8 @@ class ScanModel:
             log_and_notify('error', f'Error getting user scans: {e}')
             return []
 
-    def delete_scan_result(self, scan_id: int, user_id: int) -> bool:
+    @staticmethod
+    def delete_scan_result(scan_id: int, user_id: int) -> bool:
         """
         Удаляет конкретное сканирование с проверкой владельца.
         
@@ -122,7 +125,8 @@ class ScanModel:
             log_and_notify('error', f'Error deleting scan {scan_id}: {e}')
             return False
 
-    def delete_user_scans(self, user_id: int) -> bool:
+    @staticmethod
+    def delete_user_scans(user_id: int) -> bool:
         """
         Удаляет все сканирования пользователя.
         
@@ -151,7 +155,8 @@ class ScanModel:
             log_and_notify('error', f'Error deleting scans for user {user_id}: {e}')
             return False
 
-    def get_scan_statistics(self, user_id: int) -> Dict:
+    @staticmethod
+    def get_scan_statistics(user_id: int) -> Dict:
         """
         Получает статистику сканирований пользователя.
         
@@ -175,7 +180,8 @@ class ScanModel:
             log_and_notify('error', f'Error getting scan statistics: {e}')
             return {}
 
-    def get_scan_by_id(self, scan_id: int, user_id: int) -> Optional[Dict]:
+    @staticmethod
+    def get_scan_by_id(scan_id: int, user_id: int) -> Optional[Dict]:
         """
         Получает конкретное сканирование по ID с проверкой владельца.
         

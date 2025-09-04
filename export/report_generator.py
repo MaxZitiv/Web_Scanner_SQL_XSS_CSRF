@@ -189,7 +189,8 @@ class PDF(FPDF):
         self.multi_cell(0, 5, body)
         self.ln()
 
-    def _clean_text_for_pdf(self, text: str) -> str:
+    @staticmethod
+    def _clean_text_for_pdf(text: str) -> str:
         """Очищает текст для корректного отображения в PDF"""
         try:
             # Удаляем или заменяем специальные символы
@@ -205,6 +206,15 @@ class PDF(FPDF):
         except Exception as e:
             logger.error(f"Error cleaning text for PDF: {e}")
             return text
+
+    def add_text(self, text: str):
+        """Метод для добавления текста в PDF"""
+        cleaned_text = self._clean_text_for_pdf(text)
+        self.set_font('times', '', 12)
+        self.cell(0, 10, cleaned_text)
+
+    def clean_text(self, text: str) -> str:
+        return self._clean_text_for_pdf(text)
 
     def add_section(self, title, content):
         self.chapter_title(title)
@@ -231,7 +241,7 @@ def generate_pdf_report(scan_id: int, filename: str):
             pdf.set_font('helvetica', '', 12)
 
         # Обрабатываем текст для PDF
-        report_text = pdf._clean_text_for_pdf(report_text)
+        report_text = pdf.clean_text(report_text)
 
         # Заменяем разделители для лучшего вида
         report_text = report_text.replace("=" * 60, "-" * 80)

@@ -49,7 +49,8 @@ class UserModel:
         self.current_email = None
         logger.info("Current user data cleared (logout).")
 
-    def _get_cached_user(self, key: str) -> Optional[Dict]:
+    @staticmethod
+    def _get_cached_user(key: str) -> Optional[Dict]:
         """Получает пользователя из кэша"""
         if key in _user_cache:
             if time.time() - _cache_timestamps.get(key, 0) < _cache_ttl:
@@ -61,7 +62,8 @@ class UserModel:
                     del _cache_timestamps[key]
         return None
 
-    def _cache_user(self, key: str, user_data: Dict) -> None:
+    @staticmethod
+    def _cache_user(key: str, user_data: Dict) -> None:
         """Сохраняет пользователя в кэш"""
         _user_cache[key] = user_data
         _cache_timestamps[key] = time.time()
@@ -72,7 +74,8 @@ class UserModel:
             del _user_cache[oldest_key]
             del _cache_timestamps[oldest_key]
 
-    def _validate_registration_data(self, username: str, email: str, password: str) -> Tuple[bool, str]:
+    @staticmethod
+    def _validate_registration_data(username: str, email: str, password: str) -> Tuple[bool, str]:
         """Валидация данных регистрации пользователя."""
         try:
             # 1. Проверка на наличие и тип данных
@@ -105,7 +108,8 @@ class UserModel:
             log_and_notify('error', f"Error validating registration data: {e}")
             return False, "Ошибка валидации данных. Пожалуйста, попробуйте снова."
 
-    def is_account_locked(self, username: str) -> Tuple[bool, Optional[str]]:
+    @staticmethod
+    def is_account_locked(username: str) -> Tuple[bool, Optional[str]]:
         """Проверяет, заблокирован ли аккаунт из-за неудачных попыток входа."""
         try:
             user = db.get_user_by_username_or_email(username)
@@ -163,7 +167,8 @@ class UserModel:
             log_and_notify('error', f"Error authenticating user {username}: {e}")
             return False, None, "Ошибка аутентификации"
 
-    def change_password(self, user_id: int, old_password: str, new_password: str) -> Tuple[bool, str]:
+    @staticmethod
+    def change_password(user_id: int, old_password: str, new_password: str) -> Tuple[bool, str]:
         """Изменяет пароль пользователя."""
         try:
             if not all([isinstance(user_id, int), old_password, new_password]):
@@ -193,7 +198,8 @@ class UserModel:
             log_and_notify('error', f"Error changing password for user {user_id}: {e}")
             return False, "Ошибка изменения пароля"
 
-    def get_user_profile(self, user_id: int) -> Optional[Dict]:
+    @staticmethod
+    def get_user_profile(user_id: int) -> Optional[Dict]:
         """Получает профиль пользователя."""
         try:
             if not isinstance(user_id, int):
@@ -208,7 +214,8 @@ class UserModel:
             log_and_notify('error', f"Error getting user profile for {user_id}: {e}")
             return None
 
-    def update_user_profile(self, user_id: int, email: str) -> Tuple[bool, str]:
+    @staticmethod
+    def update_user_profile(user_id: int, email: str) -> Tuple[bool, str]:
         """Обновляет профиль пользователя."""
         try:
             if not isinstance(user_id, int) or not email.strip():
@@ -227,29 +234,34 @@ class UserModel:
             log_and_notify('error', f"Error updating user profile for {user_id}: {e}")
             return False, "Ошибка обновления профиля"
 
-    def get_all_users(self, limit: int = 100) -> List[Dict]:
+    @staticmethod
+    def get_all_users(limit: int = 100) -> List[Dict]:
         """Получает список всех пользователей (для административных целей)."""
         return db.get_all_users(limit)
 
-    def delete_user(self, user_id: int) -> bool:
+    @staticmethod
+    def delete_user(user_id: int) -> bool:
         """Удаляет пользователя."""
         return db.delete_user(user_id)
 
-    def clear_user_cache(self) -> None:
+    @staticmethod
+    def clear_user_cache() -> None:
         """Очищает кэш пользователей."""
         global _user_cache, _cache_timestamps
         _user_cache.clear()
         _cache_timestamps.clear()
         logger.info("User cache cleared")
 
-    def get_user_cache_stats(self) -> Dict[str, int]:
+    @staticmethod
+    def get_user_cache_stats() -> Dict[str, int]:
         """Получает статистику кэша пользователей."""
         return {
             'cache_size': len(_user_cache),
             'cache_entries': len(_cache_timestamps)
         }
     
-    def is_username_taken(self, username: str) -> bool:
+    @staticmethod
+    def is_username_taken(username: str) -> bool:
         """Проверяет, занято ли имя пользователя."""
         try:
             user = db.get_user_by_username_or_email(username)
@@ -258,11 +270,13 @@ class UserModel:
             log_and_notify('error', f"Error checking username availability: {e}")
             return False
         
-    def is_valid_email(self, email: str) -> bool:
+    @staticmethod
+    def is_valid_email(email: str) -> bool:
         """Проверяет валидность email"""
         return validate_email_format(email)
     
-    def is_email_taken(self, email: str) -> bool:
+    @staticmethod
+    def is_email_taken(email: str) -> bool:
         """Проверяет, используется ли уже email"""
         try:
             user = db.get_user_by_username_or_email(email)
@@ -330,7 +344,8 @@ class UserModel:
             log_and_notify('error', f"Unexpected error creating user: {e}")
             return False, "Неожиданная ошибка при создании пользователя"
         
-    def _validate_username(self, username: str) -> bool:
+    @staticmethod
+    def _validate_username(username: str) -> bool:
         """Валидирует имя пользователя.
         
         Args:

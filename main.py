@@ -104,7 +104,7 @@ def graceful_shutdown(exit_code: int) -> int:
     logger.info(f"Shutdown complete with exit code: {exit_code}")
     return exit_code
 
-def signal_handler(signum: int, frame) -> None:
+def signal_handler(signum: int, _) -> None:
     """Обработчик сигналов для корректного завершения приложения"""
     logger.info(f"Received signal {signum}")
     graceful_shutdown(0)

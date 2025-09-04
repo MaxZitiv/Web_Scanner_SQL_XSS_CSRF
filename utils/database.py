@@ -25,7 +25,8 @@ class Database:
         self._executor = ThreadPoolExecutor()
         self._setup_database()
 
-    def update_user_credentials(self, user_id: int, username: str, email: str, password_hash: str) -> bool:
+    @staticmethod
+    def update_user_credentials(user_id: int, username: str, email: str, password_hash: str) -> bool:
         """
         Обновляет учетные данные пользователя в базе данных.
         
@@ -98,6 +99,7 @@ class Database:
                         username TEXT UNIQUE NOT NULL CHECK(length(username) >= 3 AND length(username) <= 50),
                         password_hash TEXT NOT NULL CHECK(length(password_hash) > 0),
                         email TEXT UNIQUE NOT NULL CHECK(length(email) > 0),
+                        avatar_path TEXT,
                         created_at TEXT DEFAULT CURRENT_TIMESTAMP,
                         last_login TEXT,
                         failed_attempts INTEGER DEFAULT 0,
@@ -187,8 +189,17 @@ class Database:
             with self.get_db_connection_cm() as conn:
                 cursor = conn.cursor()
                 cursor.execute('SELECT * FROM users WHERE id = ?', (user_id,))
-                row = cursor.fetchone()
-                return dict(row) if row else None
+                user_data = cursor.fetchone()
+
+                if user_data:
+                    # Преобразуем кортеж в словарь для удобства
+                    columns = [column[0] for column in cursor.description]
+                    user_dict = dict(zip(columns, user_data))
+                    logger.debug(f"User data retrieved: {user_dict}")
+                    return user_dict
+                else:
+                    logger.warning(f"No user found with ID {user_id}")
+                    return None
         except Exception as e:
             log_and_notify('error', f"Error getting user by ID {user_id}: {e}")
             return None
@@ -387,7 +398,8 @@ class Database:
             log_and_notify('error', f"Error deleting scans for user {user_id}: {e}")
             return False
         
-    def is_valid_url(self, url: str) -> bool:
+    @staticmethod
+    def is_valid_url(url: str) -> bool:
         """
         Проверяет корректность URL.
         

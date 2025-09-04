@@ -77,7 +77,7 @@ def notify_admin(level: str, message: str):
     body = f"Level: {level.upper()}\n\nMessage:\n{message}"
 
     msg = MIMEMultipart()
-    msg['From'] = str(FROM_EMAIL)  # ✅ Явно приводим к строке
+    msg['From'] = str(FROM_EMAIL)
     msg['To'] = str(ADMIN_EMAIL)
     msg['Subject'] = subject
     msg.attach(MIMEText(body, 'plain'))
@@ -94,6 +94,7 @@ def notify_admin(level: str, message: str):
 # 🧩 Кастомный фильтр для разделения логов по уровню
 class LevelFilter(logging.Filter):
     def __init__(self, level):
+        super().__init__()
         self.level = level
 
     def filter(self, record):

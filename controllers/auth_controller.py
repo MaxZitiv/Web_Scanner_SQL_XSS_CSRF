@@ -22,7 +22,8 @@ class AuthController(QObject):
         self.db_path = 'scanner.db' # Этот путь больше не будет использоваться напрямую
         logger.info("AuthController initialized.")
     
-    def _get_connection(self) -> sqlite3.Connection:
+    @staticmethod
+    def _get_connection() -> sqlite3.Connection:
         """
         Возвращает соединение с базой данных, используя централизованную функцию.
         
@@ -31,7 +32,8 @@ class AuthController(QObject):
         """
         return db.get_db_connection()
     
-    def _hash_password(self, password: str) -> str:
+    @staticmethod
+    def _hash_password(password: str) -> str:
         """
         Хеширует пароль с использованием bcrypt.
         
@@ -44,21 +46,23 @@ class AuthController(QObject):
         salt = bcrypt.gensalt(rounds=12)
         hashed = bcrypt.hashpw(password.encode('utf-8'), salt).decode('utf-8')
         return hashed
-    
-    def _validate_email(self, email: str) -> bool:
+
+    @staticmethod
+    def _validate_email(email: str) -> bool:
         """
         Валидирует формат email адреса.
-        
+
         Args:
             email: Email для валидации
-            
+
         Returns:
             bool: True если email валиден, False иначе
         """
         pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
         return bool(re.match(pattern, email))
-    
-    def _validate_username(self, username: str) -> bool:
+
+    @staticmethod
+    def _validate_username(username: str) -> bool:
         """
         Валидирует имя пользователя.
         
@@ -342,7 +346,8 @@ class AuthController(QObject):
             log_and_notify('error', f"Unexpected error deleting user: {e}")
             return False
     
-    def close_connection(self):
+    @staticmethod
+    def close_connection():
         """Закрывает соединение с базой данных."""
         # Этот метод больше не нужен, так как соединения управляются централизованно
         logger.debug("Database connection management is centralized") 

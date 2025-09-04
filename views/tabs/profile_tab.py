@@ -214,5 +214,23 @@ class ProfileTabWidget(QWidget):
                 # Refresh data after profile update
                 self.load_user_data()
         except Exception as e:
-            error_handler.handle_general_error(e, "update_profile")
+            error_handler.handle_validation_error(e, "update_profile")
             log_and_notify('error', f"Error updating profile: {e}")
+
+    def set_avatar(self, pixmap):
+        """Установка аватара пользователя"""
+        try:
+            if hasattr(self, 'avatar_label'):
+                self.avatar_label.setPixmap(pixmap.scaled(200, 200, Qt.AspectRatioMode.KeepAspectRatio))
+        except Exception as e:
+            logger.exception(f"Error setting avatar: {str(e)}")
+            log_and_notify('error', f"Error setting avatar: {e}")
+
+    def set_default_avatar(self):
+        """Установка аватара по умолчанию"""
+        try:
+            if hasattr(self, 'avatar_label'):
+                self.avatar_label.clear()
+                self.avatar_label.setText("Аватар по умолчанию")
+        except Exception as e:
+            logger.exception(f"Error setting default avatar: {str(e)}")

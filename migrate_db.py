@@ -21,7 +21,7 @@ def migrate_scanner_db():
     
     if not db_file.exists():
         logger.info("База данных не найдена, создание новой базы данных...")
-        return
+        return True
     
     try:
         with sqlite3.connect(db_file) as conn:
@@ -37,6 +37,17 @@ def migrate_scanner_db():
                 logger.info("Поле scan_duration успешно добавлено")
             else:
                 logger.info("Поле scan_duration уже существует")
+
+            # Добавляем проверку и добавление поля avatar_path
+            cursor.execute("PRAGMA table_info(users)")
+            user_columns = [column[1] for column in cursor.fetchall()]
+            
+            if 'avatar_path' not in user_columns:
+                logger.info("Добавление поля avatar_path в таблицу users...")
+                cursor.execute('ALTER TABLE users ADD COLUMN avatar_path TEXT')
+                logger.info("Поле avatar_path успешно добавлено")
+            else:
+                logger.info("Поле avatar_path уже существует")
             
             # Проверяем и обновляем существующие записи
             cursor.execute("SELECT COUNT(*) FROM scans WHERE scan_duration IS NULL")
@@ -49,6 +60,7 @@ def migrate_scanner_db():
             
             conn.commit()
             logger.info("Миграция базы данных завершена успешно")
+            return True
             
     except sqlite3.Error as e:
         logger.critical(f"Критическая ошибка работы с БД: {e}")

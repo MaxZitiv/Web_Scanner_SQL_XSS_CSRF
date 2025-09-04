@@ -1,15 +1,16 @@
 import csv
 import json
 import os
-from datetime import datetime
-from fpdf import FPDF
-from utils.logger import logger, log_and_notify
-from PyQt5.QtWidgets import QMessageBox
-from typing import List, Dict, Any, Optional
 import sqlite3
-from utils.performance import get_local_timestamp
+from typing import List, Dict, Any, Optional
+
+from fpdf import FPDF
+
 from utils.database import db
 from utils.encryption import decrypt_sensitive_data
+from utils.logger import logger, log_and_notify
+from utils.performance import get_local_timestamp
+
 
 def format_duration(seconds):
     """Форматирует время в часы, минуты и секунды"""
@@ -229,27 +230,27 @@ class PDFReport(FPDF):
             try:
                 self.add_font('DejaVu', '', 'DejaVuSansCondensed.ttf', uni=True)
                 self.set_font("DejaVu", size=14)
-            except:
+            except (RuntimeError, FileNotFoundError):
                 # Последний fallback - используем стандартный шрифт
                 self.set_font("Arial", size=14)
 
     def header(self):
         try:
             self.set_font("TimesNewRoman", "B", 16)
-        except:
+        except (RuntimeError, KeyError, AttributeError):
             try:
                 self.set_font("DejaVu", "B", 16)
-            except:
+            except (RuntimeError, KeyError, AttributeError):
                 self.set_font("Arial", "B", 16)
         
         self.cell(0, 10, "Отчёт о сканировании уязвимостей", ln=True, align="C")
         
         try:
             self.set_font("TimesNewRoman", "", 10)
-        except:
+        except (RuntimeError, KeyError, AttributeError):
             try:
                 self.set_font("DejaVu", "", 10)
-            except:
+            except (RuntimeError, KeyError, AttributeError):
                 self.set_font("Arial", "", 10)
         
         self.cell(0, 10, f"Сгенерирован: {get_local_timestamp()}", ln=True, align="C")
@@ -259,10 +260,10 @@ class PDFReport(FPDF):
         self.set_y(-15)
         try:
             self.set_font("TimesNewRoman", "", 8)
-        except:
+        except (RuntimeError, KeyError, AttributeError):
             try:
                 self.set_font("DejaVu", "", 8)
-            except:
+            except (RuntimeError, KeyError, AttributeError):
                 self.set_font("Arial", "", 8)
         
         self.cell(0, 10, f"Страница {self.page_no()}", align="C")
@@ -270,10 +271,10 @@ class PDFReport(FPDF):
     def chapter_title(self, title):
         try:
             self.set_font("TimesNewRoman", "B", 14)
-        except:
+        except (RuntimeError, KeyError, AttributeError):
             try:
                 self.set_font("DejaVu", "B", 14)
-            except:
+            except (RuntimeError, KeyError, AttributeError):
                 self.set_font("Arial", "B", 14)
         
         self.cell(0, 10, title, ln=True)
@@ -282,10 +283,10 @@ class PDFReport(FPDF):
     def section_title(self, title):
         try:
             self.set_font("TimesNewRoman", "B", 12)
-        except:
+        except (RuntimeError, KeyError, AttributeError):
             try:
                 self.set_font("DejaVu", "B", 12)
-            except:
+            except (RuntimeError, KeyError, AttributeError):
                 self.set_font("Arial", "B", 12)
         
         self.cell(0, 8, title, ln=True)
@@ -294,10 +295,10 @@ class PDFReport(FPDF):
     def add_text(self, text, font_size=10, url_mode=False):
         try:
             self.set_font("TimesNewRoman", "", font_size if not url_mode else 8)
-        except:
+        except (RuntimeError, KeyError, AttributeError):
             try:
                 self.set_font("DejaVu", "", font_size if not url_mode else 8)
-            except:
+            except (RuntimeError, KeyError, AttributeError):
                 self.set_font("Arial", "", font_size if not url_mode else 8)
         safe_text = self._sanitize_text(text)
         if url_mode:
@@ -307,7 +308,8 @@ class PDFReport(FPDF):
             self.set_text_color(0, 0, 0)
         self.ln(2 if not url_mode else 1)
     
-    def _sanitize_text(self, text):
+    @staticmethod
+    def _sanitize_text(text):
         """Очищает текст от символов, которые могут вызвать проблемы с кодировкой"""
         if not text:
             return ""
@@ -833,7 +835,7 @@ def export_single_scan_to_txt(scan: Dict[str, Any], filename: str = "single_scan
             return False
 
         # Форматируем данные для экспорта
-        formatted_data = format_scan_data_for_export([scan])
+        formatted_data = format_scan_data_for_export([scan], user_id)
         
         scan_data = formatted_data[0] if formatted_data else {}
         summary = scan_data.get('summary', {})

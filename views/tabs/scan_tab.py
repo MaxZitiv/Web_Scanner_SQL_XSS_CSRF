@@ -1,16 +1,15 @@
+import asyncio
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QGroupBox,
     QLineEdit, QCheckBox, QSpinBox, QPushButton, QTreeWidget,
     QTreeWidgetItem, QProgressBar, QTextEdit, QComboBox,
-    QFileDialog, QSplitter
-)
+    QFileDialog, QSplitter, QTableWidget, QTableWidgetItem, QHeaderView, QScrollArea)
 from PyQt5.QtCore import Qt, pyqtSignal, QThread
 from PyQt5.QtGui import QColor, QPixmap
 from controllers.scan_controller import ScanController
-from utils.logger import log_and_notify
+from utils.logger import log_and_notify, logger
 from utils.error_handler import error_handler
 from utils.performance import get_local_timestamp, extract_time_from_timestamp
-import asyncio
 from qasync import asyncSlot
 
 class ScanTabWidget(QWidget):
@@ -38,217 +37,351 @@ class ScanTabWidget(QWidget):
             'requests_sent': 0,
             'errors': 0,
         }
-        self.setup_ui()
+        try:
+            self.init_components()
+            self.setup_ui()
+        except Exception as e:
+            logger.error(f"Failed to initialize ScanTabWidget: {e}")
+            raise
 
-    def on_scan_button_clicked(self):
-        asyncio.create_task(self.scan_website_sync())
-
-    def setup_ui(self):
-        layout = QVBoxLayout(self)
-        
-        # 1) Ввод URL
-        url_group = QGroupBox("URL для сканирования")
-        url_layout = QVBoxLayout()
-        self.url_input = QLineEdit()
-        self.url_input.setPlaceholderText("Введите URL (например: https://example.com)")
-        url_layout.addWidget(self.url_input)
-        url_group.setLayout(url_layout)
-        layout.addWidget(url_group)
-
-        # 2) Выбор типов уязвимостей
-        vuln_group = QGroupBox("Типы уязвимостей")
-        vuln_layout = QHBoxLayout()
-        self.sql_checkbox = QCheckBox("SQL Injection")
-        self.xss_checkbox = QCheckBox("XSS")
-        self.csrf_checkbox = QCheckBox("CSRF")
-        for cb in (self.sql_checkbox, self.xss_checkbox, self.csrf_checkbox):
-            vuln_layout.addWidget(cb)
-        vuln_group.setLayout(vuln_layout)
-        layout.addWidget(vuln_group)
-
-        # 3) Настройки производительности
-        perf_group = QGroupBox("Настройки производительности")
-        perf_layout = QVBoxLayout()
-        
-        # Глубина обхода
-        depth_layout = QHBoxLayout()
-        depth_layout.addWidget(QLabel("Глубина обхода:"))
-        self.depth_spinbox = QSpinBox()
-        self.depth_spinbox.setRange(0, 10)
-        self.depth_spinbox.setValue(3)
-        depth_layout.addWidget(self.depth_spinbox)
-        depth_layout.addStretch()
-        perf_layout.addLayout(depth_layout)
-        
-        # Параллельные запросы
-        concurrent_layout = QHBoxLayout()
-        concurrent_layout.addWidget(QLabel("Параллельные запросы:"))
-        self.concurrent_spinbox = QSpinBox()
-        self.concurrent_spinbox.setRange(1, 20)
-        self.concurrent_spinbox.setValue(5)
-        concurrent_layout.addWidget(self.concurrent_spinbox)
-        concurrent_layout.addStretch()
-        perf_layout.addLayout(concurrent_layout)
-        
-        # Таймаут
-        timeout_layout = QHBoxLayout()
-        timeout_layout.addWidget(QLabel("Таймаут (сек):"))
-        self.timeout_spinbox = QSpinBox()
-        self.timeout_spinbox.setRange(5, 60)
-        self.timeout_spinbox.setValue(30)
-        timeout_layout.addWidget(self.timeout_spinbox)
-        timeout_layout.addStretch()
-        perf_layout.addLayout(timeout_layout)
-        
-        perf_group.setLayout(perf_layout)
-        layout.addWidget(perf_group)
-
-        # 4) Кнопки управления
-        control_group = QGroupBox("Управление")
-        control_layout = QHBoxLayout()
-        
-        self.scan_button = QPushButton("Начать сканирование")
-        self.scan_button.clicked.connect(self.on_scan_button_clicked)
-        self.pause_button = QPushButton("⏸️ Пауза")
-        self.pause_button.clicked.connect(self.pause_scan)
-        self.pause_button.setEnabled(False)
-        self.stop_button = QPushButton("Остановить")
-        self.stop_button.clicked.connect(self.stop_scan)
-        self.stop_button.setEnabled(False)
-        
-        control_layout.addWidget(self.scan_button)
-        control_layout.addWidget(self.pause_button)
-        control_layout.addWidget(self.stop_button)
-        control_group.setLayout(control_layout)
-        layout.addWidget(control_group)
-
-        # 5) Прогресс-бар
-        progress_group = QGroupBox("Прогресс")
-        progress_layout = QVBoxLayout()
-        
-        self.scan_status = QLabel("Готов к сканированию")
-        self.scan_status.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        progress_layout.addWidget(self.scan_status)
-        
-        progress_bar_layout = QHBoxLayout()
-        self.scan_progress = QProgressBar()
-        self.scan_progress.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        progress_bar_layout.addWidget(self.scan_progress)
-        
-        self.progress_label = QLabel("0%")
-        self.progress_label.setMinimumWidth(50)
-        self.progress_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        progress_bar_layout.addWidget(self.progress_label)
-        
-        progress_layout.addLayout(progress_bar_layout)
-        progress_group.setLayout(progress_layout)
-        layout.addWidget(progress_group)
-
-        # 6) Расширенный лог сканирования
-        log_group = QGroupBox("🔍 Детальный просмотр сканирования")
-        log_splitter = QSplitter(Qt.Orientation.Horizontal)
-        
-        # Левая панель: Древовидное представление
-        left_panel = QWidget()
-        left_layout = QVBoxLayout(left_panel)
-        
-        tree_header = QLabel("🌐 Структура сайта")
-        left_layout.addWidget(tree_header)
-        
-        self.site_tree = QTreeWidget()
-        self.site_tree.setHeaderLabels(["Ресурс", "Тип", "Статус"])
-        left_layout.addWidget(self.site_tree)
-        
-        # Статистика в реальном времени
-        stats_group = QGroupBox("📊 Статистика")
-        stats_layout = QVBoxLayout(stats_group)
-        
-        self.stats_labels = {}
-        stats_items = [
-            ("urls_found", "Найдено URL:", "0"),
-            ("urls_scanned", "Просканировано URL:", "0"),
-            ("forms_found", "Найдено форм:", "0"),
-            ("forms_scanned", "Просканировано форм:", "0"),
-            ("vulnerabilities", "Уязвимостей:", "0"),
-            ("requests_sent", "Запросов отправлено:", "0"),
-            ("errors", "Ошибок:", "0"),
-            ("scan_time", "Время сканирования:", "00:00:00")
-        ]
-        
-        for key, label_text, default_value in stats_items:
-            label_layout = QHBoxLayout()
-            label = QLabel(label_text)
-            value = QLabel(default_value)
-            label_layout.addWidget(label)
-            label_layout.addWidget(value)
-            label_layout.addStretch()
-            stats_layout.addLayout(label_layout)
-            self.stats_labels[key] = value
-        
-        left_layout.addWidget(stats_group)
-        
-        # Правая панель: Детальный лог
-        right_panel = QWidget()
-        right_layout = QVBoxLayout(right_panel)
-        
-        log_header = QLabel("📋 Детальный лог")
-        right_layout.addWidget(log_header)
-        
-        # Панель фильтров
-        filter_panel = QWidget()
-        filter_layout = QHBoxLayout(filter_panel)
-        
-        self.log_filter = QComboBox()
-        self.log_filter.addItems(["Все", "DEBUG", "INFO", "WARNING", "ERROR", "VULNERABILITY"])
-        filter_layout.addWidget(self.log_filter)
-        
-        self.log_search = QLineEdit()
-        self.log_search.setPlaceholderText("Введите текст для поиска...")
-        filter_layout.addWidget(self.log_search)
-        
-        self.clear_search_button = QPushButton("🗑️")
-        self.clear_search_button.clicked.connect(self._clear_search)
-        filter_layout.addWidget(self.clear_search_button)
-        
-        filter_layout.addStretch()
-        right_layout.addWidget(filter_panel)
-        
-        self.detailed_log = QTextEdit()
-        self.detailed_log.setReadOnly(True)
-        right_layout.addWidget(self.detailed_log)
-        
-        # Кнопки управления логом
-        log_buttons_layout = QHBoxLayout()
-        self.clear_log_button = QPushButton("🗑️ Очистить лог")
-        self.clear_log_button.clicked.connect(self.clear_scan_log)
-        self.export_log_button = QPushButton("📤 Экспорт лога")
-        self.export_log_button.clicked.connect(self.export_scan_log)
-        self.auto_scroll_checkbox = QCheckBox("Автоскролл")
-        self.auto_scroll_checkbox.setChecked(True)
-        
-        log_buttons_layout.addWidget(self.clear_log_button)
-        log_buttons_layout.addWidget(self.export_log_button)
-        log_buttons_layout.addWidget(self.auto_scroll_checkbox)
-        log_buttons_layout.addStretch()
-        
-        right_layout.addLayout(log_buttons_layout)
-        
-        log_splitter.addWidget(left_panel)
-        log_splitter.addWidget(right_panel)
-        log_splitter.setSizes([400, 600])
-        
-        log_layout = QVBoxLayout()
-        log_layout.addWidget(log_splitter)
-        log_group.setLayout(log_layout)
-        layout.addWidget(log_group)
+    def init_components(self):
+        try:
+            # Базовые компоненты
+            self.url_input = QLineEdit()
+            self.scan_button = QPushButton("Начать сканирование")
+            self.results_table = QTableWidget()
+            
+            # Чекбоксы для типов уязвимостей
+            self.sql_checkbox = QCheckBox("SQL Injection")
+            self.xss_checkbox = QCheckBox("XSS")
+            self.csrf_checkbox = QCheckBox("CSRF")
+            
+            # Компоненты настроек производительности
+            self.depth_spinbox = QSpinBox()
+            self.concurrent_spinbox = QSpinBox()
+            self.timeout_spinbox = QSpinBox()
+            
+            # Кнопки управления
+            self.pause_button = QPushButton("⏸️ Пауза")
+            self.stop_button = QPushButton("Остановить")
+            
+            # Компоненты прогресса
+            self.scan_status = QLabel()
+            self.scan_progress = QProgressBar()
+            self.progress_label = QLabel()
+            
+            # Компоненты лога
+            self.site_tree = QTreeWidget()
+            self.detailed_log = QTextEdit()
+            self.log_filter = QComboBox()
+            self.log_search = QLineEdit()
+            self.clear_search_button = QPushButton("🗑️")
+            
+            # Компоненты статистики
+            self.stats_labels = {}
+            
+            # Проверка наличия всех необходимых компонентов
+            required_components = [
+                'url_input', 'scan_button', 'results_table',
+                'sql_checkbox', 'xss_checkbox', 'csrf_checkbox',
+                'depth_spinbox', 'concurrent_spinbox', 'timeout_spinbox',
+                'pause_button', 'stop_button',
+                'scan_status', 'scan_progress', 'progress_label',
+                'site_tree', 'detailed_log',
+                'log_filter', 'log_search', 'clear_search_button',
+                'stats_labels'
+            ]
+            
+            for component in required_components:
+                if not hasattr(self, component):
+                    raise ValueError(f"Component '{component}' not found in ScanTabWidget")
+                    
+        except Exception as e:
+            logger.error(f"Failed to initialize scan tab components: {e}")
+            raise
 
     @asyncSlot()
+    async def on_scan_button_clicked(self):
+        """Обработчик нажатия кнопки сканирования"""
+        try:
+            await self.scan_website_sync()
+        except Exception as e:
+            logger.error(f"Error creating task: {e}")
+            error_handler.handle_error(e)
+
+    def setup_ui(self):
+        """Настройка пользовательского интерфейса вкладки сканирования"""
+        try:
+            # Проверяем, что все компоненты инициализированы
+            if not hasattr(self, 'url_input') or self.url_input is None:
+                raise ValueError("url_input not initialized")
+            if not hasattr(self, 'scan_button') or self.scan_button is None:
+                raise ValueError("scan_button not initialized")
+            if not hasattr(self, 'results_table') or self.results_table is None:
+                raise ValueError("results_table not initialized")
+            
+            # Создаем основной контейнер с прокруткой
+            scroll = QScrollArea()
+            scroll.setWidgetResizable(True)
+
+            # Создаем виджет-контейнер для всего содержимого
+            content_widget = QWidget()
+            content_widget.setMinimumWidth(700)
+            
+            # Устанавливаем layout для контента
+            layout = QVBoxLayout(content_widget)
+            
+            # 1) Группа для ввода URL
+            url_group = QGroupBox("URL для сканирования")
+            url_layout = QVBoxLayout()
+            self.url_input.setPlaceholderText("Введите URL (например: https://example.com)")
+            url_layout.addWidget(self.url_input)
+            url_group.setLayout(url_layout)
+            layout.addWidget(url_group)
+
+            # 2) Группа для выбора типов уязвимостей
+            vuln_group = QGroupBox("Типы уязвимостей")
+            vuln_layout = QHBoxLayout()
+            self.sql_checkbox = QCheckBox("SQL Injection")
+            self.xss_checkbox = QCheckBox("XSS")
+            self.csrf_checkbox = QCheckBox("CSRF")
+            for cb in (self.sql_checkbox, self.xss_checkbox, self.csrf_checkbox):
+                vuln_layout.addWidget(cb)
+            vuln_group.setLayout(vuln_layout)
+            layout.addWidget(vuln_group)
+
+            # 3) Группа настроек производительности
+            perf_group = QGroupBox("Настройки производительности")
+            perf_layout = QVBoxLayout()
+            
+            # Глубина обхода
+            depth_layout = QHBoxLayout()
+            depth_layout.addWidget(QLabel("Глубина обхода:"))
+            self.depth_spinbox = QSpinBox()
+            self.depth_spinbox.setRange(0, 10)
+            self.depth_spinbox.setValue(3)
+            depth_layout.addWidget(self.depth_spinbox)
+            depth_layout.addStretch()
+            perf_layout.addLayout(depth_layout)
+            
+            # Параллельные запросы
+            concurrent_layout = QHBoxLayout()
+            concurrent_layout.addWidget(QLabel("Параллельные запросы:"))
+            self.concurrent_spinbox = QSpinBox()
+            self.concurrent_spinbox.setRange(1, 20)
+            self.concurrent_spinbox.setValue(5)
+            concurrent_layout.addWidget(self.concurrent_spinbox)
+            concurrent_layout.addStretch()
+            perf_layout.addLayout(concurrent_layout)
+            
+            # Таймаут
+            timeout_layout = QHBoxLayout()
+            timeout_layout.addWidget(QLabel("Таймаут (сек):"))
+            self.timeout_spinbox = QSpinBox()
+            self.timeout_spinbox.setRange(5, 60)
+            self.timeout_spinbox.setValue(30)
+            timeout_layout.addWidget(self.timeout_spinbox)
+            timeout_layout.addStretch()
+            perf_layout.addLayout(timeout_layout)
+            
+            perf_group.setLayout(perf_layout)
+            layout.addWidget(perf_group)
+
+            # 4) Группа кнопок управления
+            control_group = QGroupBox("Управление")
+            control_layout = QHBoxLayout()
+            
+            self.scan_button.clicked.connect(lambda: asyncio.create_task(self.on_scan_button_clicked()))
+            self.pause_button = QPushButton("⏸️ Пауза")
+            self.pause_button.clicked.connect(self.pause_scan)
+            self.pause_button.setEnabled(False)
+            self.stop_button = QPushButton("Остановить")
+            self.stop_button.clicked.connect(self.stop_scan)
+            self.stop_button.setEnabled(False)
+            
+            control_layout.addWidget(self.scan_button)
+            control_layout.addWidget(self.pause_button)
+            control_layout.addWidget(self.stop_button)
+            control_group.setLayout(control_layout)
+            layout.addWidget(control_group)
+
+            # 5) Группа прогресса сканирования
+            progress_group = QGroupBox("Прогресс")
+            progress_layout = QVBoxLayout()
+            
+            self.scan_status = QLabel("Готов к сканированию")
+            self.scan_status.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            progress_layout.addWidget(self.scan_status)
+            
+            progress_bar_layout = QHBoxLayout()
+            self.scan_progress = QProgressBar()
+            self.scan_progress.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            progress_bar_layout.addWidget(self.scan_progress)
+            
+            self.progress_label = QLabel("0%")
+            self.progress_label.setMinimumWidth(50)
+            self.progress_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            progress_bar_layout.addWidget(self.progress_label)
+            
+            progress_layout.addLayout(progress_bar_layout)
+            progress_group.setLayout(progress_layout)
+            layout.addWidget(progress_group)
+
+            # 6) Группа детального лога сканирования
+            log_group = QGroupBox("🔍 Детальный просмотр сканирования")
+            log_splitter = QSplitter(Qt.Orientation.Horizontal)
+            
+            # Левая панель: Древовидное представление
+            left_panel = QWidget()
+            left_layout = QVBoxLayout(left_panel)
+            
+            tree_header = QLabel("🌐 Структура сайта")
+            left_layout.addWidget(tree_header)
+            
+            self.site_tree = QTreeWidget()
+            self.site_tree.setHeaderLabels(["Ресурс", "Тип", "Статус"])
+            left_layout.addWidget(self.site_tree)
+            
+            # Статистика в реальном времени
+            stats_group = QGroupBox("📊 Статистика")
+            stats_layout = QVBoxLayout(stats_group)
+            
+            self.stats_labels = {}
+            stats_items = [
+                ("urls_found", "Найдено URL:", "0"),
+                ("urls_scanned", "Просканировано URL:", "0"),
+                ("forms_found", "Найдено форм:", "0"),
+                ("forms_scanned", "Просканировано форм:", "0"),
+                ("vulnerabilities", "Уязвимостей:", "0"),
+                ("requests_sent", "Запросов отправлено:", "0"),
+                ("errors", "Ошибок:", "0"),
+                ("scan_time", "Время сканирования:", "00:00:00")
+            ]
+            
+            for key, label_text, default_value in stats_items:
+                label_layout = QHBoxLayout()
+                label = QLabel(label_text)
+                value = QLabel(default_value)
+                label_layout.addWidget(label)
+                label_layout.addWidget(value)
+                label_layout.addStretch()
+                stats_layout.addLayout(label_layout)
+                self.stats_labels[key] = value
+            
+            left_layout.addWidget(stats_group)
+            
+            # Правая панель: Детальный лог
+            right_panel = QWidget()
+            right_layout = QVBoxLayout(right_panel)
+            
+            log_header = QLabel("📋 Детальный лог")
+            right_layout.addWidget(log_header)
+            
+            # Панель фильтров
+            filter_panel = QWidget()
+            filter_layout = QHBoxLayout(filter_panel)
+            
+            self.log_filter = QComboBox()
+            self.log_filter.addItems(["Все", "DEBUG", "INFO", "WARNING", "ERROR", "VULNERABILITY"])
+            filter_layout.addWidget(self.log_filter)
+            
+            self.log_search = QLineEdit()
+            self.log_search.setPlaceholderText("Введите текст для поиска...")
+            filter_layout.addWidget(self.log_search)
+            
+            self.clear_search_button = QPushButton("🗑️")
+            self.clear_search_button.clicked.connect(self._clear_search)
+            filter_layout.addWidget(self.clear_search_button)
+            
+            filter_layout.addStretch()
+            right_layout.addWidget(filter_panel)
+            
+            self.detailed_log = QTextEdit()
+            self.detailed_log.setReadOnly(True)
+            right_layout.addWidget(self.detailed_log)
+            
+            # Кнопки управления логом
+            log_buttons_layout = QHBoxLayout()
+            self.clear_log_button = QPushButton("🗑️ Очистить лог")
+            self.clear_log_button.clicked.connect(self.clear_scan_log)
+            self.export_log_button = QPushButton("📤 Экспорт лога")
+            self.export_log_button.clicked.connect(self.export_scan_log)
+            self.auto_scroll_checkbox = QCheckBox("Автоскролл")
+            self.auto_scroll_checkbox.setChecked(True)
+            
+            log_buttons_layout.addWidget(self.clear_log_button)
+            log_buttons_layout.addWidget(self.export_log_button)
+            log_buttons_layout.addWidget(self.auto_scroll_checkbox)
+            log_buttons_layout.addStretch()
+            
+            right_layout.addLayout(log_buttons_layout)
+            
+            log_splitter.addWidget(left_panel)
+            log_splitter.addWidget(right_panel)
+            log_splitter.setSizes([400, 600])
+
+            log_splitter.setChildrenCollapsible(True)
+            log_splitter.setCollapsible(0, True)
+            log_splitter.setCollapsible(1, True)
+            
+            log_layout = QVBoxLayout()
+            log_layout.addWidget(log_splitter)
+            log_group.setLayout(log_layout)
+            layout.addWidget(log_group)
+
+            # 7) Группа таблицы результатов
+            results_group = QGroupBox("Результаты сканирования")
+            results_layout = QVBoxLayout()
+            
+            # Настройка таблицы результатов
+            self.results_table.setColumnCount(3)
+            self.results_table.setHorizontalHeaderLabels(["URL", "Тип уязвимости", "Статус"])
+            
+            # Настройка размеров колонок
+            header = self.results_table.horizontalHeader()
+            if header is not None:
+                header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+                header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+                header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+            
+            results_layout.addWidget(self.results_table)
+            results_group.setLayout(results_layout)
+            layout.addWidget(results_group)
+
+            # Устанавливаем контент в область прокрутки
+            scroll.setWidget(content_widget)
+
+            # Создаем основной layout для вкладки
+            tab_layout = QVBoxLayout(self)
+            tab_layout.addWidget(scroll)
+
+            # Устанавливаем основной layout
+            self.setLayout(layout)
+            
+        except Exception as e:
+            logger.error(f"Error setting up UI: {e}")
+            raise
+
     async def scan_website_sync(self):
         try:
             await self.scan_website()
         except Exception as e:
             error_handler.handle_validation_error(e, "scan_website_sync")
             log_and_notify('error', f"Error in scan_website_sync: {e}")
+
+    def _add_vulnerability_to_table(self, url: str, vuln_type: str, status: str):
+        """Добавляет уязвимость в таблицу результатов"""
+        if not hasattr(self, "results_table") or self.results_table is None:
+            logger.error("Results table not initialized")
+            return
+        
+        row_position = self.results_table.rowCount()
+        self.results_table.insertRow(row_position)
+        
+        self.results_table.setItem(row_position, 0, QTableWidgetItem(url))
+        self.results_table.setItem(row_position, 1, QTableWidgetItem(vuln_type))
+        self.results_table.setItem(row_position, 2, QTableWidgetItem(status))
+
 
     async def scan_website(self):
         url = self.url_input.text().strip()
@@ -393,6 +526,11 @@ class ScanTabWidget(QWidget):
             log_and_notify('error', f"Error exporting scan log: {e}")
 
     def _add_log_entry(self, level: str, message: str, url: str = "", details: str = ""):
+        # Проверка инициализации компонентов лога
+        if not hasattr(self, '_log_entries') or not hasattr(self, 'detailed_log'):
+            logger.error("Log components not initialized")
+            return
+        
         timestamp = extract_time_from_timestamp(get_local_timestamp())
         
         color_map = {
@@ -435,9 +573,12 @@ class ScanTabWidget(QWidget):
             if scrollbar is not None:
                 scrollbar.setValue(scrollbar.maximum())
 
-            
-
     def _apply_filters(self):
+        # Проверка инициализации компонентов фильтра
+        if not hasattr(self, '_log_entries') or not hasattr(self, '_filtered_log_entries'):
+            logger.error("Filter components not initialized")
+            return
+
         self._filtered_log_entries = []
         
         for entry in self._log_entries:
@@ -454,6 +595,10 @@ class ScanTabWidget(QWidget):
             self._filtered_log_entries.append(entry)
 
     def _update_log_display(self):
+        if not hasattr(self, 'detailed_log') or not hasattr(self, '_filtered_log_entries'):
+            logger.error("Log display components not initialized")
+            return
+        
         html_content = ""
         for entry in self._filtered_log_entries:
             html_content += entry['html']
@@ -467,6 +612,11 @@ class ScanTabWidget(QWidget):
         self._update_log_display()
 
     def _update_stats(self, key: str, value):
+        # Проверка инициализации компонентов статистики
+        if not hasattr(self, '_stats') or not hasattr(self, 'stats_labels'):
+            logger.error("Stats components not initialized")
+            return
+        
         if key in self._stats:
             self._stats[key] = value
             if key in self.stats_labels:
@@ -485,6 +635,7 @@ class ScanTabWidget(QWidget):
             self._add_log_entry("PROGRESS", f"Прогресс: {progress}%", url)
 
     def _on_vulnerability_found(self, url: str, vuln_type: str, details: str):
+
         message = f"Обнаружена уязвимость {vuln_type}"
         self._add_log_entry("VULNERABILITY", message, url, details)
         
@@ -494,6 +645,11 @@ class ScanTabWidget(QWidget):
         self._update_url_status(url, "Уязвимость")
 
     def _update_url_status(self, url: str, status: str):
+        # Проверка инициализации дерева сайта
+        if not hasattr(self, 'site_tree') or self.site_tree is None:
+            logger.error("Site tree not initialized")
+            return
+        
         for i in range(self.site_tree.topLevelItemCount()):
             root_item = self.site_tree.topLevelItem(i)
             if root_item is None:
@@ -513,6 +669,11 @@ class ScanTabWidget(QWidget):
                     break
 
     def _add_url_to_tree(self, url: str, url_type: str = "URL", status: str = "Найден"):
+        # Проверка инициализации дерева сайта
+        if not hasattr(self, 'site_tree') or self.site_tree is None:
+            logger.error("Site tree not initialized")
+            return
+        
         domain = url.split('/')[2] if len(url.split('/')) > 2 else url
         
         root_item = None
