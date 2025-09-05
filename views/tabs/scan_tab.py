@@ -1,20 +1,25 @@
-import asyncio
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QGroupBox,
     QLineEdit, QCheckBox, QSpinBox, QPushButton, QTreeWidget,
-    QTreeWidgetItem, QProgressBar, QTextEdit, QComboBox,
-    QFileDialog, QSplitter, QTableWidget, QTableWidgetItem, QHeaderView, QScrollArea)
-from PyQt5.QtCore import Qt, pyqtSignal, QThread
-from PyQt5.QtGui import QColor, QPixmap
+    QTextEdit, QComboBox,
+    QSplitter, QTableWidget, 
+    QHeaderView, QScrollArea, QMessageBox, QProgressBar)
+from PyQt5.QtCore import Qt
 from controllers.scan_controller import ScanController
-from utils.logger import log_and_notify, logger
+from utils.logger import logger
 from utils.error_handler import error_handler
-from utils.performance import get_local_timestamp, extract_time_from_timestamp
+from utils.performance import get_local_timestamp
 from qasync import asyncSlot
+from views.tabs.scan_tab_optimized import ScanTabStatsMixin
 
-class ScanTabWidget(QWidget):
+class ScanTabWidget(ScanTabStatsMixin, QWidget):
     def __init__(self, user_id, parent=None):
-        super().__init__(parent)
+        # Инициализация родительского класса QWidget
+        QWidget.__init__(self, parent)
+
+        # Инициализация миксина
+        ScanTabStatsMixin.__init__(self, parent)
+
         self.user_id = user_id
         self.scan_controller = ScanController(user_id)
         self._scan_start_time = None
@@ -39,6 +44,7 @@ class ScanTabWidget(QWidget):
         }
         try:
             self.init_components()
+            self.init_stats_manager()
             self.setup_ui()
         except Exception as e:
             logger.error(f"Failed to initialize ScanTabWidget: {e}")
@@ -50,52 +56,51 @@ class ScanTabWidget(QWidget):
             self.url_input = QLineEdit()
             self.scan_button = QPushButton("Начать сканирование")
             self.results_table = QTableWidget()
-            
+
             # Чекбоксы для типов уязвимостей
             self.sql_checkbox = QCheckBox("SQL Injection")
             self.xss_checkbox = QCheckBox("XSS")
             self.csrf_checkbox = QCheckBox("CSRF")
-            
+
             # Компоненты настроек производительности
             self.depth_spinbox = QSpinBox()
             self.concurrent_spinbox = QSpinBox()
             self.timeout_spinbox = QSpinBox()
-            
+
             # Кнопки управления
             self.pause_button = QPushButton("⏸️ Пауза")
             self.stop_button = QPushButton("Остановить")
-            
+
             # Компоненты прогресса
             self.scan_status = QLabel()
-            self.scan_progress = QProgressBar()
-            self.progress_label = QLabel()
-            
+            # Удален прогресс-бар по требованию пользователя
+
             # Компоненты лога
             self.site_tree = QTreeWidget()
             self.detailed_log = QTextEdit()
             self.log_filter = QComboBox()
             self.log_search = QLineEdit()
             self.clear_search_button = QPushButton("🗑️")
-            
+
             # Компоненты статистики
             self.stats_labels = {}
-            
+
             # Проверка наличия всех необходимых компонентов
             required_components = [
                 'url_input', 'scan_button', 'results_table',
                 'sql_checkbox', 'xss_checkbox', 'csrf_checkbox',
                 'depth_spinbox', 'concurrent_spinbox', 'timeout_spinbox',
                 'pause_button', 'stop_button',
-                'scan_status', 'scan_progress', 'progress_label',
+                'scan_status',
                 'site_tree', 'detailed_log',
                 'log_filter', 'log_search', 'clear_search_button',
                 'stats_labels'
             ]
-            
+
             for component in required_components:
                 if not hasattr(self, component):
                     raise ValueError(f"Component '{component}' not found in ScanTabWidget")
-                    
+
         except Exception as e:
             logger.error(f"Failed to initialize scan tab components: {e}")
             raise
@@ -109,6 +114,11 @@ class ScanTabWidget(QWidget):
             logger.error(f"Error creating task: {e}")
             error_handler.handle_error(e)
 
+    def on_scan_button_clicked_wrapper(self):
+        """Обертка для запуска асинхронного обработчика кнопки сканирования"""
+        # Просто вызываем асинхронный метод, так как @asyncSlot уже обрабатывает его выполнение
+        _ = self.on_scan_button_clicked()  # Используем _ для явного игнорирования результата
+
     def setup_ui(self):
         """Настройка пользовательского интерфейса вкладки сканирования"""
         try:
@@ -119,7 +129,7 @@ class ScanTabWidget(QWidget):
                 raise ValueError("scan_button not initialized")
             if not hasattr(self, 'results_table') or self.results_table is None:
                 raise ValueError("results_table not initialized")
-            
+
             # Создаем основной контейнер с прокруткой
             scroll = QScrollArea()
             scroll.setWidgetResizable(True)
@@ -127,10 +137,10 @@ class ScanTabWidget(QWidget):
             # Создаем виджет-контейнер для всего содержимого
             content_widget = QWidget()
             content_widget.setMinimumWidth(700)
-            
+
             # Устанавливаем layout для контента
             layout = QVBoxLayout(content_widget)
-            
+
             # 1) Группа для ввода URL
             url_group = QGroupBox("URL для сканирования")
             url_layout = QVBoxLayout()
@@ -153,7 +163,7 @@ class ScanTabWidget(QWidget):
             # 3) Группа настроек производительности
             perf_group = QGroupBox("Настройки производительности")
             perf_layout = QVBoxLayout()
-            
+
             # Глубина обхода
             depth_layout = QHBoxLayout()
             depth_layout.addWidget(QLabel("Глубина обхода:"))
@@ -163,7 +173,7 @@ class ScanTabWidget(QWidget):
             depth_layout.addWidget(self.depth_spinbox)
             depth_layout.addStretch()
             perf_layout.addLayout(depth_layout)
-            
+
             # Параллельные запросы
             concurrent_layout = QHBoxLayout()
             concurrent_layout.addWidget(QLabel("Параллельные запросы:"))
@@ -173,7 +183,7 @@ class ScanTabWidget(QWidget):
             concurrent_layout.addWidget(self.concurrent_spinbox)
             concurrent_layout.addStretch()
             perf_layout.addLayout(concurrent_layout)
-            
+
             # Таймаут
             timeout_layout = QHBoxLayout()
             timeout_layout.addWidget(QLabel("Таймаут (сек):"))
@@ -183,69 +193,67 @@ class ScanTabWidget(QWidget):
             timeout_layout.addWidget(self.timeout_spinbox)
             timeout_layout.addStretch()
             perf_layout.addLayout(timeout_layout)
-            
+
             perf_group.setLayout(perf_layout)
             layout.addWidget(perf_group)
 
             # 4) Группа кнопок управления
             control_group = QGroupBox("Управление")
             control_layout = QHBoxLayout()
-            
-            self.scan_button.clicked.connect(lambda: asyncio.create_task(self.on_scan_button_clicked()))
+
+            self.scan_button = QPushButton("Начать сканирование")
+            self.scan_button.clicked.connect(self.on_scan_button_clicked_wrapper)
             self.pause_button = QPushButton("⏸️ Пауза")
             self.pause_button.clicked.connect(self.pause_scan)
             self.pause_button.setEnabled(False)
             self.stop_button = QPushButton("Остановить")
             self.stop_button.clicked.connect(self.stop_scan)
             self.stop_button.setEnabled(False)
-            
+
             control_layout.addWidget(self.scan_button)
             control_layout.addWidget(self.pause_button)
             control_layout.addWidget(self.stop_button)
             control_group.setLayout(control_layout)
             layout.addWidget(control_group)
 
-            # 5) Группа прогресса сканирования
-            progress_group = QGroupBox("Прогресс")
-            progress_layout = QVBoxLayout()
-            
+            # 5) Группа статуса сканирования (с прогресс-баром)
+            status_group = QGroupBox("Статус")
+            status_layout = QVBoxLayout()
+
             self.scan_status = QLabel("Готов к сканированию")
             self.scan_status.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            progress_layout.addWidget(self.scan_status)
-            
-            progress_bar_layout = QHBoxLayout()
+            status_layout.addWidget(self.scan_status)
+
+            # Добавляем прогресс-бар
             self.scan_progress = QProgressBar()
-            self.scan_progress.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            progress_bar_layout.addWidget(self.scan_progress)
-            
-            self.progress_label = QLabel("0%")
-            self.progress_label.setMinimumWidth(50)
-            self.progress_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            progress_bar_layout.addWidget(self.progress_label)
-            
-            progress_layout.addLayout(progress_bar_layout)
-            progress_group.setLayout(progress_layout)
-            layout.addWidget(progress_group)
+            self.scan_progress.setRange(0, 100)
+            self.scan_progress.setValue(0)
+            self.scan_progress.setTextVisible(True)
+            self.scan_progress.setFormat("%p%")
+            status_layout.addWidget(self.scan_progress)
+
+            status_group.setLayout(status_layout)
+            layout.addWidget(status_group)
 
             # 6) Группа детального лога сканирования
             log_group = QGroupBox("🔍 Детальный просмотр сканирования")
             log_splitter = QSplitter(Qt.Orientation.Horizontal)
-            
+
             # Левая панель: Древовидное представление
             left_panel = QWidget()
             left_layout = QVBoxLayout(left_panel)
-            
+
             tree_header = QLabel("🌐 Структура сайта")
             left_layout.addWidget(tree_header)
-            
+
             self.site_tree = QTreeWidget()
             self.site_tree.setHeaderLabels(["Ресурс", "Тип", "Статус"])
             left_layout.addWidget(self.site_tree)
-            
+
             # Статистика в реальном времени
             stats_group = QGroupBox("📊 Статистика")
             stats_layout = QVBoxLayout(stats_group)
-            
+
             self.stats_labels = {}
             stats_items = [
                 ("urls_found", "Найдено URL:", "0"),
@@ -257,7 +265,7 @@ class ScanTabWidget(QWidget):
                 ("errors", "Ошибок:", "0"),
                 ("scan_time", "Время сканирования:", "00:00:00")
             ]
-            
+
             for key, label_text, default_value in stats_items:
                 label_layout = QHBoxLayout()
                 label = QLabel(label_text)
@@ -267,498 +275,331 @@ class ScanTabWidget(QWidget):
                 label_layout.addStretch()
                 stats_layout.addLayout(label_layout)
                 self.stats_labels[key] = value
-            
+
             left_layout.addWidget(stats_group)
-            
+
             # Правая панель: Детальный лог
             right_panel = QWidget()
             right_layout = QVBoxLayout(right_panel)
-            
-            log_header = QLabel("📋 Детальный лог")
+
+            log_header = QLabel("📄 Детальный лог")
             right_layout.addWidget(log_header)
-            
-            # Панель фильтров
-            filter_panel = QWidget()
-            filter_layout = QHBoxLayout(filter_panel)
-            
+
+            # Фильтры лога
+            filter_layout = QHBoxLayout()
+            filter_layout.addWidget(QLabel("Фильтр:"))
             self.log_filter = QComboBox()
-            self.log_filter.addItems(["Все", "DEBUG", "INFO", "WARNING", "ERROR", "VULNERABILITY"])
+            self.log_filter.addItems(["Все", "Информация", "Успех", "Предупреждение", "Ошибка"])
+            self.log_filter.currentTextChanged.connect(self.filter_log)
             filter_layout.addWidget(self.log_filter)
-            
+
+            filter_layout.addWidget(QLabel("Поиск:"))
             self.log_search = QLineEdit()
-            self.log_search.setPlaceholderText("Введите текст для поиска...")
+            self.log_search.setPlaceholderText("Поиск в логе...")
+            self.log_search.textChanged.connect(self.search_log)
             filter_layout.addWidget(self.log_search)
-            
+
             self.clear_search_button = QPushButton("🗑️")
-            self.clear_search_button.clicked.connect(self._clear_search)
+            self.clear_search_button.clicked.connect(self.clear_search)
             filter_layout.addWidget(self.clear_search_button)
-            
-            filter_layout.addStretch()
-            right_layout.addWidget(filter_panel)
-            
+
+            right_layout.addLayout(filter_layout)
+
+            # Поле детального лога
             self.detailed_log = QTextEdit()
             self.detailed_log.setReadOnly(True)
             right_layout.addWidget(self.detailed_log)
-            
-            # Кнопки управления логом
-            log_buttons_layout = QHBoxLayout()
-            self.clear_log_button = QPushButton("🗑️ Очистить лог")
-            self.clear_log_button.clicked.connect(self.clear_scan_log)
-            self.export_log_button = QPushButton("📤 Экспорт лога")
-            self.export_log_button.clicked.connect(self.export_scan_log)
-            self.auto_scroll_checkbox = QCheckBox("Автоскролл")
-            self.auto_scroll_checkbox.setChecked(True)
-            
-            log_buttons_layout.addWidget(self.clear_log_button)
-            log_buttons_layout.addWidget(self.export_log_button)
-            log_buttons_layout.addWidget(self.auto_scroll_checkbox)
-            log_buttons_layout.addStretch()
-            
-            right_layout.addLayout(log_buttons_layout)
-            
+
+            # Добавляем панели в сплиттер
             log_splitter.addWidget(left_panel)
             log_splitter.addWidget(right_panel)
-            log_splitter.setSizes([400, 600])
+            log_splitter.setSizes([300, 500])  # Начальные размеры панелей
 
-            log_splitter.setChildrenCollapsible(True)
-            log_splitter.setCollapsible(0, True)
-            log_splitter.setCollapsible(1, True)
-            
-            log_layout = QVBoxLayout()
+            log_layout = QVBoxLayout(log_group)
             log_layout.addWidget(log_splitter)
-            log_group.setLayout(log_layout)
+
             layout.addWidget(log_group)
 
-            # 7) Группа таблицы результатов
-            results_group = QGroupBox("Результаты сканирования")
-            results_layout = QVBoxLayout()
-            
-            # Настройка таблицы результатов
-            self.results_table.setColumnCount(3)
-            self.results_table.setHorizontalHeaderLabels(["URL", "Тип уязвимости", "Статус"])
-            
-            # Настройка размеров колонок
-            header = self.results_table.horizontalHeader()
-            if header is not None:
-                header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-                header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-                header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
-            
-            results_layout.addWidget(self.results_table)
-            results_group.setLayout(results_layout)
-            layout.addWidget(results_group)
-
-            # Устанавливаем контент в область прокрутки
+            # Устанавливаем виджет с контентом в область прокрутки
             scroll.setWidget(content_widget)
 
             # Создаем основной layout для вкладки
-            tab_layout = QVBoxLayout(self)
-            tab_layout.addWidget(scroll)
+            main_layout = QVBoxLayout(self)
+            main_layout.addWidget(scroll)
 
-            # Устанавливаем основной layout
-            self.setLayout(layout)
-            
+            # Инициализируем таблицу результатов
+            self.init_results_table()
+
+            logger.debug("Scan tab UI setup completed successfully")
+
         except Exception as e:
-            logger.error(f"Error setting up UI: {e}")
+            logger.error(f"Error setting up scan tab UI: {e}")
             raise
 
-    async def scan_website_sync(self):
+    def init_results_table(self):
+        """Инициализация таблицы результатов сканирования"""
         try:
-            await self.scan_website()
+            # Проверяем, что таблица инициализирована
+            if not hasattr(self, 'results_table') or self.results_table is None:
+                raise ValueError("results_table not initialized")
+
+            # Настраиваем таблицу
+            self.results_table.setColumnCount(5)
+            self.results_table.setHorizontalHeaderLabels(["URL", "Тип уязвимости", "Параметр", "Статус", "Действия"])
+
+            header = self.results_table.horizontalHeader()
+            if header is not None:
+                header.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
+                header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+
+            self.results_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+            self.results_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+            self.results_table.setAlternatingRowColors(True)
+            self.results_table.setSortingEnabled(True)
+
+            # Скрываем таблицу по умолчанию
+            self.results_table.hide()
+
         except Exception as e:
-            error_handler.handle_validation_error(e, "scan_website_sync")
-            log_and_notify('error', f"Error in scan_website_sync: {e}")
+            logger.error(f"Error initializing results table: {e}")
+            raise
 
-    def _add_vulnerability_to_table(self, url: str, vuln_type: str, status: str):
-        """Добавляет уязвимость в таблицу результатов"""
-        if not hasattr(self, "results_table") or self.results_table is None:
-            logger.error("Results table not initialized")
-            return
-        
-        row_position = self.results_table.rowCount()
-        self.results_table.insertRow(row_position)
-        
-        self.results_table.setItem(row_position, 0, QTableWidgetItem(url))
-        self.results_table.setItem(row_position, 1, QTableWidgetItem(vuln_type))
-        self.results_table.setItem(row_position, 2, QTableWidgetItem(status))
-
-
-    async def scan_website(self):
-        url = self.url_input.text().strip()
-        
-        if not url:
-            error_handler.show_error_message("Ошибка", "Введите URL для сканирования")
-            return
-        
-        selected_types = []
-        if self.sql_checkbox.isChecked():
-            selected_types.append("SQL Injection")
-        if self.xss_checkbox.isChecked():
-            selected_types.append("XSS")
-        if self.csrf_checkbox.isChecked():
-            selected_types.append("CSRF")
-        
-        if not selected_types:
-            error_handler.show_error_message("Ошибка", "Выберите хотя бы один тип сканирования")
-            return
-        
-        max_depth = self.depth_spinbox.value()
-        max_concurrent = self.concurrent_spinbox.value()
-        timeout = self.timeout_spinbox.value()
-        
-        await self.start_scan(url, selected_types, max_depth, max_concurrent, timeout)
-
-    async def start_scan(self, url: str, types: list, max_depth: int, max_concurrent: int, timeout: int):
+    def filter_log(self, filter_text):
+        """Фильтрация записей лога по типу"""
         try:
-            self.scan_progress.setValue(0)
-            self.scan_status.setText("Подготовка к сканированию...")
+            self._current_filter = filter_text
+            self.update_log_display()
+        except Exception as e:
+            logger.error(f"Error filtering log: {e}")
+
+    def search_log(self, search_text):
+        """Поиск в логе по тексту"""
+        try:
+            self._search_text = search_text.lower()
+            self.update_log_display()
+        except Exception as e:
+            logger.error(f"Error searching in log: {e}")
+
+    def clear_search(self):
+        """Очистка поля поиска и сброс фильтров"""
+        try:
+            self.log_search.clear()
+            self._search_text = ""
+            self.log_filter.setCurrentIndex(0)  # "Все"
+            self._current_filter = "Все"
+            self.update_log_display()
+        except Exception as e:
+            logger.error(f"Error clearing search: {e}")
+
+    def update_log_display(self):
+        """Обновление отображения лога с учетом фильтров и поиска"""
+        try:
+            # Применяем фильтры
+            self._filtered_log_entries = []
+            for entry in self._log_entries:
+                # Фильтр по типу
+                if self._current_filter != "Все" and entry.get('type', '') != self._current_filter:
+                    continue
+
+                # Фильтр по тексту поиска
+                if self._search_text and self._search_text not in entry.get('message', '').lower():
+                    continue
+
+                self._filtered_log_entries.append(entry)
+
+            # Обновляем отображение
+            self.detailed_log.clear()
+            for entry in self._filtered_log_entries:
+                # Форматируем запись
+                timestamp = entry.get('timestamp', '')
+                message_type = entry.get('type', '')
+                message = entry.get('message', '')
+
+                # Определяем цвет в зависимости от типа сообщения
+                color = "black"
+                if message_type == "Ошибка":
+                    color = "red"
+                elif message_type == "Предупреждение":
+                    color = "orange"
+                elif message_type == "Успех":
+                    color = "green"
+                elif message_type == "Информация":
+                    color = "blue"
+
+                # Добавляем отформатированную запись
+                formatted_entry = f'<span style="color:{color}">[{timestamp}] {message_type}: {message}</span>'
+                self.detailed_log.append(formatted_entry)
+
+        except Exception as e:
+            logger.error(f"Error updating log display: {e}")
+
+    def add_log_entry(self, message, message_type="Информация"):
+        """Добавление записи в лог"""
+        try:
+            # Получаем текущую временную метку
+            timestamp = get_local_timestamp()
+
+            # Создаем запись
+            entry = {
+                'timestamp': timestamp,
+                'type': message_type,
+                'message': message
+            }
+
+            # Добавляем в общий список
+            self._log_entries.append(entry)
+
+            # Обновляем отображение
+            self.update_log_display()
+
+        except Exception as e:
+            logger.error(f"Error adding log entry: {e}")
+
+    def pause_scan(self):
+        """Приостановка/возобновление сканирования"""
+        try:
+            self._is_paused = not self._is_paused
+            if self._is_paused:
+                self.pause_button.setText("▶️ Продолжить")
+                self.scan_status.setText("Сканирование приостановлено")
+                self.add_log_entry("Сканирование приостановлено пользователем", "Информация")
+            else:
+                self.pause_button.setText("⏸️ Пауза")
+                self.scan_status.setText("Сканирование продолжается")
+                self.add_log_entry("Сканирование возобновлено", "Информация")
+        except Exception as e:
+            logger.error(f"Error pausing/resuming scan: {e}")
+
+    def stop_scan(self):
+        """Остановка сканирования"""
+        try:
+            # Сбрасываем состояние
+            self._is_paused = False
+            self._scan_start_time = None
+            self._total_urls = 0
+            self._completed_urls = 0
+            self._total_progress = 0
+            self._active_workers = 0
+            self._worker_progress = {}
+
+            # Обновляем UI
+            self.scan_button.setEnabled(True)
+            self.pause_button.setEnabled(False)
+            self.pause_button.setText("⏸️ Пауза")
+            self.stop_button.setEnabled(False)
+            self.scan_status.setText("Сканирование остановлено")
+            self.add_log_entry("Сканирование остановлено пользователем", "Информация")
+
+            # Сбрасываем статистику
+            self.reset_stats()
+
+        except Exception as e:
+            logger.error(f"Error stopping scan: {e}")
+
+    def update_scan_status(self, status):
+        """Обновление статуса сканирования"""
+        try:
+            self.scan_status.setText(status)
+        except Exception as e:
+            logger.error(f"Error updating scan status: {e}")
+
+    def update_scan_progress(self, progress):
+        """Обновление прогресса сканирования"""
+        try:
+            # Обновляем прогресс-бар
+            if hasattr(self, 'scan_progress'):
+                self.scan_progress.setValue(int(progress))
+        except Exception as e:
+            logger.error(f"Error updating scan progress: {e}")
+
+    def update_stats(self, key, value):
+        """Обновление статистики"""
+        try:
+            if key in self._stats:
+                self._stats[key] = value
+                if key in self.stats_labels:
+                    self.stats_labels[key].setText(str(value))
+        except Exception as e:
+            logger.error(f"Error updating stats: {e}")
+
+    def reset_stats(self):
+        """Сброс статистики"""
+        try:
+            for key in self._stats:
+                self._stats[key] = 0
+                if key in self.stats_labels:
+                    self.stats_labels[key].setText("0")
+
+            # Особый случай для времени сканирования
+            if 'scan_time' in self.stats_labels:
+                self.stats_labels['scan_time'].setText("00:00:00")
+        except Exception as e:
+            logger.error(f"Error resetting stats: {e}")
+
+    async def scan_website_sync(self):
+        """Синхронная обертка для асинхронного сканирования"""
+        try:
+            # Получаем URL из поля ввода
+            url = self.url_input.text().strip()
+            if not url:
+                QMessageBox.warning(self, "Ошибка", "Введите URL для сканирования")
+                return
+
+            # Проверяем, что выбран хотя бы один тип уязвимостей
+            vuln_types = []
+            if self.sql_checkbox.isChecked():
+                vuln_types.append("sql")
+            if self.xss_checkbox.isChecked():
+                vuln_types.append("xss")
+            if self.csrf_checkbox.isChecked():
+                vuln_types.append("csrf")
+
+            if not vuln_types:
+                QMessageBox.warning(self, "Ошибка", "Выберите хотя бы один тип уязвимостей для сканирования")
+                return
+
+            # Получаем настройки
+            depth = self.depth_spinbox.value()
+            concurrent = self.concurrent_spinbox.value()
+            timeout = self.timeout_spinbox.value()
+
+            # Обновляем UI
             self.scan_button.setEnabled(False)
             self.pause_button.setEnabled(True)
             self.stop_button.setEnabled(True)
-            
-            self._is_paused = False
             self.pause_button.setText("⏸️ Пауза")
-            
-            self.site_tree.clear()
-            self._log_entries.clear()
-            self._filtered_log_entries.clear()
-            
-            for key in self.stats_labels:
-                self.stats_labels[key].setText("0")
-            
+            self.scan_status.setText("Подготовка к сканированию...")
+            self.add_log_entry(f"Начало сканирования: {url}", "Информация")
+            self.add_log_entry(f"Типы уязвимостей: {', '.join(vuln_types)}", "Информация")
+            self.add_log_entry(f"Глубина обхода: {depth}, Параллельных запросов: {concurrent}, Таймаут: {timeout}с", "Информация")
+
+            # Сбрасываем статистику
+            self.reset_stats()
+
+            # Запускаем сканирование
+            self._scan_start_time = get_local_timestamp()
             await self.scan_controller.start_scan(
                 url=url,
-                scan_types=types,
-                max_depth=max_depth,
-                max_concurrent=max_concurrent,
+                scan_types=vuln_types,
+                max_depth=depth,
+                max_concurrent=concurrent,
                 timeout=timeout,
-                on_progress=self._on_scan_progress,
-                on_log=self._on_scan_log,
-                on_vulnerability=self._on_vulnerability_found,
-                on_result=self._on_scan_result
+                on_progress=self.update_scan_progress,
+                on_log=self.add_log_entry,
+                on_vulnerability=self.update_stats
             )
-            
-        except Exception as e:
-            error_handler.handle_network_error(e, "start_scan")
-            log_and_notify('error', f"Error in start_scan: {e}")
-            self.scan_status.setText("Ошибка запуска сканирования")
-            self.scan_button.setEnabled(True)
-            self.stop_button.setEnabled(False)
 
-    def pause_scan(self):
-        try:
-            if not self._is_paused:
-                self._is_paused = True
-                self.pause_button.setText("▶️ Продолжить")
-                self.scan_status.setText("Сканирование приостановлено")
-                self.scan_controller.pause_scan()
-                self._add_log_entry("WARNING", "⏸️ Сканирование приостановлено пользователем")
-            else:
-                self._is_paused = False
-                self.pause_button.setText("⏸️ Пауза")
-                self.scan_status.setText("Сканирование...")
-                self.scan_controller.resume_scan()
-                self._add_log_entry("INFO", "▶️ Сканирование возобновлено")
-        except Exception as e:
-            log_and_notify('error', f"Error pausing/resuming scan: {e}")
-
-    def stop_scan(self):
-        try:
-            self.scan_controller.stop_scan()
-            self.scan_status.setText("Сканирование остановлено")
-            self.scan_progress.setValue(0)
-            self.progress_label.setText("0%")
+            # Обновляем UI после завершения
             self.scan_button.setEnabled(True)
             self.pause_button.setEnabled(False)
             self.stop_button.setEnabled(False)
-            self._is_paused = False
-            self.pause_button.setText("⏸️ Пауза")
-            self._add_log_entry("WARNING", "⏹️ Сканирование остановлено пользователем")
+            self.scan_status.setText("Сканирование завершено")
+            self.add_log_entry("Сканирование завершено", "Успех")
+
         except Exception as e:
-            log_and_notify('error', f"Error stopping scan: {e}")
-
-    def clear_scan_log(self):
-        self._log_entries.clear()
-        self._filtered_log_entries.clear()
-        self.detailed_log.clear()
-        self.site_tree.clear()
-        for key in self.stats_labels:
-            self.stats_labels[key].setText("0")
-
-    def export_scan_log(self):
-        try:
-            filename, _ = QFileDialog.getSaveFileName(
-                self, "Сохранить лог сканирования", 
-                f"scan_log_{get_local_timestamp().replace(':', '').replace(' ', '_')}.txt",
-                "Text Files (*.txt);;HTML Files (*.html);;All Files (*)"
-            )
-            
-            if filename:
-                if filename.endswith('.html'):
-                    html_content = "<html><head><title>Лог сканирования</title></head><body>"
-                    html_content += "<h1>Лог сканирования</h1>"
-                    html_content += f"<p>Дата: {get_local_timestamp()}</p>"
-                    html_content += "<hr>"
-                    
-                    for entry in self._log_entries:
-                        html_content += entry['html']
-                    
-                    html_content += "</body></html>"
-                    
-                    with open(filename, 'w', encoding='utf-8') as f:
-                        f.write(html_content)
-                else:
-                    with open(filename, 'w', encoding='utf-8') as f:
-                        f.write(f"Лог сканирования - {get_local_timestamp()}\n")
-                        f.write("=" * 50 + "\n\n")
-                        
-                        for entry in self._log_entries:
-                            f.write(f"[{entry['timestamp']}] {entry['level']}: {entry['message']}\n")
-                            if entry['url']:
-                                f.write(f"  URL: {entry['url']}\n")
-                            if entry['details']:
-                                f.write(f"  Детали: {entry['details']}\n")
-                            f.write("\n")
-                
-                error_handler.show_info_message("Экспорт", f"Лог успешно экспортирован в файл:\n{filename}")
-        except Exception as e:
-            error_handler.handle_file_error(e, "export_scan_log")
-            log_and_notify('error', f"Error exporting scan log: {e}")
-
-    def _add_log_entry(self, level: str, message: str, url: str = "", details: str = ""):
-        # Проверка инициализации компонентов лога
-        if not hasattr(self, '_log_entries') or not hasattr(self, 'detailed_log'):
-            logger.error("Log components not initialized")
-            return
-        
-        timestamp = extract_time_from_timestamp(get_local_timestamp())
-        
-        color_map = {
-            "DEBUG": "#888888",
-            "INFO": "#00ff00",
-            "WARNING": "#ffff00",
-            "ERROR": "#ff0000",
-            "VULNERABILITY": "#ff6600"
-        }
-        
-        color = color_map.get(level, "#ffffff")
-        
-        html_entry = f'<div style="margin: 2px 0;"><span style="color: {color}; font-weight: bold;">[{timestamp}] {level}</span>'
-        
-        if url:
-            html_entry += f' <span style="color: #3498db;">{url}</span>'
-        
-        html_entry += f' <span style="color: #ffffff;">{message}</span>'
-        
-        if details:
-            html_entry += f'<br><span style="color: #cccccc; margin-left: 20px;">{details}</span>'
-        
-        html_entry += '</div>'
-        
-        log_entry = {
-            'timestamp': timestamp,
-            'level': level,
-            'message': message,
-            'url': url,
-            'details': details,
-            'html': html_entry
-        }
-        
-        self._log_entries.append(log_entry)
-        self._apply_filters()
-        self._update_log_display()
-        
-        if self.auto_scroll_checkbox.isChecked():
-            scrollbar = self.detailed_log.verticalScrollBar()
-            if scrollbar is not None:
-                scrollbar.setValue(scrollbar.maximum())
-
-    def _apply_filters(self):
-        # Проверка инициализации компонентов фильтра
-        if not hasattr(self, '_log_entries') or not hasattr(self, '_filtered_log_entries'):
-            logger.error("Filter components not initialized")
-            return
-
-        self._filtered_log_entries = []
-        
-        for entry in self._log_entries:
-            if self._current_filter != "Все" and entry['level'] != self._current_filter:
-                continue
-            
-            if self._search_text:
-                search_lower = self._search_text.lower()
-                if (search_lower not in entry['message'].lower() and 
-                    search_lower not in entry['url'].lower() and
-                    search_lower not in entry['details'].lower()):
-                    continue
-            
-            self._filtered_log_entries.append(entry)
-
-    def _update_log_display(self):
-        if not hasattr(self, 'detailed_log') or not hasattr(self, '_filtered_log_entries'):
-            logger.error("Log display components not initialized")
-            return
-        
-        html_content = ""
-        for entry in self._filtered_log_entries:
-            html_content += entry['html']
-        
-        self.detailed_log.setHtml(html_content)
-
-    def _clear_search(self):
-        self.log_search.clear()
-        self._search_text = ""
-        self._apply_filters()
-        self._update_log_display()
-
-    def _update_stats(self, key: str, value):
-        # Проверка инициализации компонентов статистики
-        if not hasattr(self, '_stats') or not hasattr(self, 'stats_labels'):
-            logger.error("Stats components not initialized")
-            return
-        
-        if key in self._stats:
-            self._stats[key] = value
-            if key in self.stats_labels:
-                self.stats_labels[key].setText(str(value))
-
-    def _on_scan_progress(self, progress: int, url: str):
-        self.scan_progress.setValue(progress)
-        self.progress_label.setText(f"{progress}%")
-        
-        if url:
-            self._add_url_to_tree(url, "URL", "Просканировано")
-            self._stats['urls_scanned'] += 1
-            self._update_stats('urls_scanned', self._stats['urls_scanned'])
-        
-        if progress % 10 == 0:
-            self._add_log_entry("PROGRESS", f"Прогресс: {progress}%", url)
-
-    def _on_vulnerability_found(self, url: str, vuln_type: str, details: str):
-
-        message = f"Обнаружена уязвимость {vuln_type}"
-        self._add_log_entry("VULNERABILITY", message, url, details)
-        
-        self._stats['vulnerabilities'] += 1
-        self._update_stats('vulnerabilities', self._stats['vulnerabilities'])
-        
-        self._update_url_status(url, "Уязвимость")
-
-    def _update_url_status(self, url: str, status: str):
-        # Проверка инициализации дерева сайта
-        if not hasattr(self, 'site_tree') or self.site_tree is None:
-            logger.error("Site tree not initialized")
-            return
-        
-        for i in range(self.site_tree.topLevelItemCount()):
-            root_item = self.site_tree.topLevelItem(i)
-            if root_item is None:
-                continue
-            for j in range(root_item.childCount()):
-                child = root_item.child(j)
-                if child is None:
-                    continue
-                if child.text(0) == url:
-                    child.setText(2, status)
-                    if status == "Уязвимость":
-                        child.setBackground(2, QColor("#ffcccc"))
-                    elif status == "Просканирован":
-                        child.setBackground(2, QColor("#ccffcc"))
-                    elif status == "Ошибка":
-                        child.setBackground(2, QColor("#ffcc99"))
-                    break
-
-    def _add_url_to_tree(self, url: str, url_type: str = "URL", status: str = "Найден"):
-        # Проверка инициализации дерева сайта
-        if not hasattr(self, 'site_tree') or self.site_tree is None:
-            logger.error("Site tree not initialized")
-            return
-        
-        domain = url.split('/')[2] if len(url.split('/')) > 2 else url
-        
-        root_item = None
-        for i in range(self.site_tree.topLevelItemCount()):
-            item = self.site_tree.topLevelItem(i)
-            if item is not None and item.text(0) == domain:
-                root_item = item
-                break
-        
-        if not root_item:
-            root_item = QTreeWidgetItem(self.site_tree)
-            root_item.setText(0, domain)
-            root_item.setText(1, "Домен")
-            root_item.setText(2, "Активен")
-            root_item.setExpanded(True)
-        
-        url_item = QTreeWidgetItem(root_item)
-        url_item.setText(0, url)
-        url_item.setText(1, url_type)
-        url_item.setText(2, status)
-
-    async def _on_scan_result(self, result: dict):
-        self.scan_progress.setValue(100)
-        self.progress_label.setText("100%")
-        self.scan_status.setText("Сканирование завершено")
-        self.scan_button.setEnabled(True)
-        self.pause_button.setEnabled(False)
-        self.stop_button.setEnabled(False)
-        
-        self._is_paused = False
-        self.pause_button.setText("⏸️ Пауза")
-        
-        scan_duration = result.get('scan_duration', 0)
-        total_urls = result.get('total_urls_scanned', 0)
-        total_vulnerabilities = result.get('total_vulnerabilities', 0)
-        
-        self._add_log_entry("INFO", f"✅ Сканирование завершено за {scan_duration:.2f} секунд")
-        self._add_log_entry("INFO", f"📊 Результаты: {total_urls} URL просканировано, {total_vulnerabilities} уязвимостей найдено")
-        
-        self._stats['urls_scanned'] = total_urls
-        self._stats['vulnerabilities'] = total_vulnerabilities
-        
-        self._update_stats('urls_scanned', total_urls)
-        self._update_stats('vulnerabilities', total_vulnerabilities)
-        
-        await self.scan_controller.save_scan_result(result)
-        
-        if total_vulnerabilities > 0:
-            msg = (
-                f"Сканирование завершено!\n\n"
-                f"🔴 Найдено {total_vulnerabilities} уязвимостей!\n\n"
-                f"📊 Статистика:\n"
-                f"• Просканировано URL: {total_urls}\n\n"
-                f"📋 Проверьте вкладку 'Отчёты' для подробной информации."
-            )
-        else:
-            msg = (
-                f"Сканирование завершено!\n\n"
-                f"🟢 Уязвимостей не найдено.\n\n"
-                f"📊 Статистика:\n"
-                f"• Просканировано URL: {total_urls}"
-            )
-        
-        error_handler.show_info_message("Сканирование завершено", msg)
-
-    def _on_scan_log(self, message: str):
-        message_lower = message.lower()
-        level = "INFO"
-        
-        if " - " in message:
-            parts = message.split(" - ", 1)
-            if len(parts) == 2:
-                potential_level = parts[0].strip().upper()
-                valid_levels = ["DEBUG", "INFO", "WARNING", "ERROR", "VULNERABILITY"]
-                if potential_level in valid_levels:
-                    level = potential_level
-                    message = parts[1].strip()
-        
-        if level == "INFO":
-            if any(keyword in message_lower for keyword in ["error", "ошибка", "failed", "неудачно"]):
-                level = "ERROR"
-            elif any(keyword in message_lower for keyword in ["warning", "предупреждение"]):
-                level = "WARNING"
-            elif any(keyword in message_lower for keyword in ["vulnerability", "уязвимость"]):
-                level = "VULNERABILITY"
-        
-        self._add_log_entry(level, message)
-
+            logger.error(f"Error during website scan: {e}")
+            self.scan_status.setText("Ошибка при сканировании")
+            self.add_log_entry(f"Ошибка при сканировании: {str(e)}", "Ошибка")
+            self.scan_button.setEnabled(True)
+            self.pause_button.setEnabled(False)
+            self.stop_button.setEnabled(False)

@@ -13,11 +13,11 @@ import sys
 from typing import List, Dict, Optional
 from utils.logger import logger, log_and_notify
 from utils.encryption import get_encryption, encrypt_sensitive_data
-from utils.database import get_resource_path
+from utils.database import db
 
 def get_db_path() -> str:
     """Получает путь к базе данных"""
-    return get_resource_path("scanner.db")
+    return db.get_resource_path("scanner.db")
 
 def is_already_encrypted(data: str) -> bool:
     """Проверяет, зашифрованы ли уже данные"""

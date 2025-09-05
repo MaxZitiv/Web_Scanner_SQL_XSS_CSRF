@@ -14,9 +14,7 @@ from functools import wraps
 from contextlib import contextmanager
 from collections import deque
 from PyQt5.QtWidgets import QApplication, QMessageBox
-from utils.logger import setup_logger
-
-logger = setup_logger('error_handler', filename='error_handler.log')
+from utils.logger import logger, log_and_notify
 
 class UnifiedErrorHandler:
     """Централизованный обработчик ошибок с GUI и стратегиями восстановления"""
@@ -48,6 +46,7 @@ class UnifiedErrorHandler:
             msg.exec_()
         except Exception as e:
             logger.error(f"Failed to show error message: {e}", exc_info=True)
+            log_and_notify("error", f"{title}: {message}\nDetails: {details}")
 
     def show_warning_message(self, title: str, message: str):
         logger.warning(f"{title}: {message}")

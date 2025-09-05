@@ -110,15 +110,18 @@ class RegistrationWindow(QWidget):
 
         return line_edit, row
 
-    def on_username_changed(self):
-        """Обработчик изменения имени пользователя"""
+    def _schedule_check(self):
+        """Планирует проверку доступности имени пользователя и email"""
         self.check_timer.stop()
         self.check_timer.start(500)  # Проверяем через 500мс после остановки ввода
 
+    def on_username_changed(self):
+        """Обработчик изменения имени пользователя"""
+        self._schedule_check()
+
     def on_email_changed(self):
         """Обработчик изменения email"""
-        self.check_timer.stop()
-        self.check_timer.start(500)  # Проверяем через 500мс после остановки ввода
+        self._schedule_check()
 
     def check_availability(self):
         """Проверка доступности username и email"""
@@ -161,6 +164,11 @@ class RegistrationWindow(QWidget):
             QMessageBox.warning(self, 'Ошибка', 'Заполните все поля')
             return
 
+        # Проверяем минимальную длину пароля
+        if len(password) < 8:
+            QMessageBox.warning(self, 'Ошибка', 'Пароль должен содержать минимум 8 символов')
+            return
+
         # Проверяем совпадение паролей
         if password != confirm_password:
             QMessageBox.warning(self, 'Ошибка', 'Пароли не совпадают')
@@ -191,11 +199,7 @@ class RegistrationWindow(QWidget):
             parent = self.parent_login.parent
             if hasattr(parent, 'go_to_login') and callable(parent.go_to_login):
                 parent.go_to_login()
-            else:
-                self.close()
-        else:
-            self.close()
-
+        self.close()
 
     def load_styles(self):
         """Загрузка стилей из файла styles.qss"""

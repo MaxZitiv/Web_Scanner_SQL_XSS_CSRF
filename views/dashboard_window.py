@@ -4,11 +4,10 @@ import os
 import sqlite3
 import threading
 import time
+from attr import has
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
-
-import matplotlib
+from typing import Dict, List, Any, Optional
 from PyQt5.QtCore import Qt, QTimer, QDateTime, QTime, QMetaObject, Q_ARG, pyqtSignal
 from PyQt5.QtGui import QPixmap, QIcon, QColor
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
@@ -16,7 +15,7 @@ from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                              QTabWidget, QSpinBox, QMessageBox,
                              QFileDialog, QComboBox, QTableWidgetItem,
                              QGroupBox, QDateTimeEdit, QDialog, QDialogButtonBox, QTreeWidgetItem, QApplication,
-                             QFormLayout, QTextEdit, QScrollArea)
+                             QFormLayout, QTextEdit, QScrollArea, QTreeWidget, QProgressBar, QTableWidget)
 
 from controllers.scan_controller import ScanController
 from utils import error_handler
@@ -30,14 +29,20 @@ from views.tabs.profile_tab import ProfileTabWidget
 from views.tabs.reports_tab import ReportsTabWidget
 from views.tabs.scan_tab import ScanTabWidget
 from views.tabs.stats_tab import StatsTabWidget
+from views.managers.scan_manager import ScanManagerStatsMixin
+from views.managers.stats_manager import StatsManager
+from views.dashboard_optimized import DashboardStatsMixin
+from views.mixins.export_mixin import ExportMixin
+from views.mixins.scan_mixin import ScanMixin
+from views.mixins.log_mixin import LogMixin
 
+import matplotlib
 matplotlib.use('Qt5Agg')
-
-error_handler: ErrorHandler = error_handler
 
 # Импорт matplotlib с обработкой ошибок
 try:
     from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
+    from matplotlib.figure import Figure
     MATPLOTLIB_AVAILABLE = True
 except ImportError as e:
     logger.warning(f"matplotlib not available: {e}")
@@ -48,51 +53,32 @@ except ImportError as e:
 from qasync import asyncSlot
 from policies.policy_manager import PolicyManager
 
-class DashboardWindow(QWidget):
-    # Определяем сигнал
-    _log_loaded_signal: pyqtSignal = pyqtSignal(str, int)
-    def __init__(self, user_id: int, username, user_model, parent=None):
-        super().__init__(parent)
-        self._log_loader_thread = None
-        self.edit_window = None
-        self._visible_rows_timer = None
-        self._filtered_scans_data = None
-        self._scan_timer = None
-        self._scanned_forms = None
-        self._scanned_urls = None
-        self.policy_combobox = None
-        self._stats = None
-        self.log_status_label = None
-        self._filtered_log_entries = None
-        self._log_entries = None
-        self.detailed_log = None
-        self._is_paused = None
-        self.username_label = None
-        self.main_layout = None
-        self.scan_tab: Optional[QWidget] = None
-        self.reports_tab: Optional[QWidget] = None
-        self.stats_tab: Optional[QWidget] = None
-        self.profile_tab: Optional[QWidget] = None
-        self.tabs: Optional[QTabWidget] = None
-        self.scan_button: Optional[QPushButton] = None
+class DashboardWindow(DashboardStatsMixin, ExportMixin, ScanMixin, LogMixin, QWidget):
+    
+    # Сигналы
+    scan_completed = pyqtSignal(dict)
+    error_occurred = pyqtSignal(str)
+    _log_loaded_signal = pyqtSignal(str, int)
+    _scan_result_signal = pyqtSignal(dict)
+
+    def __init__(self, user_id: int, username, user_model: Any, parent: Optional[QWidget] = None) -> None:
+        # Инициализация родительского класса QWidget
+        QWidget.__init__(self, parent)
+
+        # Инициализация миксинов
+        DashboardStatsMixin.__init__(self)
+        ExportMixin.__init__(self, user_id)
+        ScanMixin.__init__(self)
+        LogMixin.__init__(self)
+
+        # Базовые настройки
+        self.error_handler = error_handler
         self.setWindowTitle("Web Scanner - Control Panel")
         self.user_id = user_id
         self.user_model = user_model
-        self.tabs_initialized = False
         self.username = username
-        self.avatar_label = None
         self.avatar_path = "default_avatar.png"
-        self.scan_controller = ScanController(user_id)
-        self._scan_start_time = None
-        self._total_urls = 0
-        self._completed_urls = 0
-        self._total_progress = 0
-        self._active_workers = 0
-        self._estimated_total_time = 0
-        self._worker_progress = {}
-        self.policy_manager = PolicyManager()
-        self.selected_policy = None
-        self._log_loaded_signal.connect(self._process_log_content)
+        self.tabs_initialized = False
 
         # Адаптация размера окна под размер экрана
         screen = QApplication.primaryScreen()
@@ -106,6 +92,9 @@ class DashboardWindow(QWidget):
             logger.warning("Primary screen not available, using default window size")
             self.resize(1200, 800)
 
+        # Инициализация атрибутов
+        self._init_attributes()
+
         # Инициализация компонентов
         self.init_components()
 
@@ -115,6 +104,54 @@ class DashboardWindow(QWidget):
         # Загрузка политик
         self.load_policies_to_combobox()
 
+        # Инициализация оставшихся компонентов
+        self._finalize_initialization()
+
+        logger.info(f"Opened control panel for user '{self.username}' (ID: {self.user_id})")
+
+    def _init_attributes(self):
+        """Инициализация атрибутов класса"""
+        # Системные атрибуты
+        self._log_loader_thread = None
+        self.edit_window = None
+        self._visible_rows_timer = None
+        self._filtered_scans_data = None
+        self._scan_timer = None
+
+        # Менеджеры
+        self.scan_manager = ScanManagerStatsMixin()
+        self.init_stats_manager()
+
+        # Инициализация атрибутов для сканирования через миксин
+        self._init_scan_attributes()
+
+        # UI компоненты (будут инициализированы в init_components)
+        self.main_layout = None
+        self.tabs = None
+        self.avatar_label = None
+        self.username_label = None
+        self.scan_button = None
+
+        # Логи и фильтры
+        self._log_entries = []
+        self._filtered_log_entries = []
+        self.detailed_log = None
+        self.log_status_label = None
+
+        # Вкладки
+        self.scan_tab = None
+        self.reports_tab = None
+        self.stats_tab = None
+        self.profile_tab = None
+
+        # Статистика
+        self._stats = None
+
+        # Сигналы
+        self._log_loaded_signal.connect(self._process_log_content)
+
+    def _finalize_initialization(self):
+        """Завершение инициализации компонентов"""
         try:
             # Инициализация вкладок
             self.initialize_tabs()
@@ -137,9 +174,8 @@ class DashboardWindow(QWidget):
 
         except Exception as init_error:
             logger.error(f"Failed to initialize dashboard window: {init_error}")
-            QMessageBox.critical(self, "Error", f"Failed to initialize dashboard window: {e}")
+            QMessageBox.critical(self, "Error", f"Failed to initialize dashboard window: {init_error}")
             raise
-        logger.info(f"Opened control panel for user '{self.username}' (ID: {self.user_id})")
 
     def initialize_tabs(self):
         try:
@@ -178,7 +214,7 @@ class DashboardWindow(QWidget):
         
         except Exception as tabs_error:
             logger.error(f"Error initializing tabs: {tabs_error}")
-            error_handler.show_error_message("Ошибка", f"Не удалось инициализировать вкладки: {e}")
+            error_handler.show_error_message("Ошибка", f"Не удалось инициализировать вкладки: {tabs_error}")
 
     def init_components(self):
         """Инициализация всех необходимых компонентов"""
@@ -222,8 +258,52 @@ class DashboardWindow(QWidget):
                 'errors': 0,
             }
 
+            # Добавляем инициализацию компонентов сканирования
+            self.url_input = QLineEdit()
+            self.sql_checkbox = QCheckBox("SQL Injection")
+            self.xss_checkbox = QCheckBox("XSS")
+            self.csrf_checkbox = QCheckBox("CSRF")
+            self.depth_spinbox = QSpinBox()
+            self.concurrent_spinbox = QSpinBox()
+            self.timeout_spinbox = QSpinBox()
+            self.max_coverage_checkbox = QCheckBox("Максимальное покрытие")
+            self.turbo_checkbox = QCheckBox("Турбо режим")
+
+            # Инициализация кнопок
+            self.scan_button = QPushButton("Начать сканирование")
+            self.pause_button = QPushButton("⏸️ Пауза")
+            self.stop_button = QPushButton("⏹️ Стоп")
+            
+            # Инициализация элементов прогресса
+            self.scan_progress = QProgressBar()
+            self.progress_label = QLabel("0%")
+            self.scan_status = QLabel("Готов к сканированию")
+            
+            # Инициализация фильтров
+            self.filter_input = QLineEdit()
+            self.filter_sql_cb = QCheckBox("SQL Injection")
+            self.filter_xss_cb = QCheckBox("XSS")
+            self.filter_csrf_cb = QCheckBox("CSRF")
+            self.date_from = QDateTimeEdit()
+            self.date_to = QDateTimeEdit()
+            
+            # Инициализация таблицы и текстовых полей
+            self.scans_table = QTableWidget()
+            self.reports_text = QTextEdit()
+            self.activity_log = QTextEdit()
+            self.stats_text = QTextEdit()
+            
+            # Инициализация компонентов лога
+            self.log_search = QLineEdit()
+            self.auto_scroll_checkbox = QCheckBox("Автопрокрутка")
+            self.clear_log_checkbox = QCheckBox("Очищать лог перед сканированием")
+
             # Инициализация комбобокса политик
             self.policy_combobox = QComboBox()
+
+            # Инициализация множеств для отслеживания
+            self._scanned_urls = set()
+            self._scanned_forms = set()
             
             logger.info("Dashboard components initialized successfully")
             
@@ -249,8 +329,20 @@ class DashboardWindow(QWidget):
     def setup_ui(self):
         """Настройка основного пользовательского интерфейса"""
         try:
+            # Устанавливаем заголовок окна
             self.setWindowTitle("Панель управления")
             self.setMinimumSize(800, 600)
+
+            # Создаем layout для прогресса
+            progress_layout = QHBoxLayout()
+            progress_layout.addWidget(self.scan_progress)
+            progress_layout.addWidget(self.progress_label)
+
+            # Добавляем layout прогресса в основной layout
+            if not hasattr(self, 'main_layout') or self.main_layout is None:
+                self.main_layout = QVBoxLayout(self)
+            
+            self.main_layout.addLayout(progress_layout)
 
             # Создаем основной контейнер с прокруткой
             scroll = QScrollArea()
@@ -264,6 +356,7 @@ class DashboardWindow(QWidget):
             if not hasattr(self, 'main_layout') or self.main_layout is None:
                 self.main_layout = QVBoxLayout(content_widget)
                 self.main_layout.addWidget(scroll)
+                self.setLayout(self.main_layout)
 
             # Добавление комбобокса политик
             policy_layout = QHBoxLayout()
@@ -428,9 +521,22 @@ class DashboardWindow(QWidget):
     async def scan_website_sync(self):
         """Асинхронный метод для подключения к кнопке"""
         try:
+            if not self.url_input or not self.url_input.text().strip():
+                if hasattr(self, 'error_handler'):
+                    error_handler.show_error_message("Ошибка", "Введите URL для сканирования")
+                return
+            
+            url = self.url_input.text().strip()
+            if not is_safe_url(url):
+                if hasattr(self, 'error_handler'):
+                    error_handler.show_warning_message("Предупреждение",
+                        "URL может быть небезопасным. Убедитесь, что вы сканируете только свои собственные сайты.")
+                return
+            
             await self.scan_website()
         except Exception as scan_error:
-            error_handler.handle_validation_error(scan_error, "scan_website_sync")
+            if hasattr(self, 'error_handler'):
+                error_handler.handle_validation_error(scan_error, "scan_website_sync")
             log_and_notify('error', f"Error in scan_website_sync: {scan_error}")
 
     async def scan_website(self):
@@ -476,34 +582,56 @@ class DashboardWindow(QWidget):
     async def start_scan(self, url: str, types: list, max_depth: int, max_concurrent: int, timeout: int, max_coverage_mode: bool = False):
         """Запускает процесс сканирования"""
         try:
-            # Очищаем файл scanner.log при начале нового сканирования (если включено)
-            if hasattr(self, 'clear_log_checkbox') and self.clear_log_checkbox.isChecked():
-                self._clear_scanner_log_file()
+            if self.scan_controller is None:
+                raise ValueError("Сканер не инициализирован")
+
+            # Проверка на корректность URL
+            if not db.is_valid_url(url):
+                error_handler.show_error_message("Ошибка", "Некорректный URL")
+                return
+
+            # Проверка на корректность типа сканирования
+            if not types:
+                error_handler.show_error_message("Ошибка", "Выберите хотя бы один тип сканирования")
+                return
             
-            # Сбрасываем интерфейс
-            if self.scan_progress is not None:
+            # Запуск сканирования через менеджер
+            self.scan_manager.start_scan(url)
+
+            # Очистка лога сканера если включено
+            if hasattr(self, 'clear_log_checkbox') and self.clear_log_checkbox.isChecked():
+                self.scan_manager.clear_scan_log()
+            
+            # Сброс компонентов интерфейса с проверками на None
+            if hasattr(self, 'scan_progress') and self.scan_progress is not None:
                 self.scan_progress.setValue(0)
-            if self.scan_status is not None:
+            if hasattr(self, 'scan_status') and self.scan_status is not None:
                 self.scan_status.setText("Подготовка к сканированию...")
-            if self.scan_button is not None:
+            if hasattr(self, 'scan_button') and self.scan_button is not None:
                 self.scan_button.setEnabled(False)
-            if self.pause_button is not None:
+            if hasattr(self, 'pause_button') and self.pause_button is not None:
                 self.pause_button.setEnabled(True)
-            if self.stop_button is not None:
+            if hasattr(self, 'stop_button') and self.stop_button is not None:
                 self.stop_button.setEnabled(True)
             
-            # Сбрасываем состояние паузы
+            # Сброс состояния паузы
             self._is_paused = False
-            self.pause_button.setText("⏸️ Пауза")
+            if hasattr(self, 'pause_button') and self.pause_button is not None:
+                self.pause_button.setText("⏸️ Пауза")
             
-            # Очищаем древовидное представление и статистику
-            self.site_tree.clear()
-            if self._log_entries is not None:
+            # Очистка древовидного представления и статистики
+            if hasattr(self, 'site_tree') and self.site_tree is not None:
+                self.site_tree.clear()
+            if hasattr(self, '_log_entries') and self._log_entries is not None:
                 self._log_entries.clear()
-            if self._filtered_log_entries is not None:
+            if hasattr(self, '_filtered_log_entries') and self._filtered_log_entries is not None:
                 self._filtered_log_entries.clear()
-            self._scanned_urls = set()  # Множество для отслеживания уникальных просканированных URL
-            self._scanned_forms = set()  # Множество для отслеживания уникальных просканированных форм
+            
+            # Инициализация множеств для отслеживания
+            self._scanned_urls = set()
+            self._scanned_forms = set()
+            
+            # Инициализация статистики
             self._stats = {
                 'urls_found': 0,
                 'urls_scanned': 0,
@@ -515,35 +643,33 @@ class DashboardWindow(QWidget):
                 'scan_start_time': datetime.now()
             }
             
-            # Обновляем все метки статистики
-            for key in self.stats_labels:
-                self.stats_labels[key].setText("0")
-            self.stats_labels['scan_time'].setText("00:00:00")
+            # Обновление меток статистики
+            if hasattr(self, 'stats_labels') and self.stats_labels is not None:
+                for key in self.stats_labels:
+                    if self.stats_labels[key] is not None:
+                        self.stats_labels[key].setText("0")
+                if 'scan_time' in self.stats_labels and self.stats_labels['scan_time'] is not None:
+                    self.stats_labels['scan_time'].setText("00:00:00")
             
-            # Запускаем таймер для обновления времени сканирования
-            self._scan_timer = QTimer()
-            self._scan_timer.timeout.connect(self._update_scan_time)
-            self._scan_timer.start(1000)  # Обновляем каждую секунду
+            # Обновление статуса сканирования
+            if hasattr(self, 'scan_status') and self.scan_status is not None:
+                self.scan_status.setText("Сканирование...")
+            if hasattr(self, 'progress_label') and self.progress_label is not None:
+                self.progress_label.setText("0%")
             
-            # Немедленно обновляем статус на начало сканирования
-            self.scan_status.setText("Сканирование...")
-            self.progress_label.setText("0%")
-            
-            # Добавляем начальную запись в лог
+            # Добавление начальных записей в лог
             self._add_log_entry("INFO", f"🚀 Начало сканирования: {url}")
             self._add_log_entry("INFO", f"📋 Типы сканирования: {', '.join(types)}")
             self._add_log_entry("INFO", f"⚙️ Параметры: глубина={max_depth}, параллельно={max_concurrent}, таймаут={timeout}с")
             
-            # Заменяем параметры на параметры из политики
+            # Применение настроек политики
             policy = self.selected_policy or self.policy_manager.get_default_policy()
             types = policy.get("enabled_vulns", types)
             max_depth = policy.get("max_depth", max_depth)
             max_concurrent = policy.get("max_concurrent", max_concurrent)
             timeout = policy.get("timeout", timeout)
-            # Можно добавить другие параметры политики
-            # ... остальной код start_scan ...
             
-            # Запускаем асинхронное сканирование
+            # Запуск сканирования
             await self.scan_controller.start_scan(
                 url=url,
                 scan_types=types,
@@ -554,24 +680,26 @@ class DashboardWindow(QWidget):
                 on_log=self._on_scan_log,
                 on_vulnerability=self._on_vulnerability_found,
                 on_result=self._on_scan_result,
-                max_coverage_mode=max_coverage_mode,
-                # username=self.username # если потребуется, добавить в ScanController
+                max_coverage_mode=max_coverage_mode
             )
             
-            # Записываем метрики производительности
+            # Запуск мониторинга производительности
             performance_monitor.start_timer("scan_session")
             
         except Exception as e:
-            # Останавливаем таймер при ошибке
+            # Обработка ошибок
             if hasattr(self, '_scan_timer') and self._scan_timer is not None:
                 self._scan_timer.stop()
             
             error_handler.handle_network_error(e, "start_scan")
             log_and_notify('error', f"Error in start_scan: {e}")
-            self.scan_status.setText("Ошибка запуска сканирования")
-            if self.scan_button:
+            
+            # Сброс интерфейса при ошибке
+            if hasattr(self, 'scan_status') and self.scan_status is not None:
+                self.scan_status.setText("Ошибка запуска сканирования")
+            if hasattr(self, 'scan_button') and self.scan_button is not None:
                 self.scan_button.setEnabled(True)
-            if self.stop_button:
+            if hasattr(self, 'stop_button') and self.stop_button is not None:
                 self.stop_button.setEnabled(False)
 
     def _clear_scanner_log_file(self):
@@ -609,7 +737,7 @@ class DashboardWindow(QWidget):
             self._add_log_entry("ERROR", error_msg)
             logger.warning(f"Failed to clear scanner log file: {e}")
 
-    def _add_log_entry(self, level: str, message: str, url: str = "", details: str = ""):
+    def _add_log_entry(self, level: str, message: str, url: str = "", details: str = "") -> None:
         """Добавляет запись в детальный лог с цветовой кодировкой"""
         try:
             if not hasattr(self, '_log_entries') or self._log_entries is None:
@@ -721,8 +849,11 @@ class DashboardWindow(QWidget):
     def _apply_filters(self):
         """Применяет фильтры к логу"""
         try:
-            if not hasattr(self, '_log_entries') or not hasattr(self, '_filtered_log_entries'):
-                return
+            # Проверяем инициализацию компонентов
+            if not hasattr(self, '_log_entries') or self._log_entries is None:
+                self._log_entries = []
+            if not hasattr(self, '_filtered_log_entries') or self._filtered_log_entries is None:
+                self._filtered_log_entries = []
                 
             self._filtered_log_entries = []
             
@@ -740,6 +871,8 @@ class DashboardWindow(QWidget):
                         continue
                 
                 self._filtered_log_entries.append(entry)
+                
+            self._update_log_display()
         except Exception as e:
             log_and_notify('error', f"Error in _apply_filters: {e}")
 
@@ -748,12 +881,16 @@ class DashboardWindow(QWidget):
         try:
             if not hasattr(self, 'detailed_log') or not hasattr(self, '_filtered_log_entries'):
                 return
+            
+            if self._filtered_log_entries is None:
+                self._filtered_log_entries = []
                 
             html_content = ""
             for entry in self._filtered_log_entries:
                 html_content += entry['html']
             
-            self.detailed_log.setHtml(html_content)
+            if self.detailed_log is not None:
+                self.detailed_log.setHtml(html_content)
         except Exception as update_error:
             log_and_notify('error', f"Error in _update_log_display: {update_error}")
 
@@ -776,8 +913,61 @@ class DashboardWindow(QWidget):
         self._apply_filters()
         self._update_log_display()
 
-    def _update_stats(self, key: str, value):
+    def _update_stats(self, key: str, value: int) -> None:
         """Обновляет статистику"""
+        try:
+            if not hasattr(self, '_stats') or self._stats is None:
+                self._stats = {
+                    'urls_found': 0,
+                    'urls_scanned': 0,
+                    'forms_found': 0,
+                    'forms_scanned': 0,
+                    'vulnerabilities': 0,
+                    'requests_sent': 0,
+                    'errors': 0,
+                }
+            
+            if key in self._stats:
+                self._stats[key] = value
+                
+            # Используем пакетное обновление UI
+            if not hasattr(self, '_pending_stats_updates'):
+                self._pending_stats_updates = {}
+
+            self._pending_stats_updates[key] = value
+
+            # Запланируем обновление UI, если ещё не заплпанировано
+            if not hasattr(self, '_stats_update_timer') or self._stats_update_timer is None or not self._stats_update_timer.isActive():
+                self._stats_update_timer = QTimer(self)
+                self._stats_update_timer.setSingleShot(True)
+                self._stats_update_timer.timeout.connect(self._flush_stats_updates)
+                self._stats_update_timer.start(100)  # Обновляем не чаще чем раз в 100 мс
+        except Exception as e:
+            log_and_notify('error', f"Error in _update_stats: {e}")
+
+    def _flush_stats_updates(self):
+        """Применяет накопленные обновления статистики к UI"""
+        try:
+            # Проверяем наличие и инициализируем _pending_stats_updates
+            if not hasattr(self, '_pending_stats_updates'):
+                self._pending_stats_updates = {}
+                
+            # Проверяем наличие и инициализируем stats_labels
+            if not hasattr(self, 'stats_labels') or self.stats_labels is None:
+                self.stats_labels = {}
+            
+            # Применяем накопленные обновления к UI
+            for key, value in self._pending_stats_updates.items():
+                if key in self.stats_labels and self.stats_labels[key] is not None:
+                    self.stats_labels[key].setText(str(value))
+            
+            # Очищаем накопленные обновления
+            self._pending_stats_updates = {}
+        except Exception as e:
+            log_and_notify('error', f"Error in _flush_stats_updates: {e}")
+
+    def update_forms_counters(self, forms_found: int = 0, forms_scanned: int = 0):
+        """Принудительно обновляет счетчики форм"""
         if not hasattr(self, '_stats') or self._stats is None:
             self._stats = {
                 'urls_found': 0,
@@ -788,34 +978,7 @@ class DashboardWindow(QWidget):
                 'requests_sent': 0,
                 'errors': 0,
             }
-        
-        if key in self._stats:
-            self._stats[key] = value
-            
-            # Используем пакетное обновление UI
-            if not hasattr(self, '_pending_stats_updates'):
-                self._pending_stats_updates = {}
 
-            self._pending_stats_updates[key] = value
-
-            # Запланируем обновление UI, если ещё не заплпанировано
-            if not hasattr(self, '_stats_update_timer') or not self._stats_update_timer.isActive():
-                self._stats_update_timer = QTimer(self)
-                self._stats_update_timer.setSingleShot(True)
-                self._stats_update_timer.timeout.connect(self._flush_stats_updates)
-                self._stats_update_timer.start(100)  # Обновляем не чаще чем раз в 100 мс
-
-    def _flush_stats_updates(self):
-        """Применяет все накопленные обновления статистики к UI"""
-        if hasattr(self, '_pending_stats_updates'):
-            for key, value in self._pending_stats_updates.items():
-                if key in self.stats_labels:
-                    self.stats_labels[key].setText(str(value))
-
-            self._pending_stats_updates.clear()
-
-    def update_forms_counters(self, forms_found: int = 0, forms_scanned: int = 0):
-        """Принудительно обновляет счетчики форм"""
         if forms_found > self._stats['forms_found']:
             self._stats['forms_found'] = forms_found
             self._update_stats('forms_found', self._stats['forms_found'])
@@ -826,106 +989,161 @@ class DashboardWindow(QWidget):
     def update_all_counters(self):
         """Принудительно обновляет все счетчики статистики из текущего состояния"""
         try:
+            # Инициализация статистики, если она отсутствует
+            if not hasattr(self, '_stats') or self._stats is None:
+                self._stats = {
+                    'urls_found': 0,
+                    'urls_scanned': 0,
+                    'forms_found': 0,
+                    'forms_scanned': 0,
+                    'vulnerabilities': 0,
+                    'requests_sent': 0,
+                    'errors': 0,
+                }
+            
             # Обновляем счетчик найденных URL из дерева
             total_urls_in_tree = 0
-            for i in range(self.site_tree.topLevelItemCount()):
-                root_item = self.site_tree.topLevelItem(i)
-                if root_item is not None:
-                    total_urls_in_tree += root_item.childCount()
+            if hasattr(self, 'site_tree') and self.site_tree is not None:
+                for i in range(self.site_tree.topLevelItemCount()):
+                    root_item = self.site_tree.topLevelItem(i)
+                    if root_item is not None:
+                        total_urls_in_tree += root_item.childCount()
+            
             if total_urls_in_tree > self._stats['urls_found']:
                 self._stats['urls_found'] = total_urls_in_tree
                 self._update_stats('urls_found', self._stats['urls_found'])
+            
             # Обновляем счетчик просканированных URL
             scanned_urls_count = len(getattr(self, '_scanned_urls', set()))
             if scanned_urls_count > self._stats['urls_scanned']:
                 self._stats['urls_scanned'] = scanned_urls_count
                 self._update_stats('urls_scanned', self._stats['urls_scanned'])
+            
             # Обновляем счетчик найденных форм из дерева
             forms_in_tree = 0
-            for i in range(self.site_tree.topLevelItemCount()):
-                root_item = self.site_tree.topLevelItem(i)
-                if root_item is not None:
-                    for j in range(root_item.childCount()):
-                        child = root_item.child(j)
-                        if child is not None and child.text(1) == "Форма":
-                            forms_in_tree += 1
+            if hasattr(self, 'site_tree') and self.site_tree is not None:
+                for i in range(self.site_tree.topLevelItemCount()):
+                    root_item = self.site_tree.topLevelItem(i)
+                    if root_item is not None:
+                        for j in range(root_item.childCount()):
+                            child = root_item.child(j)
+                            if child is not None and child.text(1) == "Форма":
+                                forms_in_tree += 1
+            
             if forms_in_tree > self._stats['forms_found']:
                 self._stats['forms_found'] = forms_in_tree
                 self._update_stats('forms_found', self._stats['forms_found'])
+            
             # Обновляем счетчик просканированных форм
             scanned_forms_count = len(getattr(self, '_scanned_forms', set()))
             if scanned_forms_count > self._stats['forms_scanned']:
                 self._stats['forms_scanned'] = scanned_forms_count
                 self._update_stats('forms_scanned', self._stats['forms_scanned'])
+            
             # Обновляем счетчик ошибок из лога
-            error_count = sum(1 for entry in self._log_entries if entry['level'] == 'ERROR')
+            error_count = 0
+            if hasattr(self, '_log_entries') and self._log_entries is not None:
+                error_count = sum(1 for entry in self._log_entries if entry['level'] == 'ERROR')
+            
             if error_count != self._stats['errors']:
                 self._stats['errors'] = error_count
                 self._update_stats('errors', self._stats['errors'])
+            
             logger.debug(f"Counters updated: URLs found={self._stats['urls_found']}, "
                         f"URLs scanned={self._stats['urls_scanned']}, "
                         f"Forms found={self._stats['forms_found']}, "
                         f"Forms scanned={self._stats['forms_scanned']}, "
                         f"Errors={self._stats['errors']}")
+                        
         except Exception as e:
             log_and_notify('error', f"Error updating all counters: {e}")
 
     def _update_scan_time(self):
-        """Обновляет время сканирования"""
-        try:
-            # Проверяем, что сканирование активно
-            if not hasattr(self, '_scan_timer') or not self._scan_timer.isActive():
+        """Обновляет время сканирования через менеджер"""
+        # Делегируем обновление времени сканирования менеджеру
+        self.scan_manager._update_scan_time()
+
+        # Проверяем, что сканирование активно и таймер существует
+        if not hasattr(self, '_scan_timer') or self._scan_timer is None or not self._scan_timer.isActive():
                 return
             
-            # Проверяем, что время начала сканирования установлено
-            if not hasattr(self, '_stats') or 'scan_start_time' not in self._stats or not self._stats['scan_start_time']:
+            # Проверяем, что статистика существует и имеет нужную структуру
+        if not hasattr(self, '_stats') or self._stats is None:
+            self._stats = {
+                'urls_found': 0,
+                'urls_scanned': 0,
+                    'forms_found': 0,
+                    'forms_scanned': 0,
+                    'vulnerabilities': 0,
+                    'requests_sent': 0,
+                    'errors': 0,
+                    'scan_start_time': datetime.now()
+                }
+            
+            # Проверяем наличие времени начала сканирования
+            if 'scan_start_time' not in self._stats or self._stats['scan_start_time'] is None:
                 return
             
             # Вычисляем прошедшее время
             scan_start = self._stats['scan_start_time']
             if not isinstance(scan_start, datetime):
                 return
+                
             elapsed = datetime.now() - scan_start
             time_str = str(elapsed).split('.')[0]  # Убираем микросекунды
             
             # Обновляем отображение времени
-            if 'scan_time' in self.stats_labels:
+            if hasattr(self, 'stats_labels') and 'scan_time' in self.stats_labels:
                 self.stats_labels['scan_time'].setText(time_str)
             
-            # Также обновляем в статистике
-            if hasattr(self, '_stats'):
-                # self._stats['scan_time'] = time_str  # Не сохраняем строку в int
-                pass
-            
             # Периодически обновляем все счетчики для синхронизации
-            # Обновляем каждые 5 секунд (5-й вызов таймера)
             if not hasattr(self, '_timer_counter'):
                 self._timer_counter = 0
             self._timer_counter += 1
             
             if self._timer_counter % 5 == 0:  # Каждые 5 секунд
                 self.update_all_counters()
-                
-        except Exception as e:
-            log_and_notify('error', f"Error updating scan time: {e}")
-            # В случае ошибки останавливаем таймер
-            if hasattr(self, '_scan_timer'):
-                self._scan_timer.stop()
+
 
     def _on_vulnerability_found(self, url: str, vuln_type: str, details: str, target: str):
         """Обработчик обнаружения уязвимости"""
-        message = f"Обнаружена уязвимость {vuln_type}"
-        self._add_log_entry("VULNERABILITY", message, url, details)
-        
-        # Обновляем статистику
-        self._stats['vulnerabilities'] += 1
-        self._update_stats('vulnerabilities', self._stats['vulnerabilities'])
-        
-        # Обновляем статус в дереве
-        self._update_url_status(url, "Уязвимость")
+        try:
+            # Проверяем и инициализируем статистику при необходимости
+            if not hasattr(self, '_stats') or self._stats is None:
+                self._stats = {
+                    'urls_found': 0,
+                    'urls_scanned': 0,
+                    'forms_found': 0,
+                    'forms_scanned': 0,
+                    'vulnerabilities': 0,
+                    'requests_sent': 0,
+                    'errors': 0,
+                }
+            
+            # Формируем сообщение
+            message = f"Обнаружена уязвимость {vuln_type}"
+            
+            # Добавляем запись в лог
+            self._add_log_entry("VULNERABILITY", message, url, details)
+            
+            # Обновляем статистику
+            self._stats['vulnerabilities'] += 1
+            self._update_stats('vulnerabilities', self._stats['vulnerabilities'])
+            
+            # Обновляем статус в дереве с проверкой на None
+            if hasattr(self, 'site_tree') and self.site_tree is not None:
+                self._update_url_status(url, "Уязвимость")
+                
+        except Exception as e:
+            log_and_notify('error', f"Error in _on_vulnerability_found: {e}")
 
-    def _update_url_status(self, url: str, status: str):
+    def _update_url_status(self, url: str, status: str) -> None:
         """Обновляет статус URL в дереве"""
+        # Проверяем инициализацию дерева сайта
+        if not hasattr(self, 'site_tree') or self.site_tree is None:
+            logger.error("Site tree is not initialized")
+            return
+            
         for i in range(self.site_tree.topLevelItemCount()):
             root_item = self.site_tree.topLevelItem(i)
             if root_item is None:
@@ -938,10 +1156,25 @@ class DashboardWindow(QWidget):
                     child.setText(2, status)
                     # Обновляем счетчик просканированных форм
                     if status == "Просканирован" and child.text(1) == "Форма":
-                        if url not in getattr(self, '_scanned_forms', set()):
-                            if not hasattr(self, '_scanned_forms'):
-                                self._scanned_forms = set()
+                        # Инициализация множества при необходимости
+                        if not hasattr(self, '_scanned_forms') or self._scanned_forms is None:
+                            self._scanned_forms = set()
+                        
+                        if url not in self._scanned_forms:
                             self._scanned_forms.add(url)
+                            
+                            # Инициализация статистики при необходимости
+                            if not hasattr(self, '_stats') or self._stats is None:
+                                self._stats = {
+                                    'urls_found': 0,
+                                    'urls_scanned': 0,
+                                    'forms_found': 0,
+                                    'forms_scanned': 0,
+                                    'vulnerabilities': 0,
+                                    'requests_sent': 0,
+                                    'errors': 0,
+                                }
+                                
                             self._stats['forms_scanned'] += 1
                             self._update_stats('forms_scanned', self._stats['forms_scanned'])
                     
@@ -954,15 +1187,30 @@ class DashboardWindow(QWidget):
                         child.setBackground(2, QColor("#ffcc99"))
                     break
 
-    async def _on_scan_result(self, result: dict):
+
+    async def _on_scan_result(self, result: Dict[str, Any]) -> None:
         """Обработка результата сканирования"""
         try:
+            self._scan_result_signal.emit(result)
             # Останавливаем таймер
-            if hasattr(self, '_scan_timer'):
+            if hasattr(self, '_scan_timer') and self._scan_timer is not None:
                 self._scan_timer.stop()
             
+            # Проверяем и инициализируем статистику при необходимости
+            if not hasattr(self, '_stats') or self._stats is None:
+                self._stats = {
+                    'urls_found': 0,
+                    'urls_scanned': 0,
+                    'forms_found': 0,
+                    'forms_scanned': 0,
+                    'vulnerabilities': 0,
+                    'requests_sent': 0,
+                    'errors': 0,
+                }
+            
             # Обновляем интерфейс
-            self.scan_progress.setValue(100)
+            if self.scan_progress is not None:
+                self.scan_progress.setValue(100)
             if hasattr(self, 'progress_label') and self.progress_label is not None:
                 self.progress_label.setText("100%")
             if hasattr(self, 'scan_status') and self.scan_status is not None:
@@ -989,9 +1237,12 @@ class DashboardWindow(QWidget):
             self._add_log_entry("INFO", f"📊 Результаты: {total_urls} URL просканировано, {total_vulnerabilities} уязвимостей найдено")
             
             # Обновляем статистику в интерфейсе
-            self._stats['urls_scanned'] = total_urls
-            self._stats['vulnerabilities'] = total_vulnerabilities
-            self._stats['forms_scanned'] = total_forms_scanned
+            if 'urls_scanned' in self._stats:
+                self._stats['urls_scanned'] = total_urls
+            if 'vulnerabilities' in self._stats:
+                self._stats['vulnerabilities'] = total_vulnerabilities
+            if 'forms_scanned' in self._stats:
+                self._stats['forms_scanned'] = total_forms_scanned
             
             # Обновляем отображение статистики
             self._update_stats('urls_scanned', total_urls)
@@ -1004,8 +1255,11 @@ class DashboardWindow(QWidget):
             # Завершаем метрики производительности
             performance_monitor.end_timer("scan_session", performance_monitor.start_timer("scan_session"))
             
-            # Сохраняем результат в базу данных
-            await self.scan_controller.save_scan_result(result)
+            # Сохраняем результат в базу данных с проверкой на None
+            if self.scan_controller is not None:
+                await self.scan_controller.save_scan_result(result)
+            else:
+                log_and_notify('error', "Scan controller is None when trying to save result")
             
             # Показываем результат пользователю
             if total_vulnerabilities > 0:
@@ -1054,49 +1308,89 @@ class DashboardWindow(QWidget):
             log_and_notify('error', f"Error in _on_scan_result: {e}")
             error_handler.handle_database_error(e, "_on_scan_result")
 
-    def _on_scan_progress(self, progress: int, url: str):
+
+    def _on_scan_progress(self, progress: int, url: str) -> None:
         """Обработчик прогресса сканирования"""
         try:
             # Проверяем, что сканирование все еще активно
-            if not hasattr(self, '_scan_timer') or not self._scan_timer.isActive():
+            if not hasattr(self, '_scan_timer') or self._scan_timer is None:
+                self._scan_timer = QTimer()
+                self._scan_timer.timeout.connect(self._update_scan_time)
+                self._scan_timer.start(1000)
+
+            if not self._scan_timer.isActive():
                 return
+
+            # Проверка инициализации дерева сайта
+            if not hasattr(self, 'site_tree') or self.site_tree is None:
+                self.site_tree = QTreeWidget()
+
+            # Инициализация множеств при необходимости
+            if not hasattr(self, '_scanned_urls') or self._scanned_urls is None:
+                self._scanned_urls = set()
+            if not hasattr(self, '_scanned_forms') or self._scanned_forms is None:
+                self._scanned_forms = set()
             
-            # Обновляем прогресс-бар
-            self.scan_progress.setValue(progress)
-            self.progress_label.setText(f"{progress}%")
+            # Инициализируем статистику при необходимости
+            if not hasattr(self, '_stats') or self._stats is None:
+                self._stats = {
+                    'urls_found': 0,
+                    'urls_scanned': 0,
+                    'forms_found': 0,
+                    'forms_scanned': 0,
+                    'vulnerabilities': 0,
+                    'requests_sent': 0,
+                    'errors': 0,
+                }
+            
+            # Проверяем и обновляем прогресс-бар
+            if hasattr(self, 'scan_progress_widget') and self.scan_progress_widget is not None:
+                self.scan_progress_widget.setValue(progress)
+            
+            # Проверяем и обновляем метку прогресса
+            if hasattr(self, 'progress_label') and self.progress_label is not None:
+                self.progress_label.setText(f"{progress}%")
             
             # Добавляем URL в дерево если он новый
             if url:
                 # Проверяем, есть ли уже такой URL в дереве
                 existing_urls = []
-                for i in range(self.site_tree.topLevelItemCount()):
-                    root_item = self.site_tree.topLevelItem(i)
-                    if root_item is not None:
-                        for j in range(root_item.childCount()):
-                            child = root_item.child(j)
-                            if child is not None:
-                                existing_urls.append(child.text(0))
+                if hasattr(self, 'site_tree') and self.site_tree is not None:
+                    for i in range(self.site_tree.topLevelItemCount()):
+                        root_item = self.site_tree.topLevelItem(i)
+                        if root_item is not None:
+                            for j in range(root_item.childCount()):
+                                child = root_item.child(j)
+                                if child is not None:
+                                    existing_urls.append(child.text(0))
                 
                 if url not in existing_urls:
-                    self._add_url_to_tree(url, "URL", "Сканируется")
+                    # Проверяем, что метод _add_url_to_tree существует
+                    if hasattr(self, '_add_url_to_tree') and callable(self._add_url_to_tree):
+                        self._add_url_to_tree(url, "URL", "Сканируется")
                     # Увеличиваем счетчик найденных URL только для новых URL
-                    self._stats['urls_found'] += 1
-                    self._update_stats('urls_found', self._stats['urls_found'])
+                    if self._stats is not None:
+                        self._stats['urls_found'] = self._stats.get('urls_found', 0) + 1
+                        self._update_stats('urls_found', self._stats['urls_found'])
                 
                 # Обновляем статус URL в дереве
-                self._update_url_status(url, "Просканирован")
+                if hasattr(self, '_update_url_status') and callable(self._update_url_status):
+                    self._update_url_status(url, "Просканирован")
                 
                 # Обновляем счетчик просканированных URL только если это новый URL
                 if url not in getattr(self, '_scanned_urls', set()):
                     if not hasattr(self, '_scanned_urls'):
                         self._scanned_urls = set()
                     self._scanned_urls.add(url)
-                    self._stats['urls_scanned'] += 1
-                    self._update_stats('urls_scanned', self._stats['urls_scanned'])
+                    if self._stats is not None:
+                        self._stats['urls_scanned'] = self._stats.get('urls_scanned', 0) + 1
+                        self._update_stats('urls_scanned', self._stats['urls_scanned'])
             
             # Добавляем запись о прогрессе
             if progress % 10 == 0:  # Логируем каждые 10%
-                self._add_log_entry("PROGRESS", f"Прогресс: {progress}%", url)
+                # Проверяем, что метод _add_log_entry существует
+                if hasattr(self, '_add_log_entry') and callable(self._add_log_entry):
+                    self._add_log_entry("PROGRESS", f"Прогресс: {progress}%", url)
             
         except Exception as e:
             log_and_notify('error', f"Error in _on_scan_progress: {e}")
@@ -1105,7 +1399,9 @@ class DashboardWindow(QWidget):
         """Обработчик прогресса сканирования с информацией о формах"""
         try:
             # Проверяем, что сканирование все еще активно
-            if not hasattr(self, '_scan_timer') or not self._scan_timer.isActive():
+            if (not hasattr(self, '_scan_timer') or 
+                self._scan_timer is None or 
+                not self._scan_timer.isActive()):
                 return
             
             # Вызываем основной обработчик прогресса
@@ -1173,6 +1469,8 @@ class DashboardWindow(QWidget):
             logger.warning("Default avatar file not found")
 
     def handle_scan(self):
+        if not self.url_input or not self.scan_controller:
+            return
         url = self.url_input.text()
         scan_types = []
         if self.sql_checkbox.isChecked():
@@ -1182,7 +1480,7 @@ class DashboardWindow(QWidget):
         if self.csrf_checkbox.isChecked():
             scan_types.append('CSRF')
 
-        if url and scan_types:
+        if url and scan_types and self.scan_controller is not None:
             asyncio.create_task(self.scan_controller.start_scan(url, scan_types))
 
     # ----------------------- Отчёты -----------------------
@@ -1197,225 +1495,240 @@ class DashboardWindow(QWidget):
         self.refresh_reports()
 
     def refresh_reports(self):
-        scans = db.get_scans_by_user(self.user_id)
-        url_filter = self.filter_input.text().strip().lower()
-        selected_types = [
-            t for cb, t in [
-                (self.filter_sql_cb, "SQL Injection"),
-                (self.filter_xss_cb, "XSS"),
-                (self.filter_csrf_cb, "CSRF"),
-            ] if cb.isChecked()
-        ]
-        from_dt = self.date_from.dateTime().toPyDateTime()
-        to_dt = self.date_to.dateTime().toPyDateTime()
+        try:
+            scans = db.get_scans_by_user(self.user_id)
+            if not scans:
+                if self.reports_text is not None:
+                    self.reports_text.setText("Нет данных для отображения.")
+            url_filter = self.filter_input.text().strip().lower()
+            selected_types = [
+                t for cb, t in [
+                    (self.filter_sql_cb, "SQL Injection"),
+                    (self.filter_xss_cb, "XSS"),
+                    (self.filter_csrf_cb, "CSRF"),
+                ] if cb.isChecked()
+            ]
+            from_dt = self.date_from.dateTime().toPyDateTime()
+            to_dt = self.date_to.dateTime().toPyDateTime()
 
-        # Заполняем таблицу
-        self.populate_scans_table(scans, url_filter, selected_types, from_dt, to_dt)
+            # Заполняем таблицу
+            self.populate_scans_table(scans, url_filter, selected_types, from_dt, to_dt)
 
-        # Обновляем текстовый отчет
-        report_lines = ["=" * 80, "ОТЧЕТ О СКАНИРОВАНИИ УЯЗВИМОСТЕЙ", "=" * 80, f"Период: {from_dt} - {to_dt}",
-                        f"Фильтр URL: {url_filter if url_filter else 'Все'}",
-                        f"Типы уязвимостей: {', '.join(selected_types) if selected_types else 'Все'}", "=" * 80, ""]
-        
-        # Добавляем заголовок отчета
-
-        filtered_scans = []
-        total_vulnerabilities = 0
-        high_risk_scans = 0
-        
-        # Статистика по типам уязвимостей
-        vuln_type_stats = {
-            'SQL Injection': 0,
-            'XSS': 0,
-            'CSRF': 0
-        }
-
-        for scan in scans:
-            # Преобразуем дату сканирования
-            scan_dt = datetime.strptime(scan["timestamp"], "%Y-%m-%d %H:%M:%S")
-
-            # Фильтр по дате
-            if not (from_dt <= scan_dt <= to_dt):
-                continue
-
-            # Фильтр по URL
-            if url_filter and url_filter not in scan["url"].lower():
-                continue
-
-            # Фильтр по типу уязвимости
-            scan_results = scan.get("result", scan.get("results", []))
-            if isinstance(scan_results, str):
-                try:
-                    scan_results = json.loads(scan_results)
-                except (json.JSONDecodeError, TypeError):
-                    scan_results = []
+            # Обновляем текстовый отчет
+            report_lines = ["=" * 80, "ОТЧЕТ О СКАНИРОВАНИИ УЯЗВИМОСТЕЙ", "=" * 80, f"Период: {from_dt} - {to_dt}",
+                            f"Фильтр URL: {url_filter if url_filter else 'Все'}",
+                            f"Типы уязвимостей: {', '.join(selected_types) if selected_types else 'Все'}", "=" * 80, ""]
             
-            if selected_types:
-                has_selected_type = False
-                for result in scan_results:
-                    if result.get("type") in selected_types:
-                        has_selected_type = True
-                        break
-                if not has_selected_type:
-                    continue
+            # Добавляем заголовок отчета
 
-            filtered_scans.append(scan)
+            filtered_scans = []
+            total_vulnerabilities = 0
+            high_risk_scans = 0
             
-            # Подсчитываем статистику для этого сканирования
-            scan_vulnerabilities = 0
-            scan_vuln_types = {
+            # Статистика по типам уязвимостей
+            vuln_type_stats = {
                 'SQL Injection': 0,
                 'XSS': 0,
                 'CSRF': 0
             }
-            
-            for result in scan_results:
-                if isinstance(result, dict):
-                    # Проверяем vulnerabilities в новой структуре
-                    if 'vulnerabilities' in result:
-                        for vuln_cat, vulns in result['vulnerabilities'].items():
-                            if isinstance(vulns, list) and vulns:
-                                scan_vulnerabilities += len(vulns)
-                                # Маппинг категорий к типам
-                                if vuln_cat == 'sql':
-                                    scan_vuln_types['SQL Injection'] += len(vulns)
-                                elif vuln_cat == 'xss':
-                                    scan_vuln_types['XSS'] += len(vulns)
-                                elif vuln_cat == 'csrf':
-                                    scan_vuln_types['CSRF'] += len(vulns)
-                    # Проверяем старую структуру
-                    elif result.get('type') or result.get('vuln_type'):
-                        vuln_type = result.get('type', result.get('vuln_type', ''))
-                        if vuln_type in scan_vuln_types:
-                            scan_vuln_types[vuln_type] += 1
-                        scan_vulnerabilities += 1
-            
-            # Обновляем общую статистику
-            total_vulnerabilities += scan_vulnerabilities
-            for vuln_type, count in scan_vuln_types.items():
-                vuln_type_stats[vuln_type] += count
-            
-            if scan_vulnerabilities > 0:
-                high_risk_scans += 1
 
-        # Добавляем общую статистику
-        report_lines.append("📊 ОБЩАЯ СТАТИСТИКА")
-        report_lines.append("-" * 40)
-        report_lines.append(f"Всего сканирований: {len(filtered_scans)}")
-        report_lines.append(f"Обнаружено уязвимостей: {total_vulnerabilities}")
-        report_lines.append(f"Целей с высоким риском: {high_risk_scans}")
-        report_lines.append(f"Средний риск: {'ВЫСОКИЙ' if high_risk_scans > len(filtered_scans) / 2 else 'СРЕДНИЙ' if high_risk_scans > 0 else 'НИЗКИЙ'}")
-        report_lines.append("")
-        
-        # Добавляем статистику по типам уязвимостей
-        report_lines.append("🎯 СТАТИСТИКА ПО ТИПАМ УЯЗВИМОСТЕЙ")
-        report_lines.append("-" * 40)
-        for vuln_type, count in vuln_type_stats.items():
-            if count > 0:
-                percentage = (count / total_vulnerabilities * 100) if total_vulnerabilities > 0 else 0
-                report_lines.append(f"• {vuln_type}: {count} ({percentage:.1f}%)")
-            else:
-                report_lines.append(f"• {vuln_type}: 0 (0.0%)")
-        report_lines.append("")
+            for scan in scans:
+                # Преобразуем дату сканирования
+                scan_dt = datetime.strptime(scan["timestamp"], "%Y-%m-%d %H:%M:%S")
 
-        if not filtered_scans:
-            report_lines.append("❌ Нет данных, соответствующих фильтрам.")
-        else:
-            # Группируем результаты по датам
-            scans_by_date = {}
-            for scan in filtered_scans:
-                scan_date = datetime.strptime(scan["timestamp"], "%Y-%m-%d %H:%M:%S").date()
-                if scan_date not in scans_by_date:
-                    scans_by_date[scan_date] = []
-                scans_by_date[scan_date].append(scan)
+                # Фильтр по дате
+                if not (from_dt <= scan_dt <= to_dt):
+                    continue
 
-            # Сортируем даты
-            sorted_dates = sorted(scans_by_date.keys(), reverse=True)
+                # Фильтр по URL
+                if url_filter and url_filter not in scan["url"].lower():
+                    continue
 
-            for date in sorted_dates:
-                report_lines.append(f"📅 ДАТА: {date.strftime('%d.%m.%Y')}")
-                report_lines.append("-" * 40)
+                # Фильтр по типу уязвимости
+                scan_results = scan.get("result", scan.get("results", []))
+                if isinstance(scan_results, str):
+                    try:
+                        scan_results = json.loads(scan_results)
+                    except (json.JSONDecodeError, TypeError):
+                        scan_results = []
                 
-                for scan in scans_by_date[date]:
-                    scan_results = scan.get("result", scan.get("results", []))
-                    if isinstance(scan_results, str):
-                        try:
-                            scan_results = json.loads(scan_results)
-                        except (json.JSONDecodeError, TypeError):
-                            scan_results = []
-                    
-                    # Подсчитываем статистику для этого сканирования
-                    # Получаем количество отсканированных URL
-                    total_urls_scanned = scan.get('total_urls_scanned', 0)
-                    total_forms_scanned = scan.get('total_forms_scanned', 0)
-                    total_checks = total_urls_scanned + total_forms_scanned
-                    
-                    # Если нет данных о URL, используем количество результатов как fallback
-                    if total_checks == 0:
-                        total_checks = len(scan_results)
-                    
-                    # Подсчитываем уязвимости по типам
-                    scan_vuln_types = {
-                        'SQL Injection': 0,
-                        'XSS': 0,
-                        'CSRF': 0
-                    }
-                    
+                if selected_types:
+                    has_selected_type = False
                     for result in scan_results:
-                        if isinstance(result, dict):
-                            # Проверяем vulnerabilities в новой структуре
-                            if 'vulnerabilities' in result:
-                                for vuln_cat, vulns in result['vulnerabilities'].items():
-                                    if isinstance(vulns, list) and vulns:
-                                        if vuln_cat == 'sql':
-                                            scan_vuln_types['SQL Injection'] += len(vulns)
-                                        elif vuln_cat == 'xss':
-                                            scan_vuln_types['XSS'] += len(vulns)
-                                        elif vuln_cat == 'csrf':
-                                            scan_vuln_types['CSRF'] += len(vulns)
-                            # Проверяем старую структуру
-                            elif result.get('type') or result.get('vuln_type'):
-                                vuln_type = result.get('type', result.get('vuln_type', ''))
-                                if vuln_type in scan_vuln_types:
-                                    scan_vuln_types[vuln_type] += 1
-                    
-                    vulnerable_count = sum(scan_vuln_types.values())
-                    safe_count = total_checks - vulnerable_count
-                    risk_level = "🔴 ВЫСОКИЙ" if vulnerable_count > 0 else "🟢 НИЗКИЙ"
-                    
-                    # Формируем отчет для этого сканирования
-                    report_lines.append(f"🔍 Сканирование #{scan['id']}")
-                    report_lines.append(f"   URL: {scan['url']}")
-                    report_lines.append(f"   Тип: {scan['scan_type']}")
-                    report_lines.append(f"   Время: {scan['timestamp']}")
-                    report_lines.append(f"   Длительность: {self.format_duration(scan.get('scan_duration', 0))}")
-                    report_lines.append(f"   Всего проверок: {total_checks}")
-                    report_lines.append(f"   Уязвимостей: {vulnerable_count}")
-                    report_lines.append(f"   Безопасных: {safe_count}")
-                    report_lines.append(f"   Уровень риска: {risk_level}")
-                    
-                    # Детали по типам уязвимостей
-                    if vulnerable_count > 0:
-                        report_lines.append("   Детали по типам:")
-                        for vuln_type, count in scan_vuln_types.items():
-                            if count > 0:
-                                report_lines.append(f"     • {vuln_type}: {count}")
-                    else:
-                        report_lines.append("   Уязвимостей не обнаружено")
-                    
-                    report_lines.append("")
+                        if result.get("type") in selected_types:
+                            has_selected_type = True
+                            break
+                    if not has_selected_type:
+                        continue
 
-        report_lines.extend([
-            "=" * 80,
-            "✅ Отчет завершен",
-            "=" * 80
-        ])
+                filtered_scans.append(scan)
+                
+                # Подсчитываем статистику для этого сканирования
+                scan_vulnerabilities = 0
+                scan_vuln_types = {
+                    'SQL Injection': 0,
+                    'XSS': 0,
+                    'CSRF': 0
+                }
+                
+                for result in scan_results:
+                    if isinstance(result, dict):
+                        # Проверяем vulnerabilities в новой структуре
+                        if 'vulnerabilities' in result:
+                            for vuln_cat, vulns in result['vulnerabilities'].items():
+                                if isinstance(vulns, list) and vulns:
+                                    scan_vulnerabilities += len(vulns)
+                                    # Маппинг категорий к типам
+                                    if vuln_cat == 'sql':
+                                        scan_vuln_types['SQL Injection'] += len(vulns)
+                                    elif vuln_cat == 'xss':
+                                        scan_vuln_types['XSS'] += len(vulns)
+                                    elif vuln_cat == 'csrf':
+                                        scan_vuln_types['CSRF'] += len(vulns)
+                        # Проверяем старую структуру
+                        elif result.get('type') or result.get('vuln_type'):
+                            vuln_type = result.get('type', result.get('vuln_type', ''))
+                            if vuln_type in scan_vuln_types:
+                                scan_vuln_types[vuln_type] += 1
+                            scan_vulnerabilities += 1
+                
+                # Обновляем общую статистику
+                total_vulnerabilities += scan_vulnerabilities
+                for vuln_type, count in scan_vuln_types.items():
+                    vuln_type_stats[vuln_type] += count
+                
+                if scan_vulnerabilities > 0:
+                    high_risk_scans += 1
 
-        self.reports_text.setText("\n".join(report_lines))
+            # Добавляем общую статистику
+            report_lines.append("📊 ОБЩАЯ СТАТИСТИКА")
+            report_lines.append("-" * 40)
+            report_lines.append(f"Всего сканирований: {len(filtered_scans)}")
+            report_lines.append(f"Обнаружено уязвимостей: {total_vulnerabilities}")
+            report_lines.append(f"Целей с высоким риском: {high_risk_scans}")
+            report_lines.append(f"Средний риск: {'ВЫСОКИЙ' if high_risk_scans > len(filtered_scans) / 2 else 'СРЕДНИЙ' if high_risk_scans > 0 else 'НИЗКИЙ'}")
+            report_lines.append("")
+            
+            # Добавляем статистику по типам уязвимостей
+            report_lines.append("🎯 СТАТИСТИКА ПО ТИПАМ УЯЗВИМОСТЕЙ")
+            report_lines.append("-" * 40)
+            for vuln_type, count in vuln_type_stats.items():
+                if count > 0:
+                    percentage = (count / total_vulnerabilities * 100) if total_vulnerabilities > 0 else 0
+                    report_lines.append(f"• {vuln_type}: {count} ({percentage:.1f}%)")
+                else:
+                    report_lines.append(f"• {vuln_type}: 0 (0.0%)")
+            report_lines.append("")
+
+            if not filtered_scans:
+                report_lines.append("❌ Нет данных, соответствующих фильтрам.")
+            else:
+                # Группируем результаты по датам
+                scans_by_date = {}
+                for scan in filtered_scans:
+                    scan_date = datetime.strptime(scan["timestamp"], "%Y-%m-%d %H:%M:%S").date()
+                    if scan_date not in scans_by_date:
+                        scans_by_date[scan_date] = []
+                    scans_by_date[scan_date].append(scan)
+
+                # Сортируем даты
+                sorted_dates = sorted(scans_by_date.keys(), reverse=True)
+
+                for date in sorted_dates:
+                    report_lines.append(f"📅 ДАТА: {date.strftime('%d.%m.%Y')}")
+                    report_lines.append("-" * 40)
+                    
+                    for scan in scans_by_date[date]:
+                        scan_results = scan.get("result", scan.get("results", []))
+                        if isinstance(scan_results, str):
+                            try:
+                                scan_results = json.loads(scan_results)
+                            except (json.JSONDecodeError, TypeError):
+                                scan_results = []
+                        
+                        # Подсчитываем статистику для этого сканирования
+                        # Получаем количество отсканированных URL
+                        total_urls_scanned = scan.get('total_urls_scanned', 0)
+                        total_forms_scanned = scan.get('total_forms_scanned', 0)
+                        total_checks = total_urls_scanned + total_forms_scanned
+                        
+                        # Если нет данных о URL, используем количество результатов как fallback
+                        if total_checks == 0:
+                            total_checks = len(scan_results)
+                        
+                        # Подсчитываем уязвимости по типам
+                        scan_vuln_types = {
+                            'SQL Injection': 0,
+                            'XSS': 0,
+                            'CSRF': 0
+                        }
+                        
+                        for result in scan_results:
+                            if isinstance(result, dict):
+                                # Проверяем vulnerabilities в новой структуре
+                                if 'vulnerabilities' in result:
+                                    for vuln_cat, vulns in result['vulnerabilities'].items():
+                                        if isinstance(vulns, list) and vulns:
+                                            if vuln_cat == 'sql':
+                                                scan_vuln_types['SQL Injection'] += len(vulns)
+                                            elif vuln_cat == 'xss':
+                                                scan_vuln_types['XSS'] += len(vulns)
+                                            elif vuln_cat == 'csrf':
+                                                scan_vuln_types['CSRF'] += len(vulns)
+                                # Проверяем старую структуру
+                                elif result.get('type') or result.get('vuln_type'):
+                                    vuln_type = result.get('type', result.get('vuln_type', ''))
+                                    if vuln_type in scan_vuln_types:
+                                        scan_vuln_types[vuln_type] += 1
+                        
+                        vulnerable_count = sum(scan_vuln_types.values())
+                        safe_count = total_checks - vulnerable_count
+                        risk_level = "🔴 ВЫСОКИЙ" if vulnerable_count > 0 else "🟢 НИЗКИЙ"
+                        
+                        # Формируем отчет для этого сканирования
+                        report_lines.append(f"🔍 Сканирование #{scan['id']}")
+                        report_lines.append(f"   URL: {scan['url']}")
+                        report_lines.append(f"   Тип: {scan['scan_type']}")
+                        report_lines.append(f"   Время: {scan['timestamp']}")
+                        report_lines.append(f"   Длительность: {self.format_duration(scan.get('scan_duration', 0))}")
+                        report_lines.append(f"   Всего проверок: {total_checks}")
+                        report_lines.append(f"   Уязвимостей: {vulnerable_count}")
+                        report_lines.append(f"   Безопасных: {safe_count}")
+                        report_lines.append(f"   Уровень риска: {risk_level}")
+                        
+                        # Детали по типам уязвимостей
+                        if vulnerable_count > 0:
+                            report_lines.append("   Детали по типам:")
+                            for vuln_type, count in scan_vuln_types.items():
+                                if count > 0:
+                                    report_lines.append(f"     • {vuln_type}: {count}")
+                        else:
+                            report_lines.append("   Уязвимостей не обнаружено")
+                        
+                        report_lines.append("")
+
+            report_lines.extend([
+                "=" * 80,
+                "✅ Отчет завершен",
+                "=" * 80
+                ])
+            
+            self.reports_text.setText("\n".join(report_lines))
+        except sqlite3.Error as e:
+            if hasattr(self, 'error_handler'):
+                error_handler.handle_database_error(e, "refresh_reports")
+            log_and_notify('error', f"Database error in refresh_reports: {e}")
+        except Exception as e:
+            log_and_notify('error', f"Error in refresh_reports: {e}")
+            if hasattr(self, 'error_handler'):
+                error_handler.handle_validation_error(e, "refresh_reports")
 
     def populate_scans_table(self, scans, url_filter, selected_types, from_dt, to_dt):
         """Заполняет таблицу сканирований с учетом фильтров"""
         try:
+            if not hasattr(self, 'scans_table') or not self.scans_table is None:
+                logger.error("Scans table is not initialized")
+                return
             # Сохраняем отфильтрованные данные, но не загружаем все в таблицу сразу
             self._filtered_scans_data = []
 
@@ -1462,12 +1775,19 @@ class DashboardWindow(QWidget):
     def _load_visible_rows(self):
         """Загружает только видимые в данный момент строки таблицы"""
         try:
+            # Проверяем наличие необходимых атрибутов
             if not hasattr(self, '_filtered_scans_data') or not self._filtered_scans_data:
                 return
-            
+            if not hasattr(self, 'scans_table') or self.scans_table is None:
+                return
+                
             # Определяем видимый диапазон строк
             viewport = self.scans_table.viewport()
             scroll_bar = self.scans_table.verticalScrollBar()
+            
+            if viewport is None or scroll_bar is None:
+                return
+                
             row_height = self.scans_table.rowHeight(0) if self.scans_table.rowCount() > 0 else 25
 
             visible_start = scroll_bar.value() // row_height
@@ -1488,17 +1808,29 @@ class DashboardWindow(QWidget):
                     if item is None or item.text() == "":
                         # Загружаем данные для строки
                         self._load_scan_row(row, scan_data)
-        
+            
         except Exception as e:
             log_and_notify('error', f"Error loading visible rows: {e}")
 
+
     def _on_table_scroll(self):
         """Обработчик события прокрутки таблицы"""
-        # Перезапускаем таймер загрузки видимых строк
-        if hasattr(self, '_visible_rows_timer') and self._visible_rows_timer.isActive():
-            self._visible_rows_timer.stop()
+        try:
+            # Проверяем инициализацию таймера
+            if not hasattr(self, '_visible_rows_timer') or self._visible_rows_timer is None:
+                self._visible_rows_timer = QTimer()
+                self._visible_rows_timer.setSingleShot(True)
+                self._visible_rows_timer.timeout.connect(self._load_visible_rows)
             
-        self._visible_rows_timer.start(50)  # Задержка 50 мс перед загрузкой видимых строк
+            # Перезапускаем таймер загрузки видимых строк
+            if self._visible_rows_timer.isActive():
+                self._visible_rows_timer.stop()
+            
+            self._visible_rows_timer.start(50)  # Задержка 50 мс перед загрузкой видимых строк
+            
+        except Exception as e:
+            log_and_notify('error', f"Error in _on_table_scroll: {e}")
+
 
     def _process_scan_for_display(self, scan):
         """Предварительно обрабатывает данные сканирования для отображения"""
@@ -1547,7 +1879,7 @@ class DashboardWindow(QWidget):
             'vuln_details': vulnerability_counts
         }
     
-    def _load_scan_row(self, row, scan_data):
+    def _load_scan_row(self, row: int, scan_data: Dict[str, Any]) -> None:
         """Загружает данные в указанную строку таблицы"""
         self.scans_table.setItem(row, 0, QTableWidgetItem(scan_data['id']))
         self.scans_table.setItem(row, 1, QTableWidgetItem(scan_data['url']))
@@ -2106,28 +2438,31 @@ class DashboardWindow(QWidget):
 
     # ----------------------- Статистика -----------------------
 
-    def refresh_stats(self):
-        scans = db.get_scans_by_user(self.user_id)
-        if not scans:
-            if MATPLOTLIB_AVAILABLE and FigureCanvas is not None and self.stats_canvas is not None:
-                self.stats_canvas.figure.clear()
-                ax = self.stats_canvas.figure.add_subplot(111)
-                ax.text(0.5, 0.5, "Нет данных для отображения", 
-                       horizontalalignment='center', verticalalignment='center')
-                self.stats_canvas.draw()
-            else:
-                if hasattr(self, 'stats_text') and self.stats_text is not None:
-                    self.stats_text.setText("Нет данных для отображения")
+    def refresh_stats(self) -> None:
+        try:
+            scans = db.get_scans_by_user(self.user_id)
+            if not scans:
+                if MATPLOTLIB_AVAILABLE and FigureCanvas is not None and self.stats_canvas is not None:
+                    self.stats_canvas.figure.clear()
+                    ax = self.stats_canvas.figure.add_subplot(111)
+                    ax.text(0.5, 0.5, "Нет данных для отображения", 
+                        horizontalalignment='center', verticalalignment='center')
+                    self.stats_canvas.draw()
                 else:
-                    logger.error("stats_text is not initialized")
-            return
+                    if hasattr(self, 'stats_text') and self.stats_text is not None:
+                        self.stats_text.setText("Нет данных для отображения")
+                    else:
+                        logger.error("stats_text is not initialized")
+                return
 
-        if MATPLOTLIB_AVAILABLE and FigureCanvas is not None:
-            self._refresh_stats_with_matplotlib(scans)
-        else:
-            self._refresh_stats_text_only(scans)
+            if MATPLOTLIB_AVAILABLE and FigureCanvas is not None:
+                self._refresh_stats_with_matplotlib(scans)
+            else:
+                self._refresh_stats_text_only(scans)
+        except Exception as e:
+            logger.error(f"Error in refresh_stats: {e}")
 
-    def _refresh_stats_with_matplotlib(self, scans):
+    def _refresh_stats_with_matplotlib(self, scans: List[Dict[str, Any]]):
         """Обновление статистики с использованием matplotlib с оптимизацией"""
         try:
             if not scans:
@@ -2443,16 +2778,21 @@ class DashboardWindow(QWidget):
 
     # ----------------------- Профиль -----------------------
 
-    def refresh_activity_log(self):
-        scans = db.get_scans_by_user(self.user_id)
-        if not scans:
-            self.activity_log.setText("История активности пуста.")
-            return
+    def refresh_activity_log(self) -> None:
+        try:
+            if not hasattr(self, 'activity_log') or self.activity_log is None:
+                return
+            scans = db.get_scans_by_user(self.user_id)
+            if not scans:
+                self.activity_log.setText("История активности пуста.")
+                return
 
-        log_text = ""
-        for scan in scans:
-            log_text += f"[{scan['timestamp']}] URL: {scan['url']}\n"
-        self.activity_log.setText(log_text)
+            log_text = ""
+            for scan in scans:
+                log_text += f"[{scan['timestamp']}] URL: {scan['url']}\n"
+            self.activity_log.setText(log_text)
+        except sqlite3.Error as e:
+            logger.error(f"Database error in refresh_activity_log: {e}")
 
     def edit_profile(self):
         self.edit_window = EditProfileWindow(self.user_id, self.username, self)
@@ -2528,30 +2868,58 @@ class DashboardWindow(QWidget):
     def _stop_scan_silent(self):
         """Останавливает текущее сканирование без показа уведомлений (для logout)."""
         try:
-            # Останавливаем таймер
-            if hasattr(self, '_scan_timer'):
+            # Инициализируем все необходимые атрибуты
+            if not hasattr(self, '_scan_timer'):
+                self._scan_timer = None
+                
+            if not hasattr(self, 'scan_controller'):
+                self.scan_controller = None
+                
+            if not hasattr(self, '_is_paused'):
+                self._is_paused = False
+                
+            if not hasattr(self, 'scan_status'):
+                self.scan_status = None
+                
+            if not hasattr(self, 'scan_progress'):
+                self.scan_progress = None
+                
+            if not hasattr(self, 'progress_label'):
+                self.progress_label = None
+                
+            # Останавливаем таймер если он существует
+            if self._scan_timer is not None:
                 self._scan_timer.stop()
-            
-            # Останавливаем сканирование
-            self.scan_controller.stop_scan()
-            
-            # Сбрасываем состояние интерфейса
-            self.scan_status.setText("Сканирование остановлено")
-            self.scan_progress.setValue(0)
-            self.progress_label.setText("0%")
-            
+                
+            # Останавливаем сканирование если контроллер существует
+            if self.scan_controller is not None:
+                self.scan_controller.stop_scan()
+                
+            # Сбрасываем состояние интерфейса с проверкой на None
+            if self.scan_status is not None:
+                self.scan_status.setText("Сканирование остановлено")
+                
+            if self.scan_progress is not None:
+                self.scan_progress.setValue(0)
+                
+            if self.progress_label is not None:
+                self.progress_label.setText("0%")
+                
             # Включаем кнопку "Начать сканирование" и отключаем остальные
             if hasattr(self, 'scan_button') and self.scan_button is not None:
                 self.scan_button.setEnabled(True)
+                
             if hasattr(self, 'pause_button') and self.pause_button is not None:
                 self.pause_button.setEnabled(False)
+                
             if hasattr(self, 'stop_button') and self.stop_button is not None:
                 self.stop_button.setEnabled(False)
-            
+                
             # Сбрасываем состояние паузы
             self._is_paused = False
-            self.pause_button.setText("⏸️ Пауза")
-            
+            if hasattr(self, 'pause_button') and self.pause_button is not None:
+                self.pause_button.setText("⏸️ Пауза")
+                
             # Сбрасываем счетчики прогресса
             self._scan_start_time = None
             self._total_urls = 0
@@ -2559,21 +2927,26 @@ class DashboardWindow(QWidget):
             self._total_progress = 0
             self._active_workers = 0
             self._worker_progress = {}
-            
+                
             logger.info("Scan stopped silently during logout")
-            
+                
         except Exception as e:
             log_and_notify('error', f"Error stopping scan silently: {e}")
             
             # В случае ошибки все равно сбрасываем интерфейс
             if hasattr(self, 'scan_button') and self.scan_button is not None:
                 self.scan_button.setEnabled(True)
+                
             if hasattr(self, 'pause_button') and self.pause_button is not None:
                 self.pause_button.setEnabled(False)
+                
             if hasattr(self, 'stop_button') and self.stop_button is not None:
                 self.stop_button.setEnabled(False)
+                
             if hasattr(self, 'scan_status') and self.scan_status is not None:
                 self.scan_status.setText("Ошибка остановки сканирования")
+
+
 
     def pause_scan(self):
         """Приостанавливает или возобновляет сканирование."""
@@ -2581,15 +2954,18 @@ class DashboardWindow(QWidget):
             if not self._is_paused:
                 # Приостанавливаем сканирование
                 self._is_paused = True
-                self.pause_button.setText("▶️ Продолжить")
-                self.scan_status.setText("Сканирование приостановлено")
+                if hasattr(self, 'pause_button') and self.pause_button is not None:
+                    self.pause_button.setText("▶️ Продолжить")
+                if hasattr(self, 'scan_status') and self.scan_status is not None:
+                    self.scan_status.setText("Сканирование приостановлено")
                 
                 # Останавливаем таймер обновления времени
-                if hasattr(self, '_scan_timer'):
+                if hasattr(self, '_scan_timer') and self._scan_timer is not None:
                     self._scan_timer.stop()
                 
                 # Приостанавливаем сканирование в контроллере
-                self.scan_controller.pause_scan()
+                if self.scan_controller is not None:
+                    self.scan_controller.pause_scan()
                 
                 # Добавляем запись в лог
                 self._add_log_entry("WARNING", "⏸️ Сканирование приостановлено пользователем")
@@ -2599,15 +2975,18 @@ class DashboardWindow(QWidget):
             else:
                 # Возобновляем сканирование
                 self._is_paused = False
-                self.pause_button.setText("⏸️ Пауза")
-                self.scan_status.setText("Сканирование...")
+                if hasattr(self, 'pause_button') and self.pause_button is not None:
+                    self.pause_button.setText("⏸️ Пауза")
+                if hasattr(self, 'scan_status') and self.scan_status is not None:
+                    self.scan_status.setText("Сканирование...")
                 
                 # Возобновляем таймер обновления времени
-                if hasattr(self, '_scan_timer'):
+                if hasattr(self, '_scan_timer') and self._scan_timer is not None:
                     self._scan_timer.start(1000)
                 
                 # Возобновляем сканирование в контроллере
-                self.scan_controller.resume_scan()
+                if self.scan_controller is not None:
+                    self.scan_controller.resume_scan()
                 
                 # Добавляем запись в лог
                 self._add_log_entry("INFO", "▶️ Сканирование возобновлено")
@@ -2628,6 +3007,18 @@ class DashboardWindow(QWidget):
 
     def closeEvent(self, a0):
         """Обработчик закрытия окна: останавливает сканирование перед выходом."""
+        if hasattr(self, '_scan_timer') and self._scan_timer is not None:
+            self._scan_timer.stop()
+
+        if hasattr(self, 'scan_button') and self.scan_button is not None:
+            self.scan_button.setEnabled(False)
+
+        if hasattr(self, 'pause_button') and self.pause_button is not None:
+            self.pause_button.setEnabled(False)
+
+        if hasattr(self, 'stop_button') and self.stop_button is not None:
+            self.stop_button.setEnabled(False)
+        super().closeEvent(a0)
         self.stop_scan()
         if a0 is not None:
             a0.accept()
@@ -2750,63 +3141,109 @@ class DashboardWindow(QWidget):
 
     def clear_scan_log(self):
         """Очищает лог сканирования"""
-        self._log_entries.clear()
-        self._filtered_log_entries.clear()
-        if hasattr(self, 'detailed_log') and self.detailed_log is not None:
-            self.detailed_log.clear()
-        if hasattr(self, 'site_tree') and self.site_tree is not None:
-            self.site_tree.clear()
-        
-        # Сбрасываем статистику
-        for key in self.stats_labels:
-            self.stats_labels[key].setText("0")
+        try:
+            # Проверяем и инициализируем атрибуты при необходимости
+            if not hasattr(self, '_log_entries'):
+                self._log_entries = []
+            if not hasattr(self, '_filtered_log_entries'):
+                self._filtered_log_entries = []
+
+            # Очищаем списки записей
+            if hasattr(self, '_log_entries') and self._log_entries is not None:
+                self._log_entries.clear()
+            
+            if hasattr(self, '_filtered_log_entries') and self._filtered_log_entries is not None:
+                self._filtered_log_entries.clear()
+            
+            # Проверяем и очищаем detailed_log с проверкой на None
+            if hasattr(self, 'detailed_log') and self.detailed_log is not None:
+                self.detailed_log.clear()
+                
+            # Проверяем и очищаем site_tree с проверкой на None
+            if hasattr(self, 'site_tree') and self.site_tree is not None:
+                self.site_tree.clear()
+            
+            # Проверяем и сбрасываем статистику с проверкой на None
+            if hasattr(self, 'stats_labels') and self.stats_labels is not None:
+                for key in self.stats_labels:
+                    if self.stats_labels[key] is not None:
+                        self.stats_labels[key].setText("0")
+                        
+        except Exception as e:
+            log_and_notify('error', f"Error clearing scan log: {e}")
+
 
     def export_scan_log(self):
         """Экспортирует лог сканирования"""
         try:
+            # Проверяем наличие атрибута и инициализируем при необходимости
+            if not hasattr(self, '_log_entries') or self._log_entries is None:
+                self._log_entries = []
+                
             filename, _ = QFileDialog.getSaveFileName(
                 self, "Сохранить лог сканирования", 
                 f"scan_log_{get_local_timestamp().replace(':', '').replace(' ', '_')}.txt",
                 "Text Files (*.txt);;HTML Files (*.html);;All Files (*)"
             )
             
-            if filename:
-                if filename.endswith('.html'):
-                    # Экспорт в HTML
-                    html_content = "<html><head><title>Лог сканирования</title></head><body>"
-                    html_content += "<h1>Лог сканирования</h1>"
-                    html_content += f"<p>Дата: {get_local_timestamp()}</p>"
-                    html_content += "<hr>"
+            if not filename:  # Проверяем, что имя файла не пустое
+                return
+                
+            if filename.endswith('.html'):
+                # Экспорт в HTML
+                html_content = "<html><head><title>Лог сканирования</title></head><body>"
+                html_content += "<h1>Лог сканирования</h1>"
+                html_content += f"<p>Дата: {get_local_timestamp()}</p>"
+                html_content += "<hr>"
+                
+                for entry in self._log_entries:
+                    if entry and 'html' in entry:  # Проверяем валидность записи
+                        html_content += entry['html']
+                
+                html_content += "</body></html>"
+                
+                with open(filename, 'w', encoding='utf-8') as f:
+                    f.write(html_content)
+            else:
+                # Экспорт в текстовый формат
+                with open(filename, 'w', encoding='utf-8') as f:
+                    f.write(f"Лог сканирования - {get_local_timestamp()}\n")
+                    f.write("=" * 50 + "\n\n")
                     
                     for entry in self._log_entries:
-                        html_content += entry['html']
-                    
-                    html_content += "</body></html>"
-                    
-                    with open(filename, 'w', encoding='utf-8') as f:
-                        f.write(html_content)
-                else:
-                    # Экспорт в текстовый формат
-                    with open(filename, 'w', encoding='utf-8') as f:
-                        f.write(f"Лог сканирования - {get_local_timestamp()}\n")
-                        f.write("=" * 50 + "\n\n")
-                        
-                        for entry in self._log_entries:
-                            f.write(f"[{entry['timestamp']}] {entry['level']}: {entry['message']}\n")
-                            if entry['url']:
+                        if entry:  # Проверяем валидность записи
+                            f.write(f"[{entry.get('timestamp', '')}] {entry.get('level', '')}: {entry.get('message', '')}\n")
+                            if entry.get('url'):
                                 f.write(f"  URL: {entry['url']}\n")
-                            if entry['details']:
+                            if entry.get('details'):
                                 f.write(f"  Детали: {entry['details']}\n")
                             f.write("\n")
-                
-                error_handler.show_info_message("Экспорт", f"Лог успешно экспортирован в файл:\n{filename}")
-                
+            
+            error_handler.show_info_message("Экспорт", f"Лог успешно экспортирован в файл:\n{filename}")
+            
         except Exception as e:
             error_handler.handle_file_error(e, "export_scan_log")
             log_and_notify('error', f"Error exporting scan log: {e}")
 
     def _add_url_to_tree(self, url: str, url_type: str = "URL", status: str = "Найден"):
         """Добавляет URL в древовидное представление"""
+        # Проверяем инициализацию дерева сайта
+        if not hasattr(self, 'site_tree') or self.site_tree is None:
+            logger.error("Site tree is not initialized")
+            return
+        
+        # Проверяем и инициализируем статистику при необходимости
+        if not hasattr(self, '_stats') or self._stats is None:
+            self._stats = {
+                'urls_found': 0,
+                'urls_scanned': 0,
+                'forms_found': 0,
+                'forms_scanned': 0,
+                'vulnerabilities': 0,
+                'requests_sent': 0,
+                'errors': 0,
+            }
+
         # Создаем корневой элемент для домена
         domain = url.split('/')[2] if len(url.split('/')) > 2 else url
         
@@ -2844,133 +3281,146 @@ class DashboardWindow(QWidget):
 
     def _on_scan_log(self, message: str):
         """Добавляет сообщение в лог сканирования с правильным определением уровня"""
-        # Определяем message_lower в начале метода
-        message_lower = message.lower()
-        
-        # Определяем уровень сообщения
-        level = "INFO"  # По умолчанию
-        
-        # Проверяем, есть ли в сообщении указание уровня в формате "LEVEL - message"
-        if " - " in message:
-            parts = message.split(" - ", 1)
-            if len(parts) == 2:
-                potential_level = parts[0].strip().upper()
-                # Проверяем, является ли первая часть валидным уровнем
-                valid_levels = ["DEBUG", "INFO", "WARNING", "ERROR", "VULNERABILITY", "REQUEST", "RESPONSE", "PROGRESS", "SKIP_FILE", "ADD_LINK"]
-                if potential_level in valid_levels:
-                    level = potential_level
-                    message = parts[1].strip()  # Берем только текст сообщения
-        
-        # Если уровень не найден в начале, определяем по ключевым словам
-        if level == "INFO":
-            # Определяем уровень по ключевым словам в сообщении
-            if any(keyword in message_lower for keyword in [
-                "add_link", "add link", "добавлен url", "добавлена ссылка"
-            ]):
-                level = "ADD_LINK"
-            elif any(keyword in message_lower for keyword in [
-                "skip_file", "skip file", "файл пропущен", "пропущен файл"
-            ]):
-                level = "SKIP_FILE"
-            elif any(keyword in message_lower for keyword in [
-                "debug", "отладка", "debugging", "debug info"
-            ]):
-                level = "DEBUG"
-            elif any(keyword in message_lower for keyword in [
-                "error", "ошибка", "failed", "неудачно", "exception", "исключение"
-            ]):
-                level = "ERROR"
-            elif any(keyword in message_lower for keyword in [
-                "warning", "предупреждение", "внимание", "caution"
-            ]):
-                level = "WARNING"
-            elif any(keyword in message_lower for keyword in [
-                "vulnerability", "уязвимость", "vuln", "found", "найдено"
-            ]):
-                level = "VULNERABILITY"
-            elif any(keyword in message_lower for keyword in [
-                "request", "запрос", "making request", "отправлен запрос"
-            ]):
-                level = "REQUEST"
-            elif any(keyword in message_lower for keyword in [
-                "response", "ответ", "received", "получен ответ"
-            ]):
-                level = "RESPONSE"
-            elif any(keyword in message_lower for keyword in [
-                "progress", "прогресс", "completed", "завершено", "scanned", "просканировано"
-            ]):
-                level = "PROGRESS"
-        
-        # Добавляем сообщение с правильным уровнем
-        self._add_log_entry(level, message)
-        
-        # Проверяем, что сканирование все еще активно
-        if not hasattr(self, '_scan_timer') or not self._scan_timer.isActive():
-            return
-        
-        # Обновляем счетчик запросов
-        if any(keyword in message.lower() for keyword in [
-            "запрос", "request", "get request", "post request", 
-            "making request", "отправлен запрос", "получен ответ"
-        ]):
-            self._stats['requests_sent'] += 1
-            self._update_stats('requests_sent', self._stats['requests_sent'])
-        
-        # Обновляем счетчики форм из сообщений сканера
-        if "forms:" in message_lower or "формы:" in message_lower:
-            # Извлекаем информацию о формах из сообщения
-            if "found" in message_lower or "найдено" in message_lower:
-                # Ищем числа в сообщении
-                import re
-                numbers = re.findall(r'\d+', message)
-                if numbers:
-                    forms_found = int(numbers[0])
-                    if forms_found > self._stats['forms_found']:
-                        self._stats['forms_found'] = forms_found
-                        self._update_stats('forms_found', self._stats['forms_found'])
+        try:
+            # Определяем message_lower в начале метода
+            message_lower = message.lower()
             
-            # Обновляем счетчик просканированных форм
-            if "scanned" in message_lower or "просканировано" in message_lower:
-                import re
-                numbers = re.findall(r'\d+', message)
-                if len(numbers) >= 2:
-                    forms_scanned = int(numbers[1])  # Второе число обычно просканированные формы
-                    if forms_scanned > self._stats['forms_scanned']:
-                        self._stats['forms_scanned'] = forms_scanned
-                        self._update_stats('forms_scanned', self._stats['forms_scanned'])
-        
-        # Обновляем счетчики из прогресс-сообщений
-        if "progress:" in message_lower or "прогресс:" in message_lower:
-            # Извлекаем информацию о формах из прогресс-сообщений
-            if "forms:" in message_lower:
-                import re
-                forms_match = re.search(r'forms:\s*(\d+)/(\d+)', message_lower)
-                if forms_match:
-                    forms_scanned = int(forms_match.group(1))
-                    forms_total = int(forms_match.group(2))
+            # Определяем уровень сообщения
+            level = "INFO"  # По умолчанию
+            
+            # Проверяем, есть ли в сообщении указание уровня в формате "LEVEL - message"
+            if " - " in message:
+                parts = message.split(" - ", 1)
+                if len(parts) == 2:
+                    potential_level = parts[0].strip().upper()
+                    # Проверяем, является ли первая часть валидным уровнем
+                    valid_levels = ["DEBUG", "INFO", "WARNING", "ERROR", "VULNERABILITY", "REQUEST", "RESPONSE", "PROGRESS", "SKIP_FILE", "ADD_LINK"]
+                    if potential_level in valid_levels:
+                        level = potential_level
+                        message = parts[1].strip()  # Берем только текст сообщения
+            
+            # Если уровень не найден в начале, определяем по ключевым словам
+            if level == "INFO":
+                # Определяем уровень по ключевым словам в сообщении
+                if any(keyword in message_lower for keyword in [
+                    "add_link", "add link", "добавлен url", "добавлена ссылка"
+                ]):
+                    level = "ADD_LINK"
+                elif any(keyword in message_lower for keyword in [
+                    "skip_file", "skip file", "файл пропущен", "пропущен файл"
+                ]):
+                    level = "SKIP_FILE"
+                elif any(keyword in message_lower for keyword in [
+                    "debug", "отладка", "debugging", "debug info"
+                ]):
+                    level = "DEBUG"
+                elif any(keyword in message_lower for keyword in [
+                    "error", "ошибка", "failed", "неудачно", "exception", "исключение"
+                ]):
+                    level = "ERROR"
+                elif any(keyword in message_lower for keyword in [
+                    "warning", "предупреждение", "внимание", "caution"
+                ]):
+                    level = "WARNING"
+                elif any(keyword in message_lower for keyword in [
+                    "vulnerability", "уязвимость", "vuln", "found", "найдено"
+                ]):
+                    level = "VULNERABILITY"
+                elif any(keyword in message_lower for keyword in [
+                    "request", "запрос", "making request", "отправлен запрос"
+                ]):
+                    level = "REQUEST"
+                elif any(keyword in message_lower for keyword in [
+                    "response", "ответ", "received", "получен ответ"
+                ]):
+                    level = "RESPONSE"
+                elif any(keyword in message_lower for keyword in [
+                    "progress", "прогресс", "completed", "завершено", "scanned", "просканировано"
+                ]):
+                    level = "PROGRESS"
+            
+            # Добавляем сообщение с правильным уровнем
+            self._add_log_entry(level, message)
+            
+            # Проверяем, что сканирование все еще активно
+            if not hasattr(self, '_scan_timer') or self._scan_timer is None or not self._scan_timer.isActive():
+                return
+            
+            # Обновляем счетчик запросов
+            if any(keyword in message.lower() for keyword in [
+                "запрос", "request", "get request", "post request", 
+                "making request", "отправлен запрос", "получен ответ"
+            ]):
+                if hasattr(self, '_stats') and self._stats is not None:
+                    self._stats['requests_sent'] = self._stats.get('requests_sent', 0) + 1
+                    self._update_stats('requests_sent', self._stats['requests_sent'])
+            
+            # Обновляем счетчики форм из сообщений сканера
+            if "forms:" in message_lower or "формы:" in message_lower:
+                # Извлекаем информацию о формах из сообщения
+                if "found" in message_lower or "найдено" in message_lower:
+                    # Ищем числа в сообщении
+                    import re
+                    numbers = re.findall(r'\d+', message)
+                    if numbers:
+                        forms_found = int(numbers[0])
+                        if hasattr(self, '_stats') and self._stats is not None:
+                            if forms_found > self._stats['forms_found']:
+                                self._stats['forms_found'] = forms_found
+                                self._update_stats('forms_found', self._stats['forms_found'])
+                
+                # Обновляем счетчик просканированных форм
+                if "scanned" in message_lower or "просканировано" in message_lower:
+                    import re
+                    numbers = re.findall(r'\d+', message)
+                    if len(numbers) >= 2:
+                        forms_scanned = int(numbers[1])  # Второе число обычно просканированные формы
+                        if hasattr(self, '_stats') and self._stats is not None:
+                            if forms_scanned > self._stats['forms_scanned']:
+                                self._stats['forms_scanned'] = forms_scanned
+                                self._update_stats('forms_scanned', self._stats['forms_scanned'])
+            
+            # Обновляем счетчики из прогресс-сообщений
+            if "progress:" in message_lower or "прогресс:" in message_lower:
+                # Извлекаем информацию о формах из прогресс-сообщений
+                if "forms:" in message_lower:
+                    import re
+                    forms_match = re.search(r'forms:\s*(\d+)/(\d+)', message_lower)
+                    if forms_match:
+                        forms_scanned = int(forms_match.group(1))
+                        forms_total = int(forms_match.group(2))
+                        
+                        # Обновляем счетчики форм
+                        if hasattr(self, '_stats') and self._stats is not None:
+                            if forms_total > self._stats['forms_found']:
+                                self._stats['forms_found'] = forms_total
+                                self._update_stats('forms_found', self._stats['forms_found'])
+                            
+                            if forms_scanned > self._stats['forms_scanned']:
+                                self._stats['forms_scanned'] = forms_scanned
+                                self._update_stats('forms_scanned', self._stats['forms_scanned'])
+            
+            # Обновляем счетчики URL из сообщений
+            if "url" in message_lower and any(keyword in message_lower for keyword in [
+                "found", "найден", "discovered", "обнаружен"
+            ]):
+                if hasattr(self, '_stats') and self._stats is not None:
+                    # Увеличиваем счетчик найденных URL
+                    self._stats['urls_found'] = self._stats.get('urls_found', 0) + 1
+                    self._update_stats('urls_found', self._stats['urls_found'])
+            
+            # Обновляем счетчики из сообщений о завершении сканирования URL
+            if "scanned" in message_lower and "url" in message_lower:
+                if hasattr(self, '_stats') and self._stats is not None:
+                    # Увеличиваем счетчик просканированных URL
+                    self._stats['urls_scanned'] = self._stats.get('urls_scanned', 0) + 1
+                    self._update_stats('urls_scanned', self._stats['urls_scanned'])
                     
-                    # Обновляем счетчики форм
-                    if forms_total > self._stats['forms_found']:
-                        self._stats['forms_found'] = forms_total
-                        self._update_stats('forms_found', self._stats['forms_found'])
-                    
-                    if forms_scanned > self._stats['forms_scanned']:
-                        self._stats['forms_scanned'] = forms_scanned
-                        self._update_stats('forms_scanned', self._stats['forms_scanned'])
-        
-        # Обновляем счетчики URL из сообщений
-        if "url" in message_lower and any(keyword in message_lower for keyword in [
-            "found", "найден", "discovered", "обнаружен"
-        ]):
-            # Увеличиваем счетчик найденных URL
-            self._stats['urls_found'] += 1
-            self._update_stats('urls_found', self._stats['urls_found'])
-        
-        # Обновляем счетчики из сообщений о завершении сканирования URL
-        if "scanned" in message_lower and "url" in message_lower:
-            # Увеличиваем счетчик просканированных URL
-            self._stats['urls_scanned'] += 1
-            self._update_stats('urls_scanned', self._stats['urls_scanned'])
+        except Exception as e:
+            logger.error(f"Error processing scan log: {e}")
+            if hasattr(self, '_add_log_entry'):
+                self._add_log_entry("ERROR", f"Ошибка обработки лога сканирования: {e}")
+
 
     # Методы для работы с временем в отчетах
     @staticmethod
@@ -3010,12 +3460,14 @@ class DashboardWindow(QWidget):
             log_path = os.path.join("logs", "scanner.log")
             if not os.path.exists(log_path):
                 self._on_scan_log("Файл scanner.log не найден.")
-                self.log_status_label.setText("Файл лога отсутствует.")
+                if hasattr(self, 'log_status_label') and self.log_status_label is not None:
+                    self.log_status_label.setText("Файл лога отсутствует.")
                 return
 
             # Используем отложенную загрузку для больших файлов
             if full:
-                self.log_status_label.setText("Идет загрузка полного лога...")
+                if hasattr(self, 'log_status_label') and self.log_status_label is not None:
+                    self.log_status_label.setText("Идет загрузка полного лога...")
                 QApplication.processEvents()
                 
                 # Запускаем загрузку в отдельном потоке для больших файлов
@@ -3024,61 +3476,95 @@ class DashboardWindow(QWidget):
                 self._log_loader_thread.start()
             else:
                 # Для частичной загрузки используем оптимизированный метод
-                self.log_status_label.setText("Загрузка последних строк...")
+                if hasattr(self, 'log_status_label') and self.log_status_label is not None:
+                    self.log_status_label.setText("Загрузка последних строк...")
                 QApplication.processEvents()
                 
                 log_content = self._read_log_tail(log_path, lines=500)
-                self._process_log_content(log_content, "Отображены последние 500 строк.")
+                self._process_log_content(log_content, 500)
                 
         except Exception as e:
             log_and_notify('error', f"Failed to load scanner.log: {e}")
             if hasattr(self, '_on_scan_log'):
                 self._on_scan_log(f"Ошибка загрузки scanner.log: {e}")
-            if hasattr(self, 'log_status_label'):
+            if hasattr(self, 'log_status_label') and self.log_status_label is not None:
                 self.log_status_label.setText("Ошибка загрузки лога.")
 
     def get_avatar_path(self):
         """Получить путь к аватару пользователя"""
-        # Если установлен пользовательский путь к аватару, вернуть этот путь
-        if hasattr(self, 'avatar_path') and self.avatar_path != "default_avatar.png":
-            return Path(self.avatar_path)
-        # Иначе вернуть путь к аватару по умолчанию
-        return Path("default_avatar.png")
+        try:
+            if hasattr(self, 'avatar_path') and self.avatar_path != "default_avatar.png":
+                avatar_path = Path(self.avatar_path)
+                if avatar_path.exists():
+                    return avatar_path
+                
+            # Проверяем существование аватара по умолчанию
+            default_path = Path("default_avatar.png")
+            if default_path.exists():
+                return default_path
+            
+            # Если аватар не найден, создаем пустой файл
+            default_path.touch()
+            return default_path
+
+        except Exception as e:
+            logger.error(f"Error getting avatar path: {e}")
+            return Path("default_avatar.png")
 
 
-    def _load_full_log(self, log_path):
+    def _load_full_log(self, log_path: str) -> None:
         """Загружает полный лог в отдельном потоке"""
         try:
             with open(log_path, "r", encoding="utf-8", errors="replace") as f:
                 log_content = f.read()
-            
-            # Используем сигнал для обновления UI из основного потока
+                
+            # Вариант 1: Использование сигнала (предпочтительный)
             if hasattr(self, '_log_loaded_signal'):
                 self._log_loaded_signal.emit(log_content, len(log_content.splitlines()))
+                
+            # Вариант 2: Использование QMetaObject.invokeMethod
             else:
-                # Если сигнал не определен, используем QMetaObject.invokeMethod
-                QMetaObject.invokeMethod(self, "_process_log_content", 
-                                        Qt.QueuedConnection,
-                                        Q_ARG(str, log_content),
-                                        Q_ARG(str, f"Полный лог загружен ({len(log_content.splitlines())} строк)."))
+                QMetaObject.invokeMethod(
+                    self, 
+                    "_process_log_content",
+                    Qt.ConnectionType.QueuedConnection,  # Указываем тип соединения
+                    Q_ARG(str, log_content),
+                    Q_ARG(str, f"Полный лог загружен ({len(log_content.splitlines())} строк).")
+                )
+                
         except Exception as e:
-            log_and_notify('error', f"Error loading full log: {e}")
-            if hasattr(self, '_on_scan_log'):
-                QMetaObject.invokeMethod(self, "_on_scan_log", 
-                                        Qt.QueuedConnection,
-                                        Q_ARG(str, f"Ошибка загрузки полного лога: {e}"))
+            error_message = f"Ошибка загрузки полного лога: {e}"
+            log_and_notify('error', error_message)
+            
+            # Используем invokeMethod для безопасного вызова из другого потока
+            QMetaObject.invokeMethod(
+                self,
+                "_on_scan_log",
+                Qt.ConnectionType.QueuedConnection,  # Указываем тип соединения
+                Q_ARG(str, error_message)
+            )
 
-    def _process_log_content(self, log_content, status_message):
+    def _process_log_content(self, content: str, line_count: int) -> None:
         """Обрабатывает загруженный контент лога и обновляет UI"""
         try:
             # Очищаем старые записи
-            self.detailed_log.clear()
-            self._log_entries.clear()
-            self._filtered_log_entries.clear()
+            if hasattr(self, 'detailed_log') and self.detailed_log is not None:
+                self.detailed_log.clear()
+                self.detailed_log.append(content)
+            
+            # Добавляем запись в лог
+            if hasattr(self, '_add_log_entry'):
+                self._add_log_entry("INFO", f"Загружено {line_count} записей лога")
+
+            if hasattr(self, '_log_entries') and self._log_entries is not None:
+                self._log_entries.clear()
+
+            if hasattr(self, '_filtered_log_entries') and self._filtered_log_entries is not None:
+                self._filtered_log_entries.clear()
             
             # Обрабатываем строки пакетами для оптимизации
             batch_size = 100
-            lines = log_content.splitlines()
+            lines = content.splitlines()
             total_lines = len(lines)
             
             for i in range(0, total_lines, batch_size):
@@ -3109,15 +3595,15 @@ class DashboardWindow(QWidget):
                 QApplication.processEvents()
             
             # Обновляем статус
-            self.log_status_label.setText(status_message)
+            if hasattr(self, 'log_status_label') and self.log_status_label is not None:
+                self.log_status_label.setText(f"Обработано {total_lines} записей")
             
         except Exception as e:
             log_and_notify('error', f"Error processing log content: {e}")
-            if hasattr(self, '_on_scan_log'):
+            if hasattr(self, '_on_scan_log') and self._on_scan_log is not None:
                 self._on_scan_log(f"Ошибка обработки лога: {e}")
-            if hasattr(self, 'log_status_label'):
+            if hasattr(self, 'log_status_label') and self.log_status_label is not None:
                 self.log_status_label.setText("Ошибка обработки лога.")
-
 
     @staticmethod
     def _read_log_tail(filepath: str, lines: int = 500, buffer_size: int = 4096) -> str:
@@ -3156,10 +3642,12 @@ class DashboardWindow(QWidget):
 
     def _on_turbo_mode_changed(self, state):
         if self.turbo_checkbox.isChecked():
-            self.concurrent_spinbox.setValue(self.concurrent_spinbox.maximum())
-            self.concurrent_spinbox.setEnabled(False)
-            self.timeout_spinbox.setValue(self.timeout_spinbox.minimum())
-            self.timeout_spinbox.setEnabled(False)
+            if self.concurrent_spinbox is not None:
+                self.concurrent_spinbox.setValue(self.concurrent_spinbox.maximum())
+                self.concurrent_spinbox.setEnabled(False)
+            if self.timeout_spinbox is not None:
+                self.timeout_spinbox.setValue(self.timeout_spinbox.minimum())
+                self.timeout_spinbox.setEnabled(False)
             # Отключаем подробный лог (оставляем только WARNING/ERROR)
             from utils.logger import set_log_level
             set_log_level('scanner', 'WARNING')
@@ -3167,10 +3655,12 @@ class DashboardWindow(QWidget):
             set_log_level('main', 'WARNING')
             set_log_level('performance', 'WARNING')
         else:
-            self.concurrent_spinbox.setEnabled(True)
-            self.timeout_spinbox.setEnabled(True)
-            self.concurrent_spinbox.setValue(10)
-            self.timeout_spinbox.setValue(30)
+            if self.concurrent_spinbox is not None:
+                self.concurrent_spinbox.setEnabled(True)
+                self.concurrent_spinbox.setValue(10)
+            if self.timeout_spinbox is not None:
+                self.timeout_spinbox.setEnabled(True)
+                self.timeout_spinbox.setValue(30)
             # Восстанавливаем подробный лог (INFO)
             from utils.logger import set_log_level
             set_log_level('scanner', 'INFO')
@@ -3201,16 +3691,20 @@ class DashboardWindow(QWidget):
         """Останавливает текущее сканирование через ScanController с уведомлениями."""
         try:
             # Останавливаем таймер
-            if hasattr(self, '_scan_timer'):
+            if hasattr(self, '_scan_timer') and self._scan_timer is not None:
                 self._scan_timer.stop()
             
             # Останавливаем сканирование
-            self.scan_controller.stop_scan()
+            if hasattr(self, 'scan_controller') and self.scan_controller is not None:
+                self.scan_controller.stop_scan()
             
             # Сбрасываем состояние интерфейса
-            self.scan_status.setText("Сканирование остановлено")
-            self.scan_progress.setValue(0)
-            self.progress_label.setText("0%")
+            if hasattr(self, 'scan_status') and self.scan_status is not None:
+                self.scan_status.setText("Сканирование остановлено")
+            if hasattr(self, 'scan_progress') and self.scan_progress is not None:
+                self.scan_progress.setValue(0)
+            if hasattr(self, 'progress_label') and self.progress_label is not None:
+                self.progress_label.setText("0%")
             
             # Включаем кнопку "Начать сканирование" и отключаем остальные
             if hasattr(self, 'scan_button') and self.scan_button is not None:
@@ -3228,7 +3722,7 @@ class DashboardWindow(QWidget):
             self._add_log_entry("WARNING", "⏹️ Сканирование остановлено пользователем")
             
             # Показываем информацию о частичных результатах
-            if hasattr(self, '_stats'):
+            if hasattr(self, '_stats') and self._stats is not None:
                 urls_scanned = self._stats.get('urls_scanned', 0)
                 forms_scanned = self._stats.get('forms_scanned', 0)
                 vulnerabilities = self._stats.get('vulnerabilities', 0)

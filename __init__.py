@@ -15,7 +15,7 @@ Web Scanner SQL XSS CSRF - Веб-сканер для поиска уязвим�
 - Экспорт результатов
 
 Версия: 1.0.0
-Автор: Web Scanner Team
+Автор: Manokuz
 """
 
 __version__ = "1.0.0"
@@ -85,20 +85,25 @@ def validate_config():
     """Проверяет корректность конфигурации"""
     try:
         # Проверяем основные настройки
-        assert DEFAULT_TIMEOUT > 0, "DEFAULT_TIMEOUT должен быть положительным"
-        assert MAX_CONCURRENT_REQUESTS > 0, "MAX_CONCURRENT_REQUESTS должен быть положительным"
-        assert MAX_SCAN_DEPTH > 0, "MAX_SCAN_DEPTH должен быть положительным"
+        if DEFAULT_TIMEOUT <= 0:
+            raise ValueError("DEFAULT_TIMEOUT должен быть положительным")
+        if MAX_CONCURRENT_REQUESTS <= 0:
+            raise ValueError("MAX_CONCURRENT_REQUESTS должен быть положительным")
+        if MAX_SCAN_DEPTH <= 0:
+            raise ValueError("MAX_SCAN_DEPTH должен быть положительным")
         
         # Проверяем типы уязвимостей
-        assert all(isinstance(k, str) and isinstance(v, str) 
-                  for k, v in VULNERABILITY_TYPES.items()), "VULNERABILITY_TYPES должен содержать строки"
+        if not all(isinstance(k, str) and isinstance(v, str) 
+                  for k, v in VULNERABILITY_TYPES.items()):
+            raise TypeError("VULNERABILITY_TYPES должен содержать строки")
         
         # Проверяем уровни логирования
-        assert all(isinstance(k, str) and isinstance(v, int) 
-                  for k, v in LOG_LEVELS.items()), "LOG_LEVELS должен содержать строки и числа"
+        if not all(isinstance(k, str) and isinstance(v, int) 
+                  for k, v in LOG_LEVELS.items()):
+            raise TypeError("LOG_LEVELS должен содержать строки и числа")
         
         return True
-    except AssertionError as e:
+    except (ValueError, TypeError) as e:
         print(f"Ошибка конфигурации: {e}")
         return False
     except Exception as e:

@@ -21,10 +21,31 @@ class PolicyManager:
         with open(path, "w", encoding="utf-8") as f:
             json.dump(policy, f, ensure_ascii=False, indent=2)
 
-    def delete_policy(self, name: str) -> None:
-        path = os.path.join(self.policies_dir, f"{name}.json")
-        if os.path.exists(path):
-            os.remove(path)
+    def delete_policy(self, policy_id: int) -> bool:
+        """Удаление политики по её ID"""
+        try:
+            # Получаем список всех политик
+            policies = self.list_policies()
+            
+            # Если ID выходит за пределы списка, возвращаем False
+            if policy_id < 0 or policy_id >= len(policies):
+                return False
+                
+            # Получаем имя политики по её ID
+            policy_name = policies[policy_id]
+            
+            # Формируем путь к файлу политики
+            path = os.path.join(self.policies_dir, f"{policy_name}.json")
+            
+            # Удаляем файл, если он существует
+            if os.path.exists(path):
+                os.remove(path)
+                return True
+            else:
+                return False
+        except Exception:
+            # Игнорируем исключение и просто возвращаем False
+            return False
 
     def get_default_policy(self) -> Dict[str, Any]:
         # Можно расширить по желанию
@@ -41,4 +62,23 @@ class PolicyManager:
             "respect_robots_txt": True,
             "rate_limit": 0,
             "stop_on_first_vuln": False
-        } 
+        }
+        
+    def get_policy_by_id(self, policy_id: int) -> Dict[str, Any]:
+        """Получение политики по её ID"""
+        try:
+            # Получаем список всех политик
+            policies = self.list_policies()
+            
+            # Если ID выходит за пределы списка, возвращаем политику по умолчанию
+            if policy_id < 0 or policy_id >= len(policies):
+                return self.get_default_policy()
+                
+            # Получаем имя политики по её ID
+            policy_name = policies[policy_id]
+            
+            # Загружаем и возвращаем политику
+            return self.load_policy(policy_name)
+        except Exception:
+            # В случае ошибки возвращаем политику по умолчанию
+            return self.get_default_policy() 

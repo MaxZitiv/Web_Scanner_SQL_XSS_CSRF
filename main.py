@@ -85,11 +85,10 @@ def graceful_shutdown(exit_code: int) -> int:
     logger.info("Starting graceful shutdown...")
 
     # Корректное завершение цикла событий
-    if event_loop is not None:
+    if event_loop is not None and not event_loop.is_closed():
         try:
-            if not event_loop.is_closed():
-                event_loop.stop()
-                logger.info("Event loop stopped gracefully")
+            event_loop.stop()
+            logger.info("Event loop stopped gracefully")
         except Exception as e:
             logger.warning(f"Error stopping event loop: {e}")
 
@@ -100,6 +99,14 @@ def graceful_shutdown(exit_code: int) -> int:
             logger.info("Application quit successfully")
         except Exception as e:
             logger.warning(f"Error quitting application: {e}")
+
+    # Освобождение ресурсов
+    try:
+        from utils.database import db
+        db.close_connection()
+        logger.info("Database connection closed")
+    except Exception as e:
+        logger.warning(f"Error closing database connection: {e}")
 
     logger.info(f"Shutdown complete with exit code: {exit_code}")
     return exit_code

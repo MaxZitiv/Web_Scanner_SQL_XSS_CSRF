@@ -1,22 +1,20 @@
 from scanner.scanner_fixed import ScanWorker
 from utils.logger import logger, log_and_notify
 import asyncio
-import aiohttp
-import json
-import sqlite3
 from typing import Callable, List, Optional, Dict, Any, Tuple
-from datetime import datetime
-from utils.performance import measure_time, performance_monitor, get_local_timestamp
+from utils.performance import performance_monitor, get_local_timestamp
 from utils.security import is_safe_url, validate_input_length
 from utils.error_handler import error_handler
 
 class ScanController:
-    def __init__(self, user_id: int):
+    def __init__(self, user_id: int, username: Optional[str] = None):
         """
         Контроллер для управления сканированием.
         :param user_id: ID пользователя
+        :param username: Имя пользователя
         """
         self.user_id: int = user_id
+        self.username: Optional[str] = username
         self.active_scans: Dict[str, ScanWorker] = {}
         self.max_active_scans: int = 5  # Максимальное количество активных сканирований
         logger.info(f'Initialized Async ScanController for user {self.user_id}')
@@ -60,7 +58,9 @@ class ScanController:
         try:
             completed_urls = []
             for url, worker in self.active_scans.items():
-                if hasattr(worker, 'should_stop') and worker.should_stop:
+                # Проверяем наличие атрибута should_stop и его значение
+                should_stop = getattr(worker, 'should_stop', None)
+                if should_stop is not None and should_stop:
                     completed_urls.append(url)
             
             for url in completed_urls:
@@ -182,7 +182,7 @@ class ScanController:
                 url=url,
                 scan_types=scan_types_lower,
                 user_id=self.user_id,
-                username=getattr(self, 'username', None),
+                username=self.username,
                 max_depth=max_depth,
                 max_concurrent=max_concurrent,
                 timeout=timeout

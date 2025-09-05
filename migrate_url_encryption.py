@@ -6,14 +6,11 @@
 Этот скрипт шифрует URL в таблице scans, которые еще не зашифрованы.
 """
 
-import sqlite3
 import os
 import sys
-from utils.logger import setup_logger
+from utils.logger import logger
 from utils.encryption import get_encryption
-from utils.database import get_db_connection
-
-logger = setup_logger('migrate_url_encryption', filename='migrate_url_encryption.log')
+from utils.database import db
 
 def is_already_encrypted(data: str) -> bool:
     """
@@ -46,7 +43,7 @@ def migrate_url_encryption() -> bool:
         logger.info("Starting URL encryption migration...")
         
         # Получаем соединение с базой данных
-        conn = get_db_connection()
+        conn = db.get_db_connection()
         cursor = conn.cursor()
         
         # Получаем все записи из таблицы scans
@@ -118,7 +115,7 @@ def migrate_vulnerabilities_url_encryption() -> bool:
         logger.info("Starting vulnerabilities URL encryption migration...")
         
         # Получаем соединение с базой данных
-        conn = get_db_connection()
+        conn = db.get_db_connection()
         cursor = conn.cursor()
         
         # Получаем все записи из таблицы vulnerabilities

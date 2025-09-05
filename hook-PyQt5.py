@@ -1,4 +1,4 @@
- from PyInstaller.utils.hooks import collect_data_files, collect_submodules
+from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
 # Collect all PyQt5 submodules
 hiddenimports = collect_submodules('PyQt5')

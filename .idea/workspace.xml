@@ -6,14 +6,20 @@
   <component name="ChangeListManager">
     <list default="true" id="c8a92672-e473-4c09-8a8d-a50b7c922ba0" name="Changes" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/ENCRYPTION_README.md" beforeDir="false" afterPath="$PROJECT_DIR$/ENCRYPTION_README.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/OPTIMIZATION_README.md" beforeDir="false" afterPath="$PROJECT_DIR$/OPTIMIZATION_README.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/URL_ENCRYPTION_README.md" beforeDir="false" afterPath="$PROJECT_DIR$/URL_ENCRYPTION_README.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/BUGFIXES_README.md" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/CSRF_Remediation_Guide.md" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/ENCRYPTION_README.md" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/OPTIMIZATION_README.md" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/PYLANCE_FIXES_README.md" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/SCANNER_FIXES_README.md" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/URL_ENCRYPTION_README.md" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/__init__.py" beforeDir="false" afterPath="$PROJECT_DIR$/__init__.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/controllers/auth_controller.py" beforeDir="false" afterPath="$PROJECT_DIR$/controllers/auth_controller.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/controllers/scan_controller.py" beforeDir="false" afterPath="$PROJECT_DIR$/controllers/scan_controller.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/data/scanner.db" beforeDir="false" afterPath="$PROJECT_DIR$/data/scanner.db" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/export/export.py" beforeDir="false" afterPath="$PROJECT_DIR$/export/export.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/export/report_generator.py" beforeDir="false" afterPath="$PROJECT_DIR$/export/report_generator.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/hook-PyQt5.py" beforeDir="false" afterPath="$PROJECT_DIR$/hook-PyQt5.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/logs/auth_controller.log" beforeDir="false" />
       <change beforePath="$PROJECT_DIR$/logs/database.log" beforeDir="false" />
       <change beforePath="$PROJECT_DIR$/logs/login_window.log" beforeDir="false" />
@@ -23,15 +29,23 @@
       <change beforePath="$PROJECT_DIR$/logs/user_model.log" beforeDir="false" />
       <change beforePath="$PROJECT_DIR$/main.py" beforeDir="false" afterPath="$PROJECT_DIR$/main.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/migrate_db.py" beforeDir="false" afterPath="$PROJECT_DIR$/migrate_db.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/migrate_encryption.py" beforeDir="false" afterPath="$PROJECT_DIR$/migrate_encryption.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/migrate_url_encryption.py" beforeDir="false" afterPath="$PROJECT_DIR$/migrate_url_encryption.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/models/scan_model.py" beforeDir="false" afterPath="$PROJECT_DIR$/models/scan_model.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/models/user_model.py" beforeDir="false" afterPath="$PROJECT_DIR$/models/user_model.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/policies/policy_manager.py" beforeDir="false" afterPath="$PROJECT_DIR$/policies/policy_manager.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/requirements.txt" beforeDir="false" afterPath="$PROJECT_DIR$/requirements.txt" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/scanner.db" beforeDir="false" afterPath="$PROJECT_DIR$/scanner.db" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/scanner/scanner_fixed.py" beforeDir="false" afterPath="$PROJECT_DIR$/scanner/scanner_fixed.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/ui/main_window.py" beforeDir="false" afterPath="$PROJECT_DIR$/ui/main_window.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/ui/registration_window.py" beforeDir="false" afterPath="$PROJECT_DIR$/ui/registration_window.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/utils/cache_cleanup.py" beforeDir="false" afterPath="$PROJECT_DIR$/utils/cache_cleanup.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/utils/database.py" beforeDir="false" afterPath="$PROJECT_DIR$/utils/database.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/utils/encryption.py" beforeDir="false" afterPath="$PROJECT_DIR$/utils/encryption.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/utils/exception_handler.py" beforeDir="false" afterPath="$PROJECT_DIR$/utils/exception_handler.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/utils/init_db.py" beforeDir="false" afterPath="$PROJECT_DIR$/utils/init_db.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/utils/logger.py" beforeDir="false" afterPath="$PROJECT_DIR$/utils/logger.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/utils/security.py" beforeDir="false" afterPath="$PROJECT_DIR$/utils/security.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/views/dashboard_window.py" beforeDir="false" afterPath="$PROJECT_DIR$/views/dashboard_window.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/views/tabs/profile_tab.py" beforeDir="false" afterPath="$PROJECT_DIR$/views/tabs/profile_tab.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/views/tabs/scan_tab.py" beforeDir="false" afterPath="$PROJECT_DIR$/views/tabs/scan_tab.py" afterDir="false" />
@@ -43,6 +57,9 @@
   </component>
   <component name="Git.Settings">
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+  </component>
+  <component name="ProblemsViewState">
+    <option name="selectedTabId" value="CurrentFile" />
   </component>
   <component name="ProjectColorInfo">{
   &quot;associatedIndex&quot;: 0

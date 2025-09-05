@@ -29,6 +29,9 @@ psutil>=5.9.0,<6.0.0
 # Time and Date
 pytz>=2023.3
 
+# Packaging
+PyInstaller>=5.13.0
+
 # Development and Testing (optional)
 # pytest>=7.0.0
 # pytest-asyncio>=0.21.0
@@ -38,6 +41,8 @@ pytz>=2023.3
 # Additional dependencies for better error handling
 typing-extensions>=4.0.0
 
-python-dotenv
+python-dotenv~=1.1.1
 cachetools
-pathlib
+pathlib~=1.0.1
+bandit
+attrs~=25.3.0

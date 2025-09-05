@@ -1,11 +1,11 @@
 import logging
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
-from dotenv import load_dotenv
-from logging.handlers import RotatingFileHandler
-from datetime import datetime
 import os
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from logging.handlers import RotatingFileHandler
+
+from dotenv import load_dotenv
 
 # Уровни логирования
 LOG_LEVELS = {
@@ -29,8 +29,8 @@ def get_log_dir():
 
 def set_log_level(logger_name: str, level: str):
     """Устанавливает уровень логирования для указанного логгера"""
-    logger = logging.getLogger(logger_name)
-    logger.setLevel(LOG_LEVELS.get(level.upper(), logging.INFO))
+    target_logger = logging.getLogger(logger_name)
+    target_logger.setLevel(LOG_LEVELS.get(level.upper(), logging.INFO))
 
 
 # SMTP конфигурация из переменных окружения
@@ -43,10 +43,22 @@ FROM_EMAIL = SMTP_USERNAME
 
 # Валидация email
 if not all([SMTP_USERNAME, SMTP_PASSWORD, ADMIN_EMAIL]):
-    raise ValueError("SMTP_USERNAME, SMTP_PASSWORD и ADMIN_EMAIL должны быть заданы в .env")
-
-if FROM_EMAIL is None:
-    raise ValueError("FROM_EMAIL не может быть None")
+    # Импортируем logging для использования в случае отсутствия основного логгера
+    import logging
+    logging.warning("SMTP_USERNAME, SMTP_PASSWORD или ADMIN_EMAIL не заданы в .env. Уведомления по email не будут работать.")
+    # Используем локальные переменные вместо глобальных
+    _smtp_username = SMTP_USERNAME or "default@example.com"
+    _smtp_password = SMTP_PASSWORD or "default_password"
+    _admin_email = ADMIN_EMAIL or "admin@example.com"
+    _from_email = FROM_EMAIL or _smtp_username
+    
+    # Обновляем глобальные переменные
+    globals().update({
+        "SMTP_USERNAME": _smtp_username,
+        "SMTP_PASSWORD": _smtp_password,
+        "ADMIN_EMAIL": _admin_email,
+        "FROM_EMAIL": _from_email
+    })
 
 # 📁 Папка логов
 LOG_DIR = "logs"
@@ -87,9 +99,9 @@ def notify_admin(level: str, message: str):
             server.starttls()
             server.login(str(SMTP_USERNAME), str(SMTP_PASSWORD))
             server.send_message(msg)
-        logger.info(f"Admin notified via email: {ADMIN_EMAIL}")
+        print(f"Admin notified via email: {ADMIN_EMAIL}")
     except Exception as e:
-        log_and_notify('error', f"Failed to send admin notification: {e}")
+        print(f"Failed to send admin notification: {e}")
 
 # 🧩 Кастомный фильтр для разделения логов по уровню
 class LevelFilter(logging.Filter):
@@ -136,4 +148,5 @@ def log_and_notify(level: str, message: str) -> None:
         try:
             notify_admin(level.upper(), message)
         except Exception as e:
-            log_and_notify('error', f"Failed to notify admin: {e}")
+            # Используем прямой вызов logger.error вместо log_and_notify для избежания рекурсии
+            logger.error(f"Failed to notify admin: {e}")

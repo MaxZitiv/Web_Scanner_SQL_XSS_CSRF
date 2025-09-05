@@ -2,11 +2,14 @@ import sqlite3
 import os
 import json
 import datetime
-from typing import List, Dict, Optional, Any, Tuple
+from typing import List, Dict, Optional, Any, Tuple, Union, Callable
 from urllib.parse import urlparse
 from utils.logger import logger, log_and_notify
 from utils.encryption import encrypt_sensitive_data, decrypt_sensitive_data
-from utils.validators import validator
+# Добавляем аннотации типов для функций шифрования
+encrypt_sensitive_data: Callable[[Union[str, Dict[str, Any], List[Any]]], str] = encrypt_sensitive_data
+decrypt_sensitive_data: Callable[[str], Union[str, Dict[str, Any], List[Any]]] = decrypt_sensitive_data
+# from utils.validators import validator
 from contextlib import contextmanager
 import sys
 from concurrent.futures import ThreadPoolExecutor
@@ -37,6 +40,16 @@ class Database:
         :return: True если обновление успешно, False в противном случае
         """
         try:
+            # Проверяем существование глобальной переменной db
+            global db
+            # Проверяем, что db инициализирован и доступен
+            try:
+                # Простая проверка работоспособности соединения
+                conn = db.get_db_connection()
+            except Exception:
+                # Если возникла ошибка, пересоздаем экземпляр
+                db = Database()
+                
             with db.get_db_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute(
@@ -48,7 +61,6 @@ class Database:
         except sqlite3.Error as e:
             logger.error(f"Error updating user credentials: {e}")
             return False
-
 
     @staticmethod
     def get_resource_path(relative_path: str) -> str:
@@ -230,7 +242,7 @@ class Database:
     
     def update_failed_attempts(self, username: str, failed: bool = True) -> None:
         """Обновляет счётчик неудачных попыток входа пользователя и блокирует аккаунт при необходимости."""
-        if not isinstance(username, str) or not username.strip():
+        if not username.strip():
             return
         
         try:
@@ -295,7 +307,7 @@ class Database:
     # --- Методы для работы со сканами (существующие) ---
     def get_scans_by_user(self, user_id: int, limit: int = 50, offset: int = 0) -> List[Dict[str, Any]]:
         """Получает сканирования пользователя с пагинацией."""
-        if not isinstance(user_id, int) or user_id <= 0:
+        if user_id <= 0:
             return []
         
         try:
@@ -309,7 +321,7 @@ class Database:
                     LIMIT ? OFFSET ?
                 ''', (user_id, limit, offset))
                 rows = cursor.fetchall()
-                result = []
+                result: List[Dict[str, Any]] = []
                 for row in rows:
                     item = dict(row)
                     try:
@@ -325,13 +337,13 @@ class Database:
     
     def get_scan_statistics(self, user_id: int) -> Dict[str, Any]:
         """Получает статистику сканирований пользователя."""
-        stats = {
+        stats: Dict[str, Any] = {
             'total_scans': 0,
             'vulnerabilities_found': 0,
             'scan_types': {},
             'average_duration': 0.0
         }
-        if not isinstance(user_id, int) or user_id <= 0:
+        if user_id <= 0:
             return stats
         
         try:
@@ -371,7 +383,7 @@ class Database:
 
     def delete_scan(self, scan_id: int, user_id: int) -> bool:
         """Удаляет конкретное сканирование с проверкой владельца."""
-        if not isinstance(scan_id, int) or scan_id <= 0 or not isinstance(user_id, int) or user_id <= 0:
+        if scan_id <= 0 or user_id <= 0:
             return False
         
         try:
@@ -385,7 +397,7 @@ class Database:
     
     def delete_scans_by_user(self, user_id: int) -> bool:
         """Удаляет все сканирования пользователя."""
-        if not isinstance(user_id, int) or user_id <= 0:
+        if user_id <= 0:
             return False
         
         try:
@@ -398,8 +410,7 @@ class Database:
             log_and_notify('error', f"Error deleting scans for user {user_id}: {e}")
             return False
         
-    @staticmethod
-    def is_valid_url(url: str) -> bool:
+    def is_valid_url(self, url: str) -> bool:
         """
         Проверяет корректность URL.
         
@@ -407,8 +418,8 @@ class Database:
         :return: True если URL корректен, False в противном случае
         """
         try:
-            # Явное указание типа строки
-            if not isinstance(url, str):
+            # Проверка типа строки
+            if not url:
                 return False
                 
             # Декодируем URL в байты для urlparse
@@ -420,13 +431,13 @@ class Database:
 
     def save_scan_async(self, user_id: int, url: str, results: List[Dict[str, Any]], scan_type: str = "general", scan_duration: float = 0.0) -> bool:
         """Сохраняет результаты сканирования в базу данных."""
-        if not isinstance(user_id, int) or user_id <= 0:
+        if user_id <= 0:
             log_and_notify('error', "Invalid user_id provided")
             return False
-        if not isinstance(url, str) or not url.strip():
+        if not url.strip():
             log_and_notify('error', "Invalid URL provided")
             return False
-        if not isinstance(results, list):
+        if not results:
             log_and_notify('error', "Invalid results format")
             return False
 
@@ -436,8 +447,8 @@ class Database:
                 result_json = result_json[:int(self.MAX_RESULT_SIZE / 2)] + "..."
                 logger.warning("Scan result truncated due to size limit")
 
-            encrypted_url = encrypt_sensitive_data(url)
-            encrypted_result = encrypt_sensitive_data(result_json)
+            encrypted_url: str = encrypt_sensitive_data(url)
+            encrypted_result: str = encrypt_sensitive_data(result_json)
         except Exception as e:
             log_and_notify('error', f"Error processing scan data for saving: {e}")
             return False
@@ -448,17 +459,17 @@ class Database:
                 cursor.execute('''
                     INSERT INTO scans (user_id, url, result, scan_type, scan_duration)
                     VALUES (?, ?, ?, ?, ?)
-                ''', (user_id, encrypted_url, encrypted_result, scan_type, scan_duration))
+                ''', (user_id, encrypted_url, encrypted_result, scan_type, scan_duration))  # type: ignore[arg-type]
                 scan_id = cursor.lastrowid
                 
                 for vuln in results:
-                    if isinstance(vuln, dict) and 'type' in vuln and 'details' in vuln:
+                    if 'type' in vuln and 'details' in vuln:
                         vuln_url = vuln.get('url', url)
-                        encrypted_vuln_url = encrypt_sensitive_data(vuln_url)
+                        encrypted_vuln_url: str = encrypt_sensitive_data(vuln_url)
                         cursor.execute('''
                             INSERT INTO vulnerabilities (scan_id, url, type, details)
                             VALUES (?, ?, ?, ?)
-                        ''', (scan_id, encrypted_vuln_url, vuln['type'], str(vuln['details'])))
+                        ''', (scan_id, encrypted_vuln_url, vuln['type'], str(vuln['details'])))  # type: ignore[arg-type]
             return True
         except Exception as e:
             log_and_notify('error', f"Error saving scan: {e}")
@@ -466,7 +477,7 @@ class Database:
     
     def get_scan_by_id(self, scan_id: int, user_id: int) -> Optional[Dict[str, Any]]:
         """Получает сканирование по ID с проверкой владельца."""
-        if not isinstance(scan_id, int) or scan_id <= 0 or not isinstance(user_id, int) or user_id <= 0:
+        if scan_id <= 0 or user_id <= 0:
             return None
         
         try:
@@ -487,7 +498,7 @@ class Database:
                         data['url'] = '[decryption error]'
                     
                     try:
-                        decrypted_result = decrypt_sensitive_data(data['result'])
+                        decrypted_result: Union[str, Dict[str, Any], List[Any]] = decrypt_sensitive_data(data['result'])
                         if isinstance(decrypted_result, str):
                             data['results'] = json.loads(decrypted_result)
                         else:

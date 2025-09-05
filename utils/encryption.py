@@ -5,7 +5,7 @@ import os
 import base64
 import hashlib
 from cryptography.fernet import Fernet
-from typing import Optional, Union
+from typing import Optional, Union, List, Dict, Any
 import json
 from utils.logger import logger, log_and_notify
 
@@ -55,8 +55,17 @@ class DatabaseEncryption:
             # Устанавливаем права доступа только для владельца
             try:
                 os.chmod(key_file, 0o600)
-            except OSError:
-                logger.warning("Could not set restrictive permissions on key file")
+                # Проверяем, что права доступа установлены корректно
+                file_stat = os.stat(key_file)
+                if file_stat.st_mode & 0o777 != 0o600:
+                    logger.warning(f"Key file permissions are not restrictive: {oct(file_stat.st_mode & 0o777)}")
+                    # Повторная попытка установки прав
+                    try:
+                        os.chmod(key_file, 0o600)
+                    except OSError:
+                        logger.error("Failed to set restrictive permissions on key file")
+            except OSError as e:
+                logger.error(f"Could not set restrictive permissions on key file: {e}")
             
             logger.info("Created new master key")
             return base64.urlsafe_b64encode(new_key).decode()
@@ -106,7 +115,7 @@ class DatabaseEncryption:
             log_and_notify('error', f"Error creating Fernet instance: {e}")
             raise
     
-    def encrypt_data(self, data: Union[str, dict, list]) -> str:
+    def encrypt_data(self, data: Union[str, Dict[str, Any], List[Any]]) -> str:
         """
         Шифрует данные.
         
@@ -118,10 +127,10 @@ class DatabaseEncryption:
         """
         try:
             # Преобразуем данные в JSON строку
-            if isinstance(data, (dict, list)):
+            if isinstance(data, (Dict, List)):
                 json_data = json.dumps(data, ensure_ascii=False)
             else:
-                json_data = str(data)
+                json_data = str(data)  # type: ignore[arg-type]
             
             # Шифруем
             encrypted_bytes = self.fernet.encrypt(json_data.encode('utf-8'))
@@ -131,7 +140,7 @@ class DatabaseEncryption:
             log_and_notify('error', f"Error encrypting data: {e}")
             raise
     
-    def decrypt_data(self, encrypted_data: str) -> Union[str, dict, list]:
+    def decrypt_data(self, encrypted_data: str) -> Union[str, Dict[str, Any], List[Any]]:
         """
         Расшифровывает данные.
         
@@ -160,7 +169,7 @@ class DatabaseEncryption:
             log_and_notify('error', f"Error decrypting data: {e}")
             raise
     
-    def encrypt_scan_results(self, results: list) -> str:
+    def encrypt_scan_results(self, results: List[Dict[str, Any]]) -> str:
         """
         Шифрует результаты сканирования.
         
@@ -172,7 +181,7 @@ class DatabaseEncryption:
         """
         return self.encrypt_data(results)
     
-    def decrypt_scan_results(self, encrypted_results: str) -> list:
+    def decrypt_scan_results(self, encrypted_results: str) -> List[Dict[str, Any]]:
         """
         Расшифровывает результаты сканирования.
         
@@ -182,9 +191,9 @@ class DatabaseEncryption:
         Returns:
             list: Расшифрованные результаты
         """
-        decrypted = self.decrypt_data(encrypted_results)
-        if isinstance(decrypted, list):
-            return decrypted
+        decrypted: Union[str, Dict[str, Any], List[Any]] = self.decrypt_data(encrypted_results)
+        if isinstance(decrypted, List):
+            return decrypted  # type: ignore[return-value]
         else:
             logger.warning("Decrypted data is not a list, returning empty list")
             return []
@@ -246,7 +255,7 @@ def get_encryption() -> DatabaseEncryption:
         _encryption_instance = DatabaseEncryption()
     return _encryption_instance
 
-def encrypt_sensitive_data(data: Union[str, dict, list]) -> str:
+def encrypt_sensitive_data(data: Union[str, Dict[str, Any], List[Any]]) -> str:
     """
     Шифрует чувствительные данные.
     
@@ -258,7 +267,7 @@ def encrypt_sensitive_data(data: Union[str, dict, list]) -> str:
     """
     return get_encryption().encrypt_data(data)
 
-def decrypt_sensitive_data(encrypted_data: str) -> Union[str, dict, list]:
+def decrypt_sensitive_data(encrypted_data: str) -> Union[str, Dict[str, Any], List[Any]]:
     """
     Расшифровывает чувствительные данные.
     

@@ -5,19 +5,29 @@
 
 import gc
 import time
-from typing import Dict, List, Optional, Any, Union
+from typing import Dict, Any, Union, cast
 from utils.logger import logger, log_and_notify
 from utils.performance import performance_monitor, resource_manager
 from utils.security import clear_security_cache
 from models.user_model import UserModel
 from utils.error_handler import error_handler
 
+# Заглушка для типа error_handler
+class ErrorHandlerStub:
+    def get_error_statistics(self) -> Dict[str, Any]:
+        return {}
+    def clear_error_cache(self) -> None:
+        pass
+
+# Явное приведение типа для error_handler
+typed_error_handler: ErrorHandlerStub = cast(ErrorHandlerStub, error_handler)
+
 
 class CacheCleanupManager:
     """Менеджер для очистки всех кэшей приложения"""
     
     def __init__(self):
-        self.cleanup_stats = {
+        self.cleanup_stats: Dict[str, Dict[str, Union[bool, int]]] = {
             'security_cache': {'cleared': False, 'size_before': 0, 'size_after': 0},
             'performance_cache': {'cleared': False, 'size_before': 0, 'size_after': 0},
             'user_cache': {'cleared': False, 'size_before': 0, 'size_after': 0},
@@ -25,17 +35,17 @@ class CacheCleanupManager:
             'scanner_cache': {'cleared': False, 'size_before': 0, 'size_after': 0},
             'memory_cleanup': {'performed': False, 'memory_before': 0, 'memory_after': 0}
         }
-        self.cleanup_start_time = None
-        self.cleanup_end_time = None
+        self.cleanup_start_time: Union[float, None] = None
+        self.cleanup_end_time: Union[float, None] = None
     
     def get_cache_sizes(self) -> Dict[str, int]:
         """Получает размеры всех кэшей"""
-        sizes = {}
+        sizes: Dict[str, int] = {}
         
         try:
             # Размер кэша безопасности
             from utils.security import get_security_cache_stats
-            security_stats = get_security_cache_stats()
+            security_stats: Dict[str, Any] = get_security_cache_stats()
             sizes['security_cache'] = security_stats.get('cache_size', 0)
         except Exception as e:
             logger.warning(f"Error getting security cache size: {e}")
@@ -50,8 +60,8 @@ class CacheCleanupManager:
         
         try:
             # Размер кэша пользователей
-            user_model = UserModel()
-            user_stats = user_model.get_user_cache_stats()
+            user_model: UserModel = UserModel()
+            user_stats: Dict[str, Any] = user_model.get_user_cache_stats()
             sizes['user_cache'] = user_stats.get('cache_size', 0)
         except Exception as e:
             logger.warning(f"Error getting user cache size: {e}")
@@ -59,7 +69,7 @@ class CacheCleanupManager:
         
         try:
             # Размер кэша ошибок
-            error_stats = error_handler.get_error_statistics()
+            error_stats: Dict[str, Any] = typed_error_handler.get_error_statistics()
             sizes['error_cache'] = error_stats.get('total_errors', 0)
         except Exception as e:
             logger.warning(f"Error getting error cache size: {e}")
@@ -68,7 +78,7 @@ class CacheCleanupManager:
         try:
             # Размер кэша сканера
             from scanner.scanner_fixed import HTML_CACHE, DNS_CACHE, FORM_HASH_CACHE, URL_PROCESSING_CACHE
-            scanner_cache_size = len(HTML_CACHE) + len(DNS_CACHE) + len(FORM_HASH_CACHE) + len(URL_PROCESSING_CACHE)
+            scanner_cache_size: int = len(HTML_CACHE) + len(DNS_CACHE) + len(FORM_HASH_CACHE) + len(URL_PROCESSING_CACHE)
             sizes['scanner_cache'] = scanner_cache_size
         except Exception as e:
             logger.warning(f"Error getting scanner cache size: {e}")
@@ -81,8 +91,8 @@ class CacheCleanupManager:
         try:
             import psutil
             import os
-            process = psutil.Process(os.getpid())
-            memory_info = process.memory_info()
+            process: psutil.Process = psutil.Process(os.getpid())
+            memory_info: Any = process.memory_info()
             return {
                 'rss': memory_info.rss,  # Resident Set Size в байтах
                 'vms': memory_info.vms,  # Virtual Memory Size в байтах
@@ -95,9 +105,9 @@ class CacheCleanupManager:
     def clear_security_cache(self) -> bool:
         """Очищает кэш безопасности"""
         try:
-            size_before = self.get_cache_sizes()['security_cache']
+            size_before: int = self.get_cache_sizes()['security_cache']
             clear_security_cache()
-            size_after = self.get_cache_sizes()['security_cache']
+            size_after: int = self.get_cache_sizes()['security_cache']
             
             self.cleanup_stats['security_cache'] = {
                 'cleared': True,
@@ -116,9 +126,9 @@ class CacheCleanupManager:
     def clear_performance_cache(self) -> bool:
         """Очищает кэш производительности"""
         try:
-            size_before = performance_monitor.cache.size()
+            size_before: int = performance_monitor.cache.size()
             performance_monitor.clear_metrics()
-            size_after = performance_monitor.cache.size()
+            size_after: int = performance_monitor.cache.size()
             
             self.cleanup_stats['performance_cache'] = {
                 'cleared': True,
@@ -137,10 +147,10 @@ class CacheCleanupManager:
     def clear_user_cache(self) -> bool:
         """Очищает кэш пользователей"""
         try:
-            user_model = UserModel()
-            size_before = user_model.get_user_cache_stats()['cache_size']
+            user_model: UserModel = UserModel()
+            size_before: int = user_model.get_user_cache_stats()['cache_size']
             user_model.clear_user_cache()
-            size_after = user_model.get_user_cache_stats()['cache_size']
+            size_after: int = user_model.get_user_cache_stats()['cache_size']
             
             self.cleanup_stats['user_cache'] = {
                 'cleared': True,
@@ -159,9 +169,9 @@ class CacheCleanupManager:
     def clear_error_cache(self) -> bool:
         """Очищает кэш ошибок"""
         try:
-            size_before = error_handler.get_error_statistics()['total_errors']
-            error_handler.clear_error_cache()
-            size_after = error_handler.get_error_statistics()['total_errors']
+            size_before: int = typed_error_handler.get_error_statistics()['total_errors']
+            typed_error_handler.clear_error_cache()
+            size_after: int = typed_error_handler.get_error_statistics()['total_errors']
             
             self.cleanup_stats['error_cache'] = {
                 'cleared': True,
@@ -182,14 +192,14 @@ class CacheCleanupManager:
         try:
             from scanner.scanner_fixed import HTML_CACHE, DNS_CACHE, FORM_HASH_CACHE, URL_PROCESSING_CACHE
             
-            size_before = len(HTML_CACHE) + len(DNS_CACHE) + len(FORM_HASH_CACHE) + len(URL_PROCESSING_CACHE)
+            size_before: int = len(HTML_CACHE) + len(DNS_CACHE) + len(FORM_HASH_CACHE) + len(URL_PROCESSING_CACHE)
             
             HTML_CACHE.clear()
             DNS_CACHE.clear()
             FORM_HASH_CACHE.clear()
             URL_PROCESSING_CACHE.clear()
             
-            size_after = len(HTML_CACHE) + len(DNS_CACHE) + len(FORM_HASH_CACHE) + len(URL_PROCESSING_CACHE)
+            size_after: int = len(HTML_CACHE) + len(DNS_CACHE) + len(FORM_HASH_CACHE) + len(URL_PROCESSING_CACHE)
             
             self.cleanup_stats['scanner_cache'] = {
                 'cleared': True,
@@ -208,24 +218,24 @@ class CacheCleanupManager:
     def perform_memory_cleanup(self) -> bool:
         """Выполняет очистку памяти"""
         try:
-            memory_before = self.get_memory_usage()
+            memory_before: Dict[str, Union[int, float]] = self.get_memory_usage()
             
             # Принудительный сбор мусора
-            collected = gc.collect()
+            collected: int = gc.collect()
             
             # Очистка ресурсов
             resource_manager.cleanup_all()
             
-            memory_after = self.get_memory_usage()
+            memory_after: Dict[str, Union[int, float]] = self.get_memory_usage()
             
             self.cleanup_stats['memory_cleanup'] = {
                 'performed': True,
-                'memory_before': memory_before['rss'],
-                'memory_after': memory_after['rss'],
+                'memory_before': int(memory_before['rss']),
+                'memory_after': int(memory_after['rss']),
                 'objects_collected': collected
             }
             
-            memory_freed_mb = (memory_before['rss'] - memory_after['rss']) / 1024 / 1024
+            memory_freed_mb: float = (memory_before['rss'] - memory_after['rss']) / 1024 / 1024
             logger.info(f"Memory cleanup completed: {memory_freed_mb:.2f}MB freed, {collected} objects collected")
             return True
             
@@ -242,11 +252,11 @@ class CacheCleanupManager:
             logger.info("Starting comprehensive cache cleanup...")
             
             # Получаем размеры кэшей до очистки
-            initial_sizes = self.get_cache_sizes()
-            initial_memory = self.get_memory_usage()
+            initial_sizes: Dict[str, int] = self.get_cache_sizes()
+            initial_memory: Dict[str, Union[int, float]] = self.get_memory_usage()
             
             # Очищаем все кэши
-            cache_results = {
+            cache_results: Dict[str, bool] = {
                 'security': self.clear_security_cache(),
                 'performance': self.clear_performance_cache(),
                 'user': self.clear_user_cache(),
@@ -255,20 +265,20 @@ class CacheCleanupManager:
             }
             
             # Выполняем очистку памяти
-            memory_result = self.perform_memory_cleanup()
+            memory_result: bool = self.perform_memory_cleanup()
             
             # Вычисляем статистику
-            total_entries_freed = sum(
+            total_entries_freed: int = sum(
                 initial_sizes.get(cache_name, 0) - self.get_cache_sizes().get(cache_name, 0)
                 for cache_name in ['security_cache', 'performance_cache', 'user_cache', 'error_cache', 'scanner_cache']
             )
             
-            memory_freed_mb = (initial_memory['rss'] - self.get_memory_usage()['rss']) / 1024 / 1024
+            memory_freed_mb: float = (initial_memory['rss'] - self.get_memory_usage()['rss']) / 1024 / 1024
             
             self.cleanup_end_time = time.time()
-            duration = self.cleanup_end_time - self.cleanup_start_time
+            duration: float = self.cleanup_end_time - self.cleanup_start_time
             
-            result = {
+            result: Dict[str, Any] = {
                 'all_successful': all(cache_results.values()) and memory_result,
                 'duration_seconds': duration,
                 'entries_freed': total_entries_freed,
@@ -284,7 +294,7 @@ class CacheCleanupManager:
         except Exception as e:
             log_and_notify('error', f"Error during cache cleanup: {e}")
             self.cleanup_end_time = time.time()
-            duration = self.cleanup_end_time - self.cleanup_start_time
+            duration: float = self.cleanup_end_time - self.cleanup_start_time
             
             return {
                 'all_successful': False,
@@ -296,7 +306,7 @@ class CacheCleanupManager:
             }
 
 # Глобальный экземпляр менеджера очистки
-cleanup_manager = CacheCleanupManager()
+cleanup_manager: CacheCleanupManager = CacheCleanupManager()
 
 def cleanup_on_exit(safe_mode: bool = True) -> Dict[str, Any]:
     """
@@ -329,4 +339,4 @@ def cleanup_on_exit(safe_mode: bool = True) -> Dict[str, Any]:
             'entries_freed': 0,
             'memory_freed_mb': 0,
             'error': str(e)
-        } 
+        }
