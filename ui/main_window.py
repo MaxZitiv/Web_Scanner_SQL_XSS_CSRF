@@ -1,19 +1,20 @@
 from typing import Optional
-from PyQt5.QtWidgets import QMainWindow, QStackedWidget, QGraphicsOpacityEffect, QWidget, QMessageBox
+from PyQt5.QtWidgets import QMainWindow, QStackedWidget, QGraphicsOpacityEffect, QWidget
 from PyQt5.QtCore import QPropertyAnimation, QEasingCurve
 from PyQt5.QtGui import QIcon, QCloseEvent
 
-from utils import error_handler, performance
+from models.user_model import UserModel
+from utils import error_handler
 from utils.performance import measure_time
 from views.login_window import LoginWindow
 from ui.registration_window import RegistrationWindow
-from views.dashboard_window import DashboardWindow
+from views.dashboard_window_main import DashboardWindow
 from utils.cache_cleanup import cleanup_on_exit
 from utils.logger import logger, log_and_notify
 from utils.database import db
 
 class MainWindow(QMainWindow):
-    def __init__(self, user_model, parent: Optional[QMainWindow] = None) -> None:
+    def __init__(self, user_model: UserModel, parent: Optional[QMainWindow] = None) -> None:
         super().__init__(parent)
         self.user_model = user_model
         self.setWindowTitle("Web Scanner")
@@ -48,19 +49,19 @@ class MainWindow(QMainWindow):
         """Инициализация всех необходимых UI компонентов"""
         try:
             # Проверяем stack
-            if not hasattr(self, 'stack') or not isinstance(self.stack, QStackedWidget):
+            if not hasattr(self, 'stack'):
                 raise ValueError("Stack widget not properly initialized")
 
             # Проверяем login_window
-            if not hasattr(self, 'login_window') or not isinstance(self.login_window, LoginWindow):
+            if not hasattr(self, 'login_window'):
                 raise ValueError("Login window not properly initialized")
 
             # Проверяем registration_window
-            if not hasattr(self, 'registration_window') or not isinstance(self.registration_window, RegistrationWindow):
+            if not hasattr(self, 'registration_window'):
                 raise ValueError("Registration window not properly initialized")
 
             # Проверяем dashboard_window (может быть None, это нормально)
-            if hasattr(self, 'dashboard_window') and self.dashboard_window is not None and not isinstance(self.dashboard_window, DashboardWindow):
+            if hasattr(self, 'dashboard_window') and self.dashboard_window is not None:
                 raise ValueError("Dashboard window not properly initialized")
 
             # Проверяем подключение сигналов
@@ -127,7 +128,7 @@ class MainWindow(QMainWindow):
         except Exception as e:
             log_and_notify('error', f"Unexpected error centering window: {e}")
 
-    def fade_to_widget(self, widget):
+    def fade_to_widget(self, widget: QWidget) -> None:
         opacity_effect = QGraphicsOpacityEffect()
         widget.setGraphicsEffect(opacity_effect)
 
@@ -147,7 +148,7 @@ class MainWindow(QMainWindow):
         animation.setDuration(500)
         animation.setStartValue(0)
         animation.setEndValue(1)
-        animation.setEasingCurve(QEasingCurve.InOutQuad)
+        animation.setEasingCurve(QEasingCurve.Type.InOutQuad)
         animation.start()
 
         # Не даём GC уничтожить анимацию сразу
@@ -180,7 +181,7 @@ class MainWindow(QMainWindow):
 
 
     @measure_time
-    def go_to_dashboard(self, user_id, username):
+    def go_to_dashboard(self, user_id: int, username: str):
         try:
             # Проверка инициализации компонентов
             if not hasattr(self, 'stack'):
@@ -189,7 +190,7 @@ class MainWindow(QMainWindow):
 
             # Создаем dashboard_window при первом обращении
             if not hasattr(self, 'dashboard_window') or self.dashboard_window is None:
-                self.dashboard_window = DashboardWindow(user_id, username, self)
+                self.dashboard_window = DashboardWindow(user_id, username, self.user_model, self)
                 self.stack.addWidget(self.dashboard_window)
 
             self.stack.setCurrentWidget(self.dashboard_window)
@@ -224,8 +225,6 @@ class MainWindow(QMainWindow):
                     logger.debug("Window maximized successfully")
                 else:
                     logger.warning("Window too large for screen, keeping normal size")
-            else:
-                logger.debug("Window already maximized")
 
         except (ValueError, TypeError, AttributeError, OSError) as e:
             logger.warning(f"Error maximizing window: {e}")
@@ -239,13 +238,24 @@ class MainWindow(QMainWindow):
     def closeEvent(self, a0: Optional[QCloseEvent]) -> None:
         """Обработчик закрытия главного окна: очищает кэши перед выходом"""
         try:
-            # Проверяем настройку пользователя для очистки кэшей
-            should_clear_cache = True
+            # Инициализация переменной со значением по умолчанию
+            should_clear_cache: bool = True
 
             # Если есть dashboard_window, проверяем настройку
             if hasattr(self, 'dashboard_window') and self.dashboard_window:
                 if hasattr(self.dashboard_window, 'clear_cache_checkbox'):
-                    should_clear_cache = self.dashboard_window.clear_cache_checkbox.isChecked()
+                    # Явно указываем типы для избежания предупреждений
+                    from PyQt5.QtWidgets import QCheckBox
+                    # Используем getattr для безопасного получения атрибута
+                    clear_cache_checkbox: Optional[QCheckBox] = getattr(self.dashboard_window, 'clear_cache_checkbox', None)
+                    if isinstance(clear_cache_checkbox, QCheckBox):
+                        checkbox_value: bool = clear_cache_checkbox.isChecked()
+                        should_clear_cache = checkbox_value
+                
+                    else:
+                        should_clear_cache = True
+            else:
+                should_clear_cache = True
 
             if should_clear_cache:
                 logger.info("Main window closing, performing cache cleanup...")
@@ -278,11 +288,11 @@ class MainWindow(QMainWindow):
         else:
             super().closeEvent(a0)
 
-    def show_dashboard(self, user_id, username):
+    def show_dashboard(self, user_id: int, username: str) -> None:
         """Показывает главное окно приложения после успешной аутентификации"""
         try:
             # Создаем экземпляр UserModel, если его нет
-            if not hasattr(self, 'user_model') or self.user_model is None:
+            if not hasattr(self, 'user_model'):
                 from models.user_model import UserModel
                 self.user_model = UserModel()
 

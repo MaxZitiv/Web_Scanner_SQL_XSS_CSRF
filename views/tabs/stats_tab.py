@@ -1,8 +1,8 @@
 import os
 import json
-import logging
-from datetime import datetime
-from typing import Dict, List, Any, Optional
+from datetime import datetime, date
+from pydoc import text
+from typing import Dict, List, Any, Optional, cast
 
 import sqlite3
 from PyQt5.QtWidgets import (
@@ -12,9 +12,12 @@ from PyQt5.QtWidgets import (
 )
 from PyQt5.QtCore import Qt, pyqtSignal, QDate
 from PyQt5.QtGui import QColor, QPixmap
+import matplotlib
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
+from matplotlib.axes import Axes
+from matplotlib.text import Text
 
 from utils.database import db
 from utils.error_handler import error_handler
@@ -24,7 +27,7 @@ from utils.unified_error_handler import log_and_notify
 class StatsTabWidget(QWidget):
     """Виджет вкладки статистики сканирований"""
     
-    def __init__(self, user_id: int, parent=None):
+    def __init__(self, user_id: int, parent: Optional[QWidget] = None):
         super().__init__(parent)
         self.user_id = user_id
         self._stats = {
@@ -257,33 +260,39 @@ class StatsTabWidget(QWidget):
                     scan_results = json.loads(scan_results)
                 except (json.JSONDecodeError, TypeError):
                     scan_results = []
+
+            # Явно указываем тип для Pylance
+            scan_results: List[Dict[str, Any]]
             
             # Подсчет уязвимостей
             scan_vulnerabilities = 0
             for result in scan_results:
-                if isinstance(result, dict):
-                    # Проверяем vulnerabilities в новой структуре
-                    if 'vulnerabilities' in result:
-                        for vuln_cat, vulns in result['vulnerabilities'].items():
-                            if isinstance(vulns, list) and vulns:
-                                scan_vulnerabilities += len(vulns)
-                                # Маппинг категорий к типам
-                                if vuln_cat == 'sql':
-                                    self._stats['sql_injection_count'] += len(vulns)
-                                elif vuln_cat == 'xss':
-                                    self._stats['xss_count'] += len(vulns)
-                                elif vuln_cat == 'csrf':
-                                    self._stats['csrf_count'] += len(vulns)
-                    # Проверяем старую структуру
-                    elif result.get('type') or result.get('vuln_type'):
-                        vuln_type = result.get('type', result.get('vuln_type', ''))
-                        scan_vulnerabilities += 1
-                        if vuln_type == 'SQL Injection':
-                            self._stats['sql_injection_count'] += 1
-                        elif vuln_type == 'XSS':
-                            self._stats['xss_count'] += 1
-                        elif vuln_type == 'CSRF':
-                            self._stats['csrf_count'] += 1
+                # Явно указываем тип для Pylance
+                result: Dict[str, Any]
+                # Проверяем vulnerabilities в новой структуре
+                if 'vulnerabilities' in result:
+                    for vuln_cat, vulns in result['vulnerabilities'].items():
+                        # Явно указываем тип для Pylance
+                        vulns: List[Any]
+                        if vulns:
+                            scan_vulnerabilities += len(vulns)
+                            # Маппинг категорий к типам
+                            if vuln_cat == 'sql':
+                                self._stats['sql_injection_count'] += len(vulns)
+                            elif vuln_cat == 'xss':
+                                self._stats['xss_count'] += len(vulns)
+                            elif vuln_cat == 'csrf':
+                                self._stats['csrf_count'] += len(vulns)
+                # Проверяем старую структуру
+                elif result.get('type') or result.get('vuln_type'):
+                    vuln_type = result.get('type', result.get('vuln_type', ''))
+                    scan_vulnerabilities += 1
+                    if vuln_type == 'SQL Injection':
+                        self._stats['sql_injection_count'] += 1
+                    elif vuln_type == 'XSS':
+                        self._stats['xss_count'] += 1
+                    elif vuln_type == 'CSRF':
+                        self._stats['csrf_count'] += 1
             
             self._stats['vulnerabilities_found'] += scan_vulnerabilities
             
@@ -301,23 +310,34 @@ class StatsTabWidget(QWidget):
             if not scans:
                 logger.warning("No scan data available")
                 self.stats_canvas.figure.clear()
-                ax = self.stats_canvas.figure.add_subplot(111)
-                ax.text(0.5, 0.5, "Нет данных для отображения", 
-                       horizontalalignment='center', verticalalignment='center')
+                # Явно указываем тип для Pylance
+                ax: Axes = self.stats_canvas.figure.add_subplot(111)
+                # Явно указываем тип возвращаемого значения для Pylance
+                # Сохраняем ссылку на текстовый объект для возможного будущего использования
+                _ = ax.text(0.5, 0.5, "Нет данных для отображения", 
+                                    horizontalalignment='center', verticalalignment='center')  # type: ignore
+
                 self.stats_canvas.draw()
                 return
             
             self.stats_canvas.figure.clear()
-            ax = self.stats_canvas.figure.add_subplot(111)
+            # Явно указываем тип для Pylance
+            ax: Axes = self.stats_canvas.figure.add_subplot(111)
 
             # Подготовка данных
-            dates = []
-            vulnerability_counts = {"SQL Injection": 0, "XSS": 0, "CSRF": 0}
-            date_vulnerability_counts = {}
+            # Явно указываем тип для Pylance
+            from typing import Any
+            dates: List[Any] = []  # Список дат сканирований
+            # type: List[datetime.date]
+            vulnerability_counts: Dict[str, int] = {"SQL Injection": 0, "XSS": 0, "CSRF": 0}
+            date_vulnerability_counts: Dict[str, Dict[str, int]] = {}
 
             for scan in scans:
-                date = datetime.strptime(scan['timestamp'], "%Y-%m-%d %H:%M:%S").date()
-                dates.append(date)
+                scan_date = datetime.strptime(scan['timestamp'], "%Y-%m-%d %H:%M:%S").date()
+                # Явно указываем тип для Pylance
+                scan_date: Any
+                # type: datetime.date
+                dates.append(scan_date)
 
                 scan_result = scan.get('result', {})
                 if not scan_result:
@@ -332,15 +352,27 @@ class StatsTabWidget(QWidget):
                 
                 # Обновляем общие счетчики
                 if isinstance(results, list):
-                    for result in results:
+                    for result in results:  # type: ignore
                         # Проверяем разные возможные структуры результатов
-                        vuln_type = None
+                        vuln_type: Optional[str] = None
                         if isinstance(result, dict):
-                            vuln_type = result.get('type') or result.get('vuln_type')
+                            # Явно указываем типы для Pylance
+                            result: Dict[str, Any]
+                            # Явно указываем типы для Pylance
+                            result_dict: Dict[str, Any] = cast(Dict[str, Any], result)
+                            type_value: Optional[str] = cast(Optional[str], result_dict.get('type'))
+                            vuln_type_value: Optional[str] = cast(Optional[str], result_dict.get('vuln_type'))
+                            vuln_type = type_value or vuln_type_value
                             # Если нет прямого типа, проверяем в vulnerabilities
                             if not vuln_type and 'vulnerabilities' in result:
-                                for vuln_cat, vulns in result['vulnerabilities'].items():
-                                    if vulns:  # Если есть уязвимости в этой категории
+                                # Явно указываем типы для Pylance
+                                vulnerabilities_data: Dict[str, List[Any]] = result_dict.get('vulnerabilities', {})  # type: Dict[str, List[Any]]
+                                for vuln_cat, vulns_data in vulnerabilities_data.items():
+                                    # Явно указываем типы для Pylance
+                                    vuln_cat: str
+                                    # Используем Any для избежания циклических ссылок
+                                    if vulns_data:  # type: ignore  # Если есть уязвимости в этой категории
+                                        vulns: List[Any] = vulns_data  # type: ignore
                                         if vuln_cat == 'sql':
                                             vuln_type = 'SQL Injection'
                                         elif vuln_cat == 'xss':
@@ -353,17 +385,24 @@ class StatsTabWidget(QWidget):
                             vulnerability_counts[vuln_type] += 1
                             
                             # Обновляем счетчики по датам
-                            if date not in date_vulnerability_counts:
-                                date_vulnerability_counts[date] = {"SQL Injection": 0, "XSS": 0, "CSRF": 0}
+                            if scan_date not in date_vulnerability_counts:
+                                date_vulnerability_counts[scan_date] = {"SQL Injection": 0, "XSS": 0, "CSRF": 0}
 
-                            if vuln_type and vuln_type in date_vulnerability_counts[date]:
-                                date_vulnerability_counts[date][vuln_type] += 1
+                            if vuln_type and vuln_type in date_vulnerability_counts[scan_date]:
+                                date_vulnerability_counts[scan_date][vuln_type] += 1
                 elif isinstance(results, dict):
                     # Если результат - это словарь с vulnerabilities
                     if 'vulnerabilities' in results:
-                        for vuln_cat, vulns in results['vulnerabilities'].items():
-                            if isinstance(vulns, list) and vulns:
-                                vuln_type = None
+                        # Явно указываем типы для Pylance
+                        results_dict: Dict[str, Any] = cast(Dict[str, Any], results)
+                        vulnerabilities_data: Dict[str, List[Any]] = results_dict.get('vulnerabilities', {})  # type: Dict[str, List[Any]]
+                        for vuln_cat, vulns_data in vulnerabilities_data.items():
+                            # Явно указываем типы для Pylance
+                            vuln_cat: str
+                            # Используем Any для избежания циклических ссылок
+                            if vulns_data:
+                                vulns: List[Any] = vulns_data
+                                vuln_type: Optional[str] = None
                                 if vuln_cat == 'sql':
                                     vuln_type = 'SQL Injection'
                                 elif vuln_cat == 'xss':
@@ -375,16 +414,25 @@ class StatsTabWidget(QWidget):
                                     vulnerability_counts[vuln_type] += len(vulns)
                                     
                                     # Обновляем счетчики по датам
-                                    if date not in date_vulnerability_counts:
-                                        date_vulnerability_counts[date] = {"SQL Injection": 0, "XSS": 0, "CSRF": 0}
-                                    date_vulnerability_counts[date][vuln_type] += len(vulns)
+                                    if scan_date not in date_vulnerability_counts:
+                                        date_vulnerability_counts[scan_date] = {"SQL Injection": 0, "XSS": 0, "CSRF": 0}
+                                    date_vulnerability_counts[scan_date][vuln_type] += len(vulns)
 
             # Сортируем даты
             sorted_dates = sorted(set(dates))
 
             # Линейный график по датам
+            # Явно указываем типы для Pylance
+            ax: Axes = self.stats_canvas.figure.add_subplot(111)
+
             for vuln_type in vulnerability_counts.keys():
-                counts = [date_vulnerability_counts.get(date, {}).get(vuln_type, 0) for date in sorted_dates]
+                # Явно указываем типы для Pylance
+                counts: List[int] = []
+                for date in sorted_dates:
+                    # Явно указываем типы для Pylance
+                    date_vuln_counts: Dict[str, int] = date_vulnerability_counts.get(date, {})
+                    count: int = date_vuln_counts.get(vuln_type, 0)
+                    counts.append(count)
                 ax.plot(sorted_dates, counts, marker='o', linestyle='-', label=vuln_type)
 
             ax.set_title("Статистика сканирований по типам уязвимостей")
@@ -398,8 +446,8 @@ class StatsTabWidget(QWidget):
         except (ValueError, sqlite3.Error, KeyError, AttributeError) as e:
             log_and_notify('error', f"Error updating matplotlib stats: {e}")
             self.stats_canvas.figure.clear()
-            ax = self.stats_canvas.figure.add_subplot(111)
-            ax.text(0.5, 0.5, f"Ошибка отображения статистики: {str(e)}", 
+            ax: Axes = self.stats_canvas.figure.add_subplot(111)
+            ax.text(0.5, 0.5, f"Ошибка отображения статистики: {str(e)}",  # type: ignore 
                    horizontalalignment='center', verticalalignment='center')
             self.stats_canvas.draw()
     

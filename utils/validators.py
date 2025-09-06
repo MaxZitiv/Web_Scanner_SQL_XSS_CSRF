@@ -7,7 +7,7 @@
 
 import re
 import ipaddress
-from typing import Dict, Any
+from typing import Dict, Any, List, cast
 from urllib.parse import urlparse
 
 class ValidationError(Exception):
@@ -41,7 +41,7 @@ class DataValidator:
         Returns:
             bool: True если email валиден
         """
-        if not email or not isinstance(email, str):
+        if not email:
             return False
         
         email = email.strip()
@@ -60,7 +60,7 @@ class DataValidator:
         Returns:
             bool: True если имя пользователя валидно
         """
-        if not username or not isinstance(username, str):
+        if not username:
             return False
         
         username = username.strip()
@@ -79,10 +79,10 @@ class DataValidator:
         Returns:
             Dict с результатами валидации
         """
-        if not password or not isinstance(password, str):
+        if not password:
             return {'valid': False, 'score': 0, 'issues': ['Password is empty or invalid type']}
         
-        issues = []
+        issues: List[str] = []
         score = 0
         
         # Проверяем длину
@@ -154,7 +154,7 @@ class DataValidator:
         Returns:
             bool: True если URL валиден
         """
-        if not url or not isinstance(url, str):
+        if not url:
             return False
         
         url = url.strip()
@@ -177,7 +177,7 @@ class DataValidator:
         Returns:
             bool: True если IP адрес валиден
         """
-        if not ip or not isinstance(ip, str):
+        if not ip:
             return False
         
         try:
@@ -196,7 +196,7 @@ class DataValidator:
         Returns:
             bool: True если доменное имя валидно
         """
-        if not domain or not isinstance(domain, str):
+        if not domain:
             return False
         
         domain = domain.strip().lower()
@@ -230,7 +230,7 @@ class DataValidator:
         Returns:
             Dict с результатами валидации
         """
-        issues = []
+        issues: List[str] = []
         valid = True
         
         # Проверяем обязательные поля
@@ -254,7 +254,8 @@ class DataValidator:
             valid = False
         else:
             valid_types = {'sql', 'xss', 'csrf'}
-            for scan_type in config['scan_types']:
+            for scan_type in cast(List[str], config['scan_types']):
+                # После проверки с помощью cast тип уже гарантированно str
                 if scan_type not in valid_types:
                     issues.append(f'Invalid scan type: {scan_type}')
                     valid = False
@@ -288,7 +289,7 @@ class DataValidator:
         Returns:
             str: Очищенный текст
         """
-        if not text or not isinstance(text, str):
+        if not text:
             return ""
         
         # Удаляем опасные символы

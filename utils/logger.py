@@ -105,11 +105,11 @@ def notify_admin(level: str, message: str):
 
 # 🧩 Кастомный фильтр для разделения логов по уровню
 class LevelFilter(logging.Filter):
-    def __init__(self, level):
+    def __init__(self, level: int):
         super().__init__()
         self.level = level
 
-    def filter(self, record):
+    def filter(self, record: logging.LogRecord) -> bool:
         return record.levelno == self.level
 
 # 🧱 Инициализация логгера

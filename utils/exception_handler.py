@@ -6,10 +6,8 @@
 """
 
 import sys
-import traceback
-import logging
 import time
-from typing import Optional, Callable, Any, Dict, List
+from typing import Optional, Callable, Any, Dict, Awaitable
 from functools import wraps
 from contextlib import contextmanager
 from collections import deque
@@ -20,9 +18,9 @@ class UnifiedErrorHandler:
     """Централизованный обработчик ошибок с GUI и стратегиями восстановления"""
     
     def __init__(self, max_cache: int = 100, max_retries: int = 3):
-        self.error_cache = deque(maxlen=max_cache)  # последние N ошибок
+        self.error_cache: deque[Dict[str, Any]] = deque(maxlen=max_cache)  # последние N ошибок
         self.error_counts: Dict[str, int] = {}
-        self.recovery_strategies: Dict[str, Callable] = {}
+        self.recovery_strategies: Dict[str, Callable[..., Any]] = {}
         self.max_retries = max_retries
         self.max_message_length = 1000
         self.setup_default_strategies()
@@ -38,7 +36,7 @@ class UnifiedErrorHandler:
                     logger.error(f"Details: {details}")
                 return
             msg = QMessageBox()
-            msg.setIcon(QMessageBox.Critical)
+            msg.setIcon(QMessageBox.Icon.Critical)
             msg.setWindowTitle(title)
             msg.setText(message)
             if details:
@@ -127,7 +125,7 @@ class UnifiedErrorHandler:
             'timestamp': time.time()
         })
 
-    def get_error_statistics(self) -> dict:
+    def get_error_statistics(self) -> Dict[str, Any]:
         most_common = max(self.error_counts.items(), key=lambda x: x[1]) if self.error_counts else None
         return {
             'total_errors': sum(self.error_counts.values()),
@@ -142,17 +140,17 @@ class UnifiedErrorHandler:
         logger.info("Error statistics cleared")
     
     # -------------------- Контекстные менеджеры / декораторы -------------------- #
-    def safe_execute(self, func: Callable, *args, **kwargs) -> Optional[Any]:
+    def safe_execute(self, func: Callable[..., Any], *args: Any, **kwargs: Any) -> Optional[Any]:
         try:
             return func(*args, **kwargs)
         except Exception as e:
             self.handle_exception(e, f"safe_execute({func.__name__})")
             return None
 
-    def retry_on_exception(self, max_retries: int = 3, exceptions: tuple = (Exception,)):
-        def decorator(func: Callable):
+    def retry_on_exception(self, max_retries: int = 3, exceptions: tuple[type[Exception], ...] = (Exception,)):
+        def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
             @wraps(func)
-            def wrapper(*args, **kwargs):
+            def wrapper(*args: Any, **kwargs: Any) -> Any:
                 for attempt in range(max_retries + 1):
                     try:
                         return func(*args, **kwargs)
@@ -172,8 +170,8 @@ class UnifiedErrorHandler:
             self.handle_exception(e, context_name)
             raise
 
-    def handle_async_exception(self, coro):
-        async def wrapper(*args, **kwargs):
+    def handle_async_exception(self, coro: Callable[..., Awaitable[Any]]) -> Callable[..., Awaitable[Any]]:
+        async def wrapper(*args: Any, **kwargs: Any) -> Any:
             try:
                 return await coro(*args, **kwargs)
             except Exception as e:
@@ -183,8 +181,12 @@ class UnifiedErrorHandler:
     
     # -------------------- Глобальный обработчик -------------------- #
     def setup_global_exception_handler(self):
-        def global_handler(exctype, value, tb):
-            self.handle_exception(value, "global_handler")
+        def global_handler(exctype: type[BaseException], value: BaseException, tb: Any):
+            if isinstance(value, Exception):
+                self.handle_exception(value, "global_handler")
+            else:
+                # Для системных исключений (KeyboardInterrupt, SystemExit) просто логируем
+                logger.error(f"Unhandled system exception: {type(value).__name__}: {value}")
             sys.__excepthook__(exctype, value, tb)
         sys.excepthook = global_handler
         logger.info("Global exception handler configured")

@@ -11,7 +11,7 @@
 - init_db: инициализация базы данных
 """
 
-from .database import db
+
 from .logger import logger, log_and_notify
 from .error_handler import error_handler
 from .performance import (

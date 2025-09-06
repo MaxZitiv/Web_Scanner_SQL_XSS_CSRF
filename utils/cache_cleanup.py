@@ -9,7 +9,7 @@ from typing import Dict, Any, Union, cast
 from utils.logger import logger, log_and_notify
 from utils.performance import performance_monitor, resource_manager
 from utils.security import clear_security_cache
-from models.user_model import UserModel
+
 from utils.error_handler import error_handler
 
 # Заглушка для типа error_handler
@@ -60,6 +60,7 @@ class CacheCleanupManager:
         
         try:
             # Размер кэша пользователей
+            from models.user_model import UserModel
             user_model: UserModel = UserModel()
             user_stats: Dict[str, Any] = user_model.get_user_cache_stats()
             sizes['user_cache'] = user_stats.get('cache_size', 0)
@@ -147,6 +148,7 @@ class CacheCleanupManager:
     def clear_user_cache(self) -> bool:
         """Очищает кэш пользователей"""
         try:
+            from models.user_model import UserModel
             user_model: UserModel = UserModel()
             size_before: int = user_model.get_user_cache_stats()['cache_size']
             user_model.clear_user_cache()

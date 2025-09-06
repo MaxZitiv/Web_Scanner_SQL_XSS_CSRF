@@ -2,17 +2,19 @@ import csv
 import json
 import os
 import sqlite3
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Set
 
 from fpdf import FPDF
 
 from utils.database import db
+# Добавляем аннотацию типа для db
+db: Any
 from utils.encryption import decrypt_sensitive_data
 from utils.logger import logger, log_and_notify
 from utils.performance import get_local_timestamp
 
 
-def format_duration(seconds):
+def format_duration(seconds: float):
     """Форматирует время в часы, минуты и секунды"""
     if seconds < 60:
         return f"{seconds:.1f} сек"
@@ -28,11 +30,11 @@ def format_duration(seconds):
 
 def format_scan_data_for_export(scans: List[Dict[str, Any]], user_id: Optional[int] = None) -> List[Dict[str, Any]]:
     """Форматирует данные сканирования для экспорта в более читаемый вид"""
-    formatted_data = []
+    formatted_data: List[Dict[str, Any]] = []
     
     for scan in scans:
         # Парсим результаты сканирования
-        results = scan.get('result', [])
+        results: List[Dict[str, Any]] = scan.get('result', [])
         if isinstance(results, str):
             try:
                 results = json.loads(results)
@@ -59,7 +61,7 @@ def format_scan_data_for_export(scans: List[Dict[str, Any]], user_id: Optional[i
                 pass
         
         # Группируем результаты по типам уязвимостей
-        vuln_summary = {}
+        vuln_summary: Dict[str, Dict[str, Any]] = {}
         vulnerable_count = 0
         
         for result in results:
@@ -101,7 +103,7 @@ def format_scan_data_for_export(scans: List[Dict[str, Any]], user_id: Optional[i
             })
         
         # Создаем форматированную запись
-        formatted_scan = {
+        formatted_scan: Dict[str, Any] = {
             'scan_id': scan.get('id', 'N/A'),
             'target_url': target_url,
             'scan_date': scan.get('timestamp', 'N/A'),
@@ -135,7 +137,7 @@ def export_to_json(data: List[Dict[str, Any]], filename: str = "report.json", us
         formatted_data = format_scan_data_for_export(data, user_id)
         
         # Создаем структурированный отчет
-        report = {
+        report: Dict[str, Any] = {
             'report_info': {
                 'generated_at': get_local_timestamp(),
                 'total_scans': len(formatted_data),
@@ -169,10 +171,10 @@ def export_to_csv(data: List[Dict[str, Any]], filename: str = "report.csv", user
         formatted_data = format_scan_data_for_export(data, user_id)
         
         # Создаем плоскую структуру для CSV
-        csv_rows = []
+        csv_rows: List[Dict[str, Any]] = []
         
         for scan in formatted_data:
-            base_row = {
+            base_row: Dict[str, Any] = {
                 'Scan ID': scan['scan_id'],
                 'Target URL': scan['target_url'],
                 'Scan Date': scan['scan_date'],
@@ -268,7 +270,7 @@ class PDFReport(FPDF):
         
         self.cell(0, 10, f"Страница {self.page_no()}", align="C")
 
-    def chapter_title(self, title):
+    def chapter_title(self, title: str):
         try:
             self.set_font("TimesNewRoman", "B", 14)
         except (RuntimeError, KeyError, AttributeError):
@@ -280,7 +282,7 @@ class PDFReport(FPDF):
         self.cell(0, 10, title, ln=True)
         self.ln(5)
 
-    def section_title(self, title):
+    def section_title(self, title: str):
         try:
             self.set_font("TimesNewRoman", "B", 12)
         except (RuntimeError, KeyError, AttributeError):
@@ -292,7 +294,7 @@ class PDFReport(FPDF):
         self.cell(0, 8, title, ln=True)
         self.ln(2)
 
-    def add_text(self, text, font_size=10, url_mode=False):
+    def add_text(self, text: str, font_size: int = 10, url_mode: bool = False):
         try:
             self.set_font("TimesNewRoman", "", font_size if not url_mode else 8)
         except (RuntimeError, KeyError, AttributeError):
@@ -303,13 +305,13 @@ class PDFReport(FPDF):
         safe_text = self._sanitize_text(text)
         if url_mode:
             self.set_text_color(0, 0, 180)  # Синий для URL
-        self.multi_cell(0, 5 if not url_mode else 4, safe_text)
+        self.multi_cell(0, 5 if not url_mode else 4, safe_text)  # type: ignore
         if url_mode:
             self.set_text_color(0, 0, 0)
         self.ln(2 if not url_mode else 1)
     
     @staticmethod
-    def _sanitize_text(text):
+    def _sanitize_text(text: str):
         """Очищает текст от символов, которые могут вызвать проблемы с кодировкой"""
         if not text:
             return ""
@@ -598,7 +600,7 @@ def export_single_scan_to_json(scan: Dict[str, Any], filename: str = "single_sca
         formatted_data = format_scan_data_for_export([scan], user_id)
         
         # Создаем структурированный отчет для одного сканирования
-        report = {
+        report: Dict[str, Any] = {
             'report_info': {
                 'generated_at': get_local_timestamp(),
                 'scan_id': scan.get('id', 'N/A'),
@@ -630,10 +632,10 @@ def export_single_scan_to_csv(scan: Dict[str, Any], filename: str = "single_scan
         formatted_data = format_scan_data_for_export([scan], user_id)
         
         # Создаем плоскую структуру для CSV
-        csv_rows = []
+        csv_rows: List[Dict[str, Any]] = []
         
         scan_data = formatted_data[0] if formatted_data else {}
-        base_row = {
+        base_row: Dict[str, Any] = {
             'Scan ID': scan_data.get('scan_id', 'N/A'),
             'Target URL': scan_data.get('target_url', 'N/A'),
             'Scan Date': scan_data.get('scan_date', 'N/A'),
@@ -666,17 +668,17 @@ def export_single_scan_to_csv(scan: Dict[str, Any], filename: str = "single_scan
             csv_rows.append(detail_row)
         
         if csv_rows:
-            fieldnames = set()
+            fieldnames: Set[str] = set()
             for row in csv_rows:
                 fieldnames.update(row.keys())
-            fieldnames = sorted(list(fieldnames))
+            sorted_fieldnames = sorted(list(fieldnames))
             
             with open(filename, "w", newline="", encoding="utf-8") as f:
-                writer = csv.DictWriter(f, fieldnames=fieldnames)
+                writer = csv.DictWriter(f, fieldnames=sorted_fieldnames)
                 writer.writeheader()
                 for row in csv_rows:
                     # Заполняем отсутствующие поля
-                    for field in fieldnames:
+                    for field in sorted_fieldnames:
                         if field not in row:
                             row[field] = ''
                     writer.writerow(row)

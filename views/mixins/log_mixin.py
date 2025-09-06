@@ -1,8 +1,7 @@
 """
 Миксин для функциональности работы с логами
 """
-from typing import List, Dict, Any, Optional
-from PyQt5.QtCore import pyqtSignal, QObject
+from typing import List, Dict, Optional
 from PyQt5.QtGui import QColor
 from PyQt5.QtWidgets import QLabel, QTextEdit, QLineEdit, QCheckBox, QScrollBar
 from utils.logger import logger

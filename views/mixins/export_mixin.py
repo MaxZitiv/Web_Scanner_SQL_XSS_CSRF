@@ -1,16 +1,17 @@
 """
 Миксин для функциональности экспорта данных
 """
-from typing import List, Dict, Any
+from PyQt5.QtWidgets import QWidget
 from utils import error_handler
 from utils.database import db
 from utils.export_utils import ExportUtils
 
 
-class ExportMixin:
+class ExportMixin(QWidget):
     """Миксин, предоставляющий функциональность экспорта данных"""
 
     def __init__(self, user_id: int):
+        super().__init__()
         """
         Инициализация миксина
 

@@ -1,22 +1,23 @@
+from typing import Dict, Any, List, Optional, Union
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QGroupBox, QLineEdit,
     QCheckBox, QDateTimeEdit, QTableWidget, QTableWidgetItem,
-    QHeaderView, QPushButton, QFileDialog
+    QHeaderView, QPushButton, QFileDialog, QAbstractItemView
 )
-from PyQt5.QtCore import Qt, QDateTime
+from PyQt5.QtCore import QDateTime
 from PyQt5.QtGui import QColor
-from utils.logger import logger, log_and_notify
+from utils.logger import log_and_notify
 from utils.error_handler import error_handler
 from utils.performance import get_local_timestamp
 import json
-import os
+
 from datetime import datetime
 
 class ReportsTabWidget(QWidget):
-    def __init__(self, user_id, parent=None):
+    def __init__(self, user_id: int, parent: Optional[QWidget] = None):
         super().__init__(parent)
-        self.user_id = user_id
-        self._filtered_scans = []
+        self.user_id: int = user_id
+        self._filtered_scans: List[Dict[str, Any]] = []
         self.setup_ui()
 
     def setup_ui(self):
@@ -82,8 +83,8 @@ class ReportsTabWidget(QWidget):
             header.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
             header.setSectionResizeMode(6, QHeaderView.ResizeMode.ResizeToContents)
         
-        self.reports_table.setSelectionBehavior(QTableWidget.SelectRows)
-        self.reports_table.setSelectionMode(QTableWidget.SingleSelection)
+        self.reports_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.reports_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         table_layout.addWidget(self.reports_table)
         
         table_group.setLayout(table_layout)
@@ -115,10 +116,10 @@ class ReportsTabWidget(QWidget):
     def refresh_reports(self):
         try:
             from utils.database import db
-            scans = db.get_scans_by_user(self.user_id)
+            scans: List[Dict[str, Any]] = db.get_scans_by_user(self.user_id)
             
-            url_filter = self.url_filter.text().strip().lower()
-            selected_types = [
+            url_filter: str = self.url_filter.text().strip().lower()
+            selected_types: List[str] = [
                 t for cb, t in [
                     (self.sql_checkbox.isChecked(), "SQL Injection"),
                     (self.xss_checkbox.isChecked(), "XSS"),
@@ -126,8 +127,8 @@ class ReportsTabWidget(QWidget):
                 ] if cb
             ]
             
-            from_dt = self.date_from.dateTime().toPyDateTime()
-            to_dt = self.date_to.dateTime().toPyDateTime()
+            from_dt: datetime = self.date_from.dateTime().toPyDateTime()
+            to_dt: datetime = self.date_to.dateTime().toPyDateTime()
             
             self.populate_reports_table(scans, url_filter, selected_types, from_dt, to_dt)
             
@@ -135,13 +136,18 @@ class ReportsTabWidget(QWidget):
             error_handler.handle_database_error(e, "refresh_reports")
             log_and_notify('error', f"Error refreshing reports: {e}")
 
-    def populate_reports_table(self, scans, url_filter, selected_types, from_dt, to_dt):
+    def populate_reports_table(self, scans: List[Dict[str, Any]], url_filter: str, selected_types: List[str], from_dt: datetime, to_dt: datetime) -> None:
         try:
             self.reports_table.setRowCount(0)
-            filtered_scans = []
+            filtered_scans: List[Dict[str, Any]] = []
             
             for scan in scans:
-                scan_dt = datetime.strptime(scan["timestamp"], "%Y-%m-%d %H:%M:%S")
+                scan: Dict[str, Any]
+                timestamp_str = scan.get("timestamp", "")
+                if isinstance(timestamp_str, str):
+                    scan_dt: datetime = datetime.strptime(timestamp_str, "%Y-%m-%d %H:%M:%S")
+                else:
+                    continue  # Пропускаем запись, если timestamp отсутствует или не является строкой
                 
                 # Применяем фильтры
                 if not (from_dt <= scan_dt <= to_dt):
@@ -149,7 +155,7 @@ class ReportsTabWidget(QWidget):
                 if url_filter and url_filter not in scan["url"].lower():
                     continue
                 
-                scan_results = scan.get("result", scan.get("results", []))
+                scan_results: Any = scan.get("result", scan.get("results", []))
                 if isinstance(scan_results, str):
                     try:
                         scan_results = json.loads(scan_results)
@@ -157,8 +163,9 @@ class ReportsTabWidget(QWidget):
                         scan_results = []
                 
                 if selected_types:
-                    has_selected_type = False
+                    has_selected_type: bool = False
                     for result in scan_results:
+                        result: Dict[str, Any]
                         if result.get("type") in selected_types:
                             has_selected_type = True
                             break
@@ -170,25 +177,28 @@ class ReportsTabWidget(QWidget):
             self.reports_table.setRowCount(len(filtered_scans))
             
             for row, scan in enumerate(filtered_scans):
-                scan_results = scan.get("result", scan.get("results", []))
+                row: int
+                scan: Dict[str, Any]
+                scan_results: Any = scan.get("result", scan.get("results", []))
                 if isinstance(scan_results, str):
                     try:
                         scan_results = json.loads(scan_results)
                     except (json.JSONDecodeError, TypeError):
                         scan_results = []
                 
-                vulnerability_counts = {
+                vulnerability_counts: Dict[str, int] = {
                     'SQL Injection': 0,
                     'XSS': 0,
                     'CSRF': 0
                 }
                 
                 for result in scan_results:
-                    vuln_type = result.get('type', '')
+                    result: Dict[str, Any]
+                    vuln_type: str = result.get('type', '')
                     if vuln_type in vulnerability_counts:
                         vulnerability_counts[vuln_type] += 1
                 
-                vuln_details = []
+                vuln_details: List[str] = []
                 total_vulns = 0
                 for vuln_type, count in vulnerability_counts.items():
                     if count > 0:
@@ -220,12 +230,12 @@ class ReportsTabWidget(QWidget):
             error_handler.handle_database_error(e, "populate_reports_table")
             log_and_notify('error', f"Error populating reports table: {e}")
 
-    def format_duration(self, seconds):
+    def format_duration(self, seconds: Union[int, float]) -> str:
         """Форматирует длительность в секундах в читаемый вид"""
-        hours = int(seconds // 3600)
-        minutes = int((seconds % 3600) // 60)
-        seconds = int(seconds % 60)
-        return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+        hours: int = int(seconds // 3600)
+        minutes: int = int((seconds % 3600) // 60)
+        seconds_int: int = int(seconds % 60)
+        return f"{hours:02d}:{minutes:02d}:{seconds_int:02d}"
 
     def export_to_json(self):
         try:

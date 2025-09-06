@@ -177,16 +177,17 @@ class PDF(FPDF):
         self.set_font('times', 'I', 8)
         self.cell(0, 10, f'Страница {self.page_no()}', 0, 0, 'C')
 
-    def chapter_title(self, title):
+    def chapter_title(self, title: str):
         self.set_font('times', 'B', 12)
         self.cell(0, 10, title, 0, 1, 'L')
         self.ln(4)
 
-    def chapter_body(self, body):
+    def chapter_body(self, body: str) -> None:
         self.set_font('times', '', 12)
         # Обработка текста для корректного отображения в PDF
         body = self._clean_text_for_pdf(body)
-        self.multi_cell(0, 5, body)
+        # Используем multi_cell и игнорируем возвращаемое значение
+        self.multi_cell(0, 5, body)  # type: ignore
         self.ln()
 
     @staticmethod
@@ -216,7 +217,7 @@ class PDF(FPDF):
     def clean_text(self, text: str) -> str:
         return self._clean_text_for_pdf(text)
 
-    def add_section(self, title, content):
+    def add_section(self, title: str, content: str) -> None:
         self.chapter_title(title)
         self.chapter_body(content)
 
@@ -247,7 +248,7 @@ def generate_pdf_report(scan_id: int, filename: str):
         report_text = report_text.replace("=" * 60, "-" * 80)
 
         # Добавляем содержимое в PDF
-        pdf.multi_cell(0, 5, report_text)
+        pdf.multi_cell(0, 5, report_text) # type: ignore
 
         # Сохраняем PDF
         pdf.output(filename, 'F')

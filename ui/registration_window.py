@@ -1,3 +1,4 @@
+from typing import Optional
 from PyQt5.QtWidgets import (
     QWidget, QLabel, QLineEdit, QPushButton, QVBoxLayout, QMessageBox, QHBoxLayout, QToolButton
 )
@@ -13,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 
 class RegistrationWindow(QWidget):
-    def __init__(self, parent_login=None):
+    def __init__(self, parent_login: Optional[QWidget] = None):
         super().__init__()
         self.parent_login = parent_login
         self.user_model = UserModel()
@@ -91,7 +92,7 @@ class RegistrationWindow(QWidget):
     @staticmethod
     def _create_password_input():
         line_edit = QLineEdit()
-        line_edit.setEchoMode(QLineEdit.Password)
+        line_edit.setEchoMode(QLineEdit.EchoMode.Password)
 
         toggle_button = QToolButton()
         toggle_button.setIcon(QIcon.fromTheme("view-password"))  # Используется системная иконка
@@ -99,7 +100,7 @@ class RegistrationWindow(QWidget):
         toggle_button.setChecked(False)
 
         def toggle_password():
-            line_edit.setEchoMode(QLineEdit.Normal if toggle_button.isChecked() else QLineEdit.Password)
+            line_edit.setEchoMode(QLineEdit.EchoMode.Normal if toggle_button.isChecked() else QLineEdit.EchoMode.Password)
 
         toggle_button.clicked.connect(toggle_password)
 
@@ -183,22 +184,38 @@ class RegistrationWindow(QWidget):
             elif success:
                 QMessageBox.information(self, "Успех", "Регистрация прошла успешно! Теперь вы можете войти.")
                 # Возвращаемся к окну входа - исправляем путь
-                if self.parent_login and hasattr(self.parent_login, 'parent') and self.parent_login.parent:
-                    parent = self.parent_login.parent
-                    if hasattr(parent, 'go_to_login') and callable(parent.go_to_login):
-                        parent.go_to_login()
-                else:
-                    self.close()
+            if self.parent_login and hasattr(self.parent_login, 'parent'):
+                    from PyQt5.QtWidgets import QWidget
+                    parent_obj = self.parent_login.parent
+                    if isinstance(parent_obj, QWidget):
+                        parent = parent_obj
+                    else:
+                        parent = None
+                    if hasattr(parent, 'go_to_login'):
+                        # Используем более безопасный подход с getattr и проверкой типа
+                        go_to_login_method = getattr(parent, 'go_to_login', None)
+                        if go_to_login_method is not None and callable(go_to_login_method):
+                            go_to_login_method()
+                    else:
+                        self.close()
         except Exception as e:
             logger.error(f"Error during registration: {e}", exc_info=True)
             QMessageBox.critical(self, "Критическая ошибка", "Произошла непредвиденная ошибка при регистрации.")
 
     def on_back(self):
         """Обработчик нажатия кнопки 'Назад'"""
-        if self.parent_login and hasattr(self.parent_login, 'parent') and self.parent_login.parent:
-            parent = self.parent_login.parent
-            if hasattr(parent, 'go_to_login') and callable(parent.go_to_login):
-                parent.go_to_login()
+        if self.parent_login and hasattr(self.parent_login, 'parent'):
+            from PyQt5.QtWidgets import QWidget
+            parent_obj = self.parent_login.parent
+            if isinstance(parent_obj, QWidget):
+                parent = parent_obj
+            else:
+                parent = None
+            if hasattr(parent, 'go_to_login'):
+                # Используем более безопасный подход с getattr и проверкой типа
+                go_to_login_method = getattr(parent, 'go_to_login', None)
+                if go_to_login_method is not None and callable(go_to_login_method):
+                    go_to_login_method()
         self.close()
 
     def load_styles(self):

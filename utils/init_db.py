@@ -241,7 +241,7 @@ def reset_database():
 
 if __name__ == "__main__":
     logger.info("Initializing database...")
-    db._setup_database()
+    create_base_tables()
     logger.info("Migrating database...")
     migrate_database()
     logger.info("Checking database integrity...")

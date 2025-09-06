@@ -1,18 +1,17 @@
 import re
 import hashlib
 import secrets
-from typing import Optional, Tuple, Dict, Set
+from typing import Optional, Tuple, Dict, Any, List
 from urllib.parse import urlparse
 import ipaddress
 import sqlite3
 import time
-from collections import defaultdict
 from utils.logger import logger, log_and_notify
 
 # Кэш для частых проверок
-_validation_cache = {}
-_cache_ttl = 300  # 5 минут
-_cache_timestamps = {}
+_validation_cache: Dict[str, bool] = {}
+_cache_ttl: int = 300  # 5 минут
+_cache_timestamps: Dict[str, float] = {}
 
 # Известные опасные домены и паттерны
 DANGEROUS_DOMAINS = {
@@ -34,7 +33,7 @@ SAFE_BIND_ADDRESSES = {
 }
 
 # Функция для проверки безопасности при использовании критических адресов
-def is_bind_address_safe(bind_address, config=None):
+def is_bind_address_safe(bind_address: str, config: Optional[Dict[str, Any]] = None) -> Tuple[bool, str]:
     """
     Проверяет, безопасно ли использование указанного адреса для привязки.
 
@@ -106,8 +105,6 @@ def validate_input_length(text: str, min_length: int = 1, max_length: int = 255)
     Returns:
         bool: True если длина корректна
     """
-    if not isinstance(text, str):
-        return False
     
     # Проверяем кэш
     cache_key = f"length_{hash(text)}_{min_length}_{max_length}"
@@ -157,8 +154,6 @@ def validate_ip_address(ip: str) -> bool:
     Returns:
         bool: True если IP адрес валиден
     """
-    if not isinstance(ip, str):
-        return False
     
     # Проверяем кэш
     cache_key = f"ip_{ip}"
@@ -185,7 +180,7 @@ def is_safe_url(url: str) -> bool:
     Returns:
         bool: True если URL безопасен
     """
-    if not url or not isinstance(url, str):
+    if not url:
         return False
     
     # Проверяем кэш
@@ -262,8 +257,7 @@ def hash_sensitive_data(data: str) -> str:
     Returns:
         str: SHA-256 хеш данных
     """
-    if not isinstance(data, str):
-        raise ValueError("Data must be a string")
+
     
     return hashlib.sha256(data.encode('utf-8')).hexdigest()
 
@@ -277,7 +271,7 @@ def validate_password_strength(password: str) -> int:
     Returns:
         int: Балл от 0 до 5
     """
-    if not password or not isinstance(password, str):
+    if not password:
         return 0
     
     score = 0
@@ -315,7 +309,7 @@ def validate_password_strength(password: str) -> int:
     
     return min(score, 5)  # Максимальный балл 5
 
-def rate_limit_check(identifier: str, attempts: dict, max_attempts: int = 5, window_seconds: int = 300) -> bool:
+def rate_limit_check(identifier: str, attempts: Dict[str, List[float]], max_attempts: int = 5, window_seconds: int = 300) -> bool:
     """
     Проверяет ограничение скорости запросов.
     
@@ -358,7 +352,7 @@ def sanitize_sql_input(text: str) -> str:
     Returns:
         str: Очищенный текст
     """
-    if not text or not isinstance(text, str):
+    if not text:
         return ""
     
     # Удаляем потенциально опасные SQL символы
@@ -380,7 +374,7 @@ def validate_email_format(email: str) -> bool:
     Returns:
         bool: True если email валиден
     """
-    if not email or not isinstance(email, str):
+    if not email:
         return False
     
     # Проверяем кэш
@@ -396,7 +390,7 @@ def validate_email_format(email: str) -> bool:
     _cache_result(cache_key, result)
     return result
 
-def check_file_extension(filename: str, allowed_extensions: list) -> bool:
+def check_file_extension(filename: str, allowed_extensions: List[str]) -> bool:
     """
     Проверяет расширение файла.
     
@@ -407,7 +401,7 @@ def check_file_extension(filename: str, allowed_extensions: list) -> bool:
     Returns:
         bool: True если расширение разрешено
     """
-    if not filename or not isinstance(filename, str):
+    if not filename:
         return False
     
     file_ext = filename.lower().split('.')[-1] if '.' in filename else ''

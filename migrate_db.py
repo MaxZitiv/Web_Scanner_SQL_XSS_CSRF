@@ -9,8 +9,7 @@ import os
 import sqlite3
 from pathlib import Path
 from utils.logger import logger, log_and_notify
-from utils.database import db
-from utils.init_db import migrate_database, check_database_integrity, create_base_tables
+from utils.init_db import check_database_integrity, create_base_tables
 
 # Добавляем текущую директорию в путь для импорта
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

@@ -1,7 +1,7 @@
 from scanner.scanner_fixed import ScanWorker
 from utils.logger import logger, log_and_notify
 import asyncio
-from typing import Callable, List, Optional, Dict, Any, Tuple
+from typing import Callable, List, Optional, Dict, Any, Tuple, cast
 from utils.performance import performance_monitor, get_local_timestamp
 from utils.security import is_safe_url, validate_input_length
 from utils.error_handler import error_handler
@@ -24,23 +24,23 @@ class ScanController:
         """Валидация параметров сканирования."""
         try:
             # Проверка URL
-            if not url or not isinstance(url, str):
+            if not url:
                 return False, "URL не может быть пустым"
             
             # Проверка типов сканирования
-            if not scan_types or not isinstance(scan_types, list):
+            if not scan_types:
                 return False, "Должен быть указан хотя бы один тип сканирования"
             
             # Проверка max_depth
-            if not isinstance(max_depth, int) or max_depth < 1 or max_depth > 10:
+            if max_depth < 1 or max_depth > 10:
                 return False, "Глубина сканирования должна быть от 1 до 10"
             
             # Проверка max_concurrent
-            if not isinstance(max_concurrent, int) or max_concurrent < 1 or max_concurrent > 20:
+            if max_concurrent < 1 or max_concurrent > 20:
                 return False, "Количество параллельных запросов должно быть от 1 до 20"
             
             # Проверка timeout
-            if not isinstance(timeout, int) or timeout < 5 or timeout > 300:
+            if timeout < 5 or timeout > 300:
                 return False, "Таймаут должен быть от 5 до 300 секунд"
             
             # Проверка количества активных сканирований
@@ -56,7 +56,7 @@ class ScanController:
     def _cleanup_completed_scans(self) -> None:
         """Очищает завершенные сканирования из активных."""
         try:
-            completed_urls = []
+            completed_urls: List[str] = []
             for url, worker in self.active_scans.items():
                 # Проверяем наличие атрибута should_stop и его значение
                 should_stop = getattr(worker, 'should_stop', None)
@@ -77,10 +77,10 @@ class ScanController:
         max_depth: int = 3,
         max_concurrent: int = 5,
         timeout: int = 30,
-        on_progress: Optional[Callable] = None,
-        on_log: Optional[Callable] = None,
-        on_vulnerability: Optional[Callable] = None,
-        on_result: Optional[Callable] = None,
+        on_progress: Optional[Callable[[float], None]] = None,
+        on_log: Optional[Callable[[str, str], None]] = None,
+        on_vulnerability: Optional[Callable[[str, int], None]] = None,
+        on_result: Optional[Callable[[Dict[str, Any]], None]] = None,
         max_coverage_mode: bool = False
     ) -> None:
         """Запускает сканирование веб-сайта"""
@@ -109,7 +109,7 @@ class ScanController:
             # Логируем начало сканирования
             logger.info(f"Starting scan for URL: {url} with types: {scan_types}")
             if on_log:
-                on_log(f"🚀 Начинаем сканирование: {url}")
+                on_log(f"🚀 Начинаем сканирование: {url}", "INFO")
             
             # Выполняем сканирование
             results = await self._perform_scan(url, scan_types, max_depth, max_concurrent, timeout,
@@ -119,7 +119,7 @@ class ScanController:
             performance_monitor.end_timer("scan_operation", scan_start_time)
             
             # Формируем результат
-            scan_result = {
+            scan_result: Dict[str, Any] = {
                 'url': url,
                 'scan_types': scan_types,
                 'timestamp': get_local_timestamp(),
@@ -149,20 +149,20 @@ class ScanController:
             error_handler.handle_network_error(e, "start_scan")
             log_and_notify('error', f"Error in start_scan: {e}")
             if on_log:
-                on_log(f"❌ Ошибка сканирования: {str(e)}")
+                on_log(f"❌ Ошибка сканирования: {str(e)}", "ERROR")
 
     async def _perform_scan(self, url: str, scan_types: List[str], max_depth: int, 
                            max_concurrent: int, timeout: int,
-                           on_progress: Optional[Callable] = None,
-                           on_log: Optional[Callable] = None,
-                           on_vulnerability: Optional[Callable] = None,
+                           on_progress: Optional[Callable[[float], None]] = None,
+                           on_log: Optional[Callable[[str, str], None]] = None,
+                           on_vulnerability: Optional[Callable[[str, int], None]] = None,
                            max_coverage_mode: bool = False) -> Dict[str, Any]:
         """Выполняет основное сканирование"""
         try:
             # Преобразуем scan_types в правильный формат для нового ScanWorker
-            scan_types_lower = []
+            scan_types_lower: List[str] = []
             for scan_type in scan_types:
-                if isinstance(scan_type, str):
+                # scan_type всегда имеет тип str из-за аннотации List[str]
                     if 'sql' in scan_type.lower():
                         scan_types_lower.append('sql')
                     elif 'xss' in scan_type.lower():
@@ -175,7 +175,7 @@ class ScanController:
                 scan_types_lower = ['sql', 'xss', 'csrf']
             
             if on_log:
-                on_log(f"🔍 Начинаем сканирование: {', '.join(scan_types_lower)}")
+                on_log(f"🔍 Начинаем сканирование: {', '.join(scan_types_lower)}", "INFO")
             
             # Создаем один ScanWorker для всех типов сканирования
             worker = ScanWorker(
@@ -278,7 +278,7 @@ class ScanController:
         except Exception as e:
             log_and_notify('error', f"Error resuming scan: {e}")
 
-    async def save_scan_result(self, result: dict) -> None:
+    async def save_scan_result(self, result: Dict[str, Any]) -> None:
         """Сохраняет результат сканирования в базу данных"""
         try:
             from utils.database import db
@@ -289,16 +289,16 @@ class ScanController:
             scan_duration = result.get('scan_duration', 0.0)
             
             # Преобразуем результаты в список для сохранения
-            results_list = []
+            results_list: List[Dict[str, Any]] = []
             results_dict = result.get('results', {})
             
             for vuln_type, vuln_data in results_dict.items():
                 if isinstance(vuln_data, list):
-                    for vuln in vuln_data:
-                        if isinstance(vuln, dict):
-                            vuln['type'] = vuln_type
-                            results_list.append(vuln)
+                    for vuln in cast(List[Dict[str, Any]], vuln_data):
+                        vuln['type'] = vuln_type
+                        results_list.append(vuln)
                 elif isinstance(vuln_data, dict):
+                    vuln_data = cast(Dict[str, Any], vuln_data)
                     vuln_data['type'] = vuln_type
                     results_list.append(vuln_data)
             

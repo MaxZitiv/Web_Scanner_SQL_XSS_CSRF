@@ -1,6 +1,9 @@
 import os
 import json
-from typing import Dict, Any, List
+import policies
+from utils.database import db
+from typing import Dict, Any, List, Optional
+from models.policy_model import SecurityPolicy
 
 class PolicyManager:
     def __init__(self, policies_dir: str = "policies"):
@@ -11,15 +14,18 @@ class PolicyManager:
     def list_policies(self) -> List[str]:
         return [f[:-5] for f in os.listdir(self.policies_dir) if f.endswith('.json')]
 
-    def load_policy(self, name: str) -> Dict[str, Any]:
+    def load_policy(self, name: str) -> SecurityPolicy:
+        """Загрузка политики из файла и преобразование в датакласс SecurityPolicy"""
         path = os.path.join(self.policies_dir, f"{name}.json")
         with open(path, "r", encoding="utf-8") as f:
-            return json.load(f)
+            policy_data = json.load(f)
+        return SecurityPolicy.from_dict(policy_data)
 
-    def save_policy(self, name: str, policy: Dict[str, Any]) -> None:
+    def save_policy(self, name: str, policy: SecurityPolicy) -> None:
+        """Сохранение политики в файл после преобразования из датакласса SecurityPolicy"""
         path = os.path.join(self.policies_dir, f"{name}.json")
         with open(path, "w", encoding="utf-8") as f:
-            json.dump(policy, f, ensure_ascii=False, indent=2)
+            json.dump(policy.to_dict(), f, ensure_ascii=False, indent=2)
 
     def delete_policy(self, policy_id: int) -> bool:
         """Удаление политики по её ID"""
@@ -47,24 +53,24 @@ class PolicyManager:
             # Игнорируем исключение и просто возвращаем False
             return False
 
-    def get_default_policy(self) -> Dict[str, Any]:
+    def get_default_policy(self) -> SecurityPolicy:
         # Можно расширить по желанию
-        return {
-            "name": "Default",
-            "enabled_vulns": ["sql", "xss", "csrf"],
-            "sql_payloads": "standard",
-            "xss_payloads": "standard",
-            "max_depth": 3,
-            "max_concurrent": 5,
-            "timeout": 30,
-            "exclude_urls": [],
-            "custom_headers": {},
-            "respect_robots_txt": True,
-            "rate_limit": 0,
-            "stop_on_first_vuln": False
-        }
+        return SecurityPolicy(
+            name="Default",
+            enabled_vulns=["sql", "xss", "csrf"],
+            sql_payloads="standard",
+            xss_payloads="standard",
+            max_depth=3,
+            max_concurrent=5,
+            timeout=30,
+            exclude_urls=[],
+            custom_headers={},
+            respect_robots_txt=True,
+            rate_limit=0,
+            stop_on_first_vuln=False
+        )
         
-    def get_policy_by_id(self, policy_id: int) -> Dict[str, Any]:
+    def get_policy_by_id(self, policy_id: int) -> SecurityPolicy:
         """Получение политики по её ID"""
         try:
             # Получаем список всех политик
@@ -81,4 +87,89 @@ class PolicyManager:
             return self.load_policy(policy_name)
         except Exception:
             # В случае ошибки возвращаем политику по умолчанию
-            return self.get_default_policy() 
+            return self.get_default_policy()
+
+    def get_policy_id(self, name: str) -> int:
+        """Получение ID политики по её имени"""
+        try:
+            # Получаем список всех политик
+            policies = self.list_policies()
+
+            # Ищем политику с указанным именем
+            for i, policy_name in enumerate(policies):
+                if policy_name == name:
+                    return i
+
+            # Если политика не найдена, возвращаем -1
+            return -1
+        except Exception:
+            # В случае ошибки возвращаем -1
+            return -1
+            
+    def get_all_policies(self) -> List[Dict[str, Any]]:
+        """Получение списка всех политик с их именами и ID"""
+        try:
+            conn = db.get_db_connection()
+            cursor = conn.cursor()
+            
+            cursor.execute("SELECT id, name, description FROM policies")
+            policy_names = cursor.fetchall()
+            
+            policies = []
+            for i, policy_name in enumerate(policy_names):
+                policy_data = self.load_policy(policy_name)
+                policies.append({
+                    'id': i,
+                    'name': policy_data.name if policy_data.name else policy_name
+                })
+                
+            return policies
+        except Exception:
+            # В случае ошибки возвращаем пустой список
+            return []
+            
+    def get_policy(self, policy_id: int) -> Optional[SecurityPolicy]:
+        """Получение политики по её ID"""
+        return self.get_policy_by_id(policy_id)
+        
+    def update_policy(self, policy_id: int, policy: SecurityPolicy) -> bool:
+        """Обновление политики по её ID"""
+        try:
+            # Получаем список всех политик
+            policies = self.list_policies()
+            
+            # Если ID выходит за пределы списка, возвращаем False
+            if policy_id < 0 or policy_id >= len(policies):
+                return False
+                
+            # Получаем имя политики по её ID
+            policy_name = policies[policy_id]
+            
+            # Обновляем политику
+            self.save_policy(policy_name, policy)
+            return True
+        except Exception:
+            # В случае ошибки возвращаем False
+            return False
+            
+    def create_policy(self, policy: SecurityPolicy) -> bool:
+        """Создание новой политики"""
+        try:
+            # Генерируем уникальное имя для политики
+            policy_name = policy.name
+            
+            # Проверяем, существует ли уже политика с таким именем
+            existing_policies = self.list_policies()
+            if policy_name in existing_policies:
+                # Если существует, добавляем суффикс
+                counter = 1
+                while f"{policy_name}_{counter}" in existing_policies:
+                    counter += 1
+                policy_name = f"{policy_name}_{counter}"
+                
+            # Сохраняем политику
+            self.save_policy(policy_name, policy)
+            return True
+        except Exception:
+            # В случае ошибки возвращаем False
+            return False 

@@ -1,6 +1,6 @@
 import os
 from datetime import datetime
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, Self, cast
 from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtGui import QPixmap
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
@@ -8,8 +8,10 @@ from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                          QTabWidget, QSpinBox, QMessageBox,
                          QComboBox, QGroupBox, QDialog, QDialogButtonBox, QApplication,
                          QFormLayout, QTextEdit, QProgressBar)
-from PyQt5.QtWidgets import QMessageBox.StandardButton
-from PyQt5.QtWidgets import QMessageBox.StandardButtons
+
+# Импортируем константы из QMessageBox
+StandardButton = QMessageBox.StandardButton
+StandardButtons = QMessageBox.StandardButtons
 from controllers.scan_controller import ScanController
 from utils import error_handler
 from utils.database import db
@@ -26,14 +28,18 @@ from views.mixins.export_mixin import ExportMixin
 from views.mixins.scan_mixin import ScanMixin
 from views.mixins.log_mixin import LogMixin
 
-import matplotlib
-matplotlib.use('Qt5Agg')
-
 # Импорт matplotlib с обработкой ошибок
-# Инициализируем переменную перед блоком try-except
-matplotlib_available = False
-FigureCanvas = None
-Figure = None
+try:
+    import matplotlib
+    matplotlib.use('Qt5Agg')
+    from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+    from matplotlib.figure import Figure
+    matplotlib_available = True
+except ImportError as e:
+    logger.warning(f"matplotlib not available: {e}")
+    matplotlib_available = False
+    FigureCanvas = None
+    Figure = None
 
 try:
     from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
@@ -46,6 +52,9 @@ except ImportError as e:
 # MATPLOTLIB_AVAILABLE = matplotlib_available  # Закомментировано, чтобы избежать предупреждения о переопределении константы
 
 from qasync import asyncSlot  # type: ignore  # Игнорируем отсутствие stub-файлов для qasync
+import importlib
+import policies.policy_manager
+importlib.reload(policies.policy_manager)
 from policies.policy_manager import PolicyManager
 
 
@@ -143,7 +152,7 @@ class DashboardWindowBase:
             QMessageBox.critical(None, "Error", f"Failed to initialize dashboard window: {init_error}")
             raise
 
-    def initialize_tabs(self):
+    def initialize_tabs(self) -> None:
         try:
             if not self.tabs_initialized:
                 # Проверка инициализации вкладок
@@ -161,10 +170,12 @@ class DashboardWindowBase:
                     return
 
                 if self.user_id is not None:
-                    self.scan_tab = ScanTabWidget(self.user_id, self)
-                    self.reports_tab = ReportsTabWidget(self.user_id, self)
-                    self.stats_tab = StatsTabWidget(self.user_id, self)
-                    self.profile_tab = ProfileTabWidget(self.user_id, self)
+                    # Cast self to QWidget for type checker
+                    widget_self: QWidget = self  # type: ignore
+                    self.scan_tab = ScanTabWidget(self.user_id, widget_self)
+                    self.reports_tab = ReportsTabWidget(self.user_id, widget_self)
+                    self.stats_tab = StatsTabWidget(self.user_id, widget_self)
+                    self.profile_tab = ProfileTabWidget(self.user_id, widget_self)
                 else:
                     logger.error("Cannot initialize tabs: user_id is None")
                     return
@@ -360,6 +371,7 @@ class DashboardWindowHandlers:
         self.user_model = None
         self.username = None
         self.edit_window = None
+        self.scan_tab = None
 
     def open_edit_profile(self) -> None:
         """Открытие окна редактирования профиля"""
@@ -378,10 +390,13 @@ class DashboardWindowHandlers:
     def logout(self) -> None:
         """Обработка выхода из системы"""
         try:
+            buttons = QMessageBox.StandardButtons()
+            buttons |= QMessageBox.StandardButton.Yes
+            buttons |= QMessageBox.StandardButton.No
             reply = QMessageBox.question(
                 None, 'Подтверждение',
                 'Вы уверены, что хотите выйти?',
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                buttons,
                 QMessageBox.StandardButton.No
             )
 
@@ -414,6 +429,7 @@ class DashboardWindowHandlers:
 
     def start_scan(self) -> None:
         """Начало сканирования"""
+        url: str = ""  # Initialize url variable
         try:
             # Явно указываем типы для Pylance
             url_input_attr = getattr(self, 'url_input', None)
@@ -487,7 +503,7 @@ class DashboardWindowHandlers:
         try:
             # Создаем контроллер сканирования
             # Явно указываем типы для Pylance
-            controller_params = {
+            controller_params: Dict[str, Any] = {
                 'url': url,
                 'scan_types': scan_types,
                 'user_id': self.user_id,
@@ -513,15 +529,20 @@ class DashboardWindowHandlers:
             # Вызываем метод сканирования и получаем результаты
             scan_results: Any = await scan_method()
             # Явно указываем тип для результатов
+            results: Dict[str, Any] = {}
+            # Явно указываем тип для результатов
             if isinstance(scan_results, dict):
-                results: Dict[str, Any] = scan_results
+                # Явное приведение типа для Pylance
+                results = cast(Dict[str, Any], scan_results)
             else:
                 # Если результаты не в формате словаря, создаем пустой словарь
-                results: Dict[str, Any] = {}
+                results = {}
                 logger.warning(f"Scan results are not in expected format: {type(scan_results)}")
 
             # Обрабатываем результаты
-            self._process_scan_results(results)
+            # Явно указываем тип для Pylance
+            typed_results: Dict[str, Any] = results
+            self._process_scan_results(typed_results)
 
             # Обновляем статистику
             # Явно указываем тип метода для Pylance
@@ -664,7 +685,7 @@ class DashboardWindow(DashboardWindowBase, DashboardWindowUI, DashboardWindowHan
 
             if result and result[0]:
                 avatar_path = result[0]
-                if os.path.exists(avatar_path):
+                if os.path.exists(avatar_path) and hasattr(self, 'avatar_label') and self.avatar_label is not None:
                     pixmap = QPixmap(avatar_path)
                     self.avatar_label.setPixmap(pixmap)
                     self.avatar_path = avatar_path
@@ -672,32 +693,41 @@ class DashboardWindow(DashboardWindowBase, DashboardWindowUI, DashboardWindowHan
 
             # Если аватар не найден, используем аватар по умолчанию
             default_avatar = "assets/default_avatar.png"
-            if os.path.exists(default_avatar):
+            if os.path.exists(default_avatar) and hasattr(self, 'avatar_label') and self.avatar_label is not None:
                 pixmap = QPixmap(default_avatar)
                 self.avatar_label.setPixmap(pixmap)
                 self.avatar_path = default_avatar
-            else:
+            elif hasattr(self, 'avatar_label') and self.avatar_label is not None:
                 # Если аватар по умолчанию не найден, используем заглушку
                 self.avatar_label.setText("👤")
                 self.avatar_label.setStyleSheet("font-size: 32px;")
 
         except Exception as e:
             logger.error(f"Error loading avatar: {e}")
-            self.avatar_label.setText("👤")
-            self.avatar_label.setStyleSheet("font-size: 32px;")
+            if hasattr(self, 'avatar_label') and self.avatar_label is not None:
+                self.avatar_label.setText("👤")
+                self.avatar_label.setStyleSheet("font-size: 32px;")
 
-    def _process_log_content(self, log_content: str, user_id: int):
+    def _process_log_content(self, content: str, line_count: int) -> None:
         """Обработка загруженного содержимого лога"""
         try:
+            # Проверяем, что line_count содержит ID пользователя
+            user_id = line_count
             if user_id != self.user_id:
                 logger.warning(f"Log content for different user received: {user_id} != {self.user_id}")
                 return
 
             # Обрабатываем содержимое лога
             self._log_entries = []
-            for line in log_content.split('\n'):
+            for line in content.split('\n'):
                 if line.strip():
-                    self._log_entries.append(line)
+                    # Создаем словарь для записи лога вместо простой строки
+                    log_entry = {
+                        'timestamp': '',  # Пустая метка времени
+                        'level': 'INFO',   # Уровень по умолчанию
+                        'message': line     # Содержимое строки
+                    }
+                    self._log_entries.append(log_entry)
 
             # Обновляем UI
             self._update_log_display()
@@ -709,7 +739,16 @@ class DashboardWindow(DashboardWindowBase, DashboardWindowUI, DashboardWindowHan
         """Обновление отображения логов"""
         if hasattr(self, 'detailed_log') and self.detailed_log:
             self.detailed_log.clear()
-            self.detailed_log.append('\n'.join(self._log_entries))
+            # Преобразуем словари в строки перед объединением
+            log_lines = []
+            for entry in self._log_entries:
+                # Форматируем каждую запись как [timestamp] [level] message
+                timestamp = entry.get('timestamp', '')
+                level = entry.get('level', 'INFO')
+                message = entry.get('message', '')
+                log_lines.append(f"[{timestamp}] [{level}] {message}")
+            
+            self.detailed_log.append('\n'.join(log_lines))
 
             # Обновляем статус
             if hasattr(self, 'log_status_label') and self.log_status_label is not None:
@@ -837,6 +876,10 @@ class PolicyEditDialog(QDialog):
     def load_policy_data(self):
         """Загрузка данных политики для редактирования"""
         try:
+            # Проверяем, что policy_id не равен None
+            if self.policy_id is None:
+                return
+                
             policy = self.policy_manager.get_policy(self.policy_id)
             if policy:
                 self.name_edit.setText(policy.get('name', ''))

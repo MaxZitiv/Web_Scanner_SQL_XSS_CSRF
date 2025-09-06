@@ -2,8 +2,7 @@
 Миксин для функциональности сканирования
 """
 from typing import Dict, Any, Optional
-from PyQt5.QtCore import pyqtSignal
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QLineEdit, QCheckBox, QSpinBox, QProgressBar, QTreeWidget, QDateTimeEdit
+from PyQt5.QtWidgets import QLabel, QPushButton, QLineEdit, QCheckBox, QSpinBox, QProgressBar, QTreeWidget, QDateTimeEdit
 from controllers.scan_controller import ScanController
 from policies.policy_manager import PolicyManager
 from utils.logger import logger
@@ -63,8 +62,8 @@ class ScanMixin:
         self.site_tree = QTreeWidget()
 
         # Множества для отслеживания
-        self._scanned_urls = set()
-        self._scanned_forms = set()
+        self._scanned_urls: set[str] = set()
+        self._scanned_forms: set[str] = set()
 
     def _init_scan_components(self) -> None:
         """Инициализация компонентов, связанных со сканированием"""
@@ -119,7 +118,7 @@ class ScanMixin:
 
     def _get_scan_parameters(self) -> Dict[str, Any]:
         """Получить параметры сканирования из UI элементов"""
-        return {
+        params: Dict[str, Any] = {
             'url': self.url_input.text().strip(),
             'vuln_types': [
                 vt for vt, cb in [
@@ -134,3 +133,10 @@ class ScanMixin:
             'max_coverage': self.max_coverage_checkbox.isChecked(),
             'turbo_mode': self.turbo_checkbox.isChecked()
         }
+
+        # Валидация параметров
+        is_valid, error_msg = _validate_scan_parameters(params)
+        if not is_valid:
+            logger.error(f"Ошибка валидации параметров сканирования: {error_msg}")
+
+        return params

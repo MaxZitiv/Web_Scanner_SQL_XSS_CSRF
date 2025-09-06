@@ -1,5 +1,5 @@
-from typing import Dict, Any, Optional
-from PyQt5.QtCore import QTimer, QObject
+from typing import Dict, Any, List, cast
+from PyQt5.QtCore import QObject
 from utils.logger import logger
 
 class ScanManagerStatsMixin:
@@ -19,7 +19,7 @@ class ScanManagerStatsMixin:
         """Обработчик сигнала обновления статистики от StatsManager"""
         try:
             # Обновляем локальную копию статистики
-            if not hasattr(self, '_stats') or self._stats is None:
+            if not hasattr(self, '_stats'):
                 self._stats = self.stats_manager.get_stats()
             else:
                 self._stats[key] = value
@@ -70,7 +70,7 @@ class ScanManagerStatsMixin:
         if hasattr(self, 'stats_manager'):
             self.stats_manager.reset_stats()
 
-    def start_scan(self, url):
+    def start_scan(self, url: str):
         """Запускает сканирование указанного URL"""
         logger.info(f"Starting scan for URL: {url}")
 
@@ -81,7 +81,7 @@ class ScanManagerStatsMixin:
             return
 
         # Получаем типы сканирования из UI
-        scan_types = []
+        scan_types: List[str] = []
         if hasattr(dashboard, 'sql_checkbox') and dashboard.sql_checkbox.isChecked():
             scan_types.append('sql')
         if hasattr(dashboard, 'xss_checkbox') and dashboard.xss_checkbox.isChecked():
@@ -105,20 +105,19 @@ class ScanManagerStatsMixin:
         if hasattr(dashboard, 'scan_controller') and dashboard.scan_controller is not None:
             # Создаем асинхронную задачу для сканирования
             import asyncio
-            from PyQt5.QtCore import QThread
 
             # Определяем колбэки для обновления UI
-            def on_progress(percent):
+            def on_progress(percent: int):
                 if hasattr(dashboard, 'scan_progress') and dashboard.scan_progress is not None:
                     dashboard.scan_progress.setValue(percent)
                 if hasattr(dashboard, 'progress_label') and dashboard.progress_label is not None:
                     dashboard.progress_label.setText(f"{percent}%")
 
-            def on_log(message):
+            def on_log(message: str):
                 if hasattr(dashboard, 'detailed_log') and dashboard.detailed_log is not None:
                     dashboard.detailed_log.append(message)
 
-            def on_vulnerability(vuln):
+            def on_vulnerability(vuln: str):
                 # Обработка найденной уязвимости
                 logger.info(f"Vulnerability found: {vuln}")
 
@@ -195,7 +194,7 @@ class ScanManagerStatsMixin:
 
         # Проверяем, что статистика существует и имеет нужную структуру
         if not hasattr(dashboard, '_stats') or dashboard._stats is None:
-            dashboard._stats = {
+            dashboard._stats = cast(Dict[str, Any], {
                 'urls_found': 0,
                 'urls_scanned': 0,
                 'forms_found': 0,
@@ -204,11 +203,10 @@ class ScanManagerStatsMixin:
                 'requests_sent': 0,
                 'errors': 0,
                 'scan_start_time': None
-            }
+            })
 
         # Если время начала сканирования установлено
         if dashboard._stats.get('scan_start_time'):
-            from datetime import datetime
             import time
 
             # Вычисляем прошедшее время

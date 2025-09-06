@@ -3,24 +3,32 @@
 
 import sys
 import traceback
-from typing import Optional, Callable, Any, Dict
+from typing import Optional, Callable, Any, Dict, TypedDict
 from collections import deque
 import time
 from utils.logger import logger, log_and_notify
+
+
+class ErrorEntry(TypedDict):
+    """Структура записи об ошибке в кэше"""
+    type: str
+    message: str
+    context: str
+    timestamp: float
 
 
 class ErrorHandler:
     """Централизованный обработчик ошибок"""
 
     def __init__(self):
-        self.error_callbacks: Dict[str, Callable] = {}
-        self.error_cache = deque(maxlen=100)  # Кэш последних 100 ошибок
+        self.error_callbacks: Dict[str, Callable[..., Any]] = {}
+        self.error_cache: deque[ErrorEntry] = deque(maxlen=100)  # Кэш последних 100 ошибок
         self.max_message_length = 1000  # Максимальная длина сообщения об ошибке
         self.setup_global_exception_handler()
 
     def setup_global_exception_handler(self):
         """Устанавливает глобальный обработчик исключений"""
-        def global_exception_handler(exctype, value, tb):
+        def global_exception_handler(exctype: type, value: BaseException, tb: Any):
             error_msg = ''.join(traceback.format_exception(exctype, value, tb))
             log_and_notify('error', f"Unhandled exception: {error_msg}")
             self.show_error_message("Критическая ошибка", str(value))
@@ -28,7 +36,7 @@ class ErrorHandler:
 
         sys.excepthook = global_exception_handler
 
-    def register_error_callback(self, error_type: str, callback: Callable):
+    def register_error_callback(self, error_type: str, callback: Callable[..., Any]):
         """Регистрирует callback для определенного типа ошибки"""
         self.error_callbacks[error_type] = callback
 
@@ -50,7 +58,7 @@ class ErrorHandler:
         self.error_cache.clear()
         logger.info("Error cache cleared")
 
-    def get_error_statistics(self) -> dict:
+    def get_error_statistics(self) -> Dict[str, int | Dict[str, int] | float]:
         """Возвращает статистику ошибок"""
         if not self.error_cache:
             return {'total_errors': 0, 'error_types': {}}
@@ -140,7 +148,6 @@ class ErrorHandler:
         self.show_error_message("Ошибка", str(error))
         return True
 
-
     def show_error_message(self, title: str, message: str, details: str = ""):
         """Показывает сообщение об ошибке пользователю"""
         try:
@@ -153,8 +160,8 @@ class ErrorHandler:
                     log_and_notify('error', f"Details: {details}")
                 return
 
-            msg = QMessageBox()
-            msg.setIcon(QMessageBox.Critical)
+            msg: QMessageBox = QMessageBox()
+            msg.setIcon(QMessageBox.Icon.Critical)
             msg.setWindowTitle(title)
             msg.setText(message)
             if details:
@@ -171,7 +178,7 @@ class ErrorHandler:
         """Показывает информационное сообщение пользователю"""
         logger.info(f"{title}: {message}")
 
-    def safe_execute(self, func: Callable, *args, **kwargs) -> Optional[Any]:
+    def safe_execute(self, func: Callable[..., Any], *args: Any, **kwargs: Any) -> Optional[Any]:
         """Безопасно выполняет функцию с обработкой ошибок"""
         try:
             return func(*args, **kwargs)
@@ -180,14 +187,12 @@ class ErrorHandler:
             logger.warning(f"{func.__name__} returned None due to exception.")
             return None
 
-
 # Глобальный экземпляр обработчика ошибок
 error_handler = ErrorHandler()
 
-
-def handle_exception(func: Callable) -> Callable:
+def handle_exception(func: Callable[..., Any]) -> Callable[..., Any]:
     """Декоратор для обработки исключений в функциях"""
-    def wrapper(*args, **kwargs):
+    def wrapper(*args: Any, **kwargs: Any):
         try:
             return func(*args, **kwargs)
         except Exception as e:

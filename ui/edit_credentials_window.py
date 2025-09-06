@@ -7,6 +7,7 @@ from PyQt5.QtWidgets import (
     QVBoxLayout, QHBoxLayout, QMessageBox
 )
 from PyQt5.QtCore import pyqtSignal, Qt
+from PyQt5.QtGui import QCloseEvent
 from utils.database import db
 from utils.logger import logger, log_and_notify
 import sqlite3
@@ -25,9 +26,9 @@ class EditCredentialsWindow(QDialog):
         self.email_input: Optional[QLineEdit] = None
         self.username_input: Optional[QLineEdit] = None
         self.old_password_input: Optional[QLineEdit] = None
-        self.setWindowFlags(Qt.Window | Qt.WindowTitleHint | Qt.CustomizeWindowHint)  # type: ignore
+        self.setWindowFlags(Qt.WindowFlags(Qt.WindowType.Window) | Qt.WindowFlags(Qt.WindowType.WindowTitleHint) | Qt.WindowFlags(Qt.WindowType.CustomizeWindowHint))
         self.user_id = user_id
-        self.parent_dashboard = parent
+        self.parent_dashboard: Optional[QWidget] = parent
         self.setup_ui()
         self.load_current_data()
         logger.info("EditCredentialsWindow initialized")
@@ -40,7 +41,8 @@ class EditCredentialsWindow(QDialog):
         layout = QVBoxLayout()
 
         # Поля ввода
-        fields = [
+        from typing import List, Tuple
+        fields: List[Tuple[str, QLineEdit]] = [
             ("Новое имя пользователя:", QLineEdit()),
             ("Новый Email:", QLineEdit()),
             ("Текущий пароль:", QLineEdit()),
@@ -48,10 +50,21 @@ class EditCredentialsWindow(QDialog):
             ("Повторите пароль:", QLineEdit())
         ]
 
+        # Добавляем поля в layout
+        for label, field in fields:
+            # field имеет тип QLineEdit
+            layout.addWidget(QLabel(label))
+            layout.addWidget(field)
+
         # Настройка полей паролей
-        fields[2][1].setEchoMode(QLineEdit.Password)
-        fields[3][1].setEchoMode(QLineEdit.Password)
-        fields[4][1].setEchoMode(QLineEdit.Password)
+        # QLineEdit.Password - это константа со значением 2
+        # Используем явное значение 2, так как это соответствует QLineEdit.Password
+        password_mode: int = 2
+        # Приводим int к EchoMode для совместимости с setEchoMode
+        echo_mode = QLineEdit.EchoMode(password_mode)
+        fields[2][1].setEchoMode(echo_mode)
+        fields[3][1].setEchoMode(echo_mode)
+        fields[4][1].setEchoMode(echo_mode)
 
         # Сохраняем ссылки на поля
         self.username_input = fields[0][1]
@@ -61,9 +74,7 @@ class EditCredentialsWindow(QDialog):
         self.confirm_input = fields[4][1]
 
         # Добавляем поля в layout
-        for label, field in fields:
-            layout.addWidget(QLabel(label))
-            layout.addWidget(field)
+        # Код перенесен выше, сразу после объявления fields
 
         # Кнопки
         buttons = QHBoxLayout()
@@ -144,7 +155,10 @@ class EditCredentialsWindow(QDialog):
                 if self.parent_dashboard and hasattr(self.parent_dashboard, 'username'):
                     self.parent_dashboard.username = new_username
                 if self.parent_dashboard and hasattr(self.parent_dashboard, 'update_profile_info'):
-                    self.parent_dashboard.update_profile_info()
+                    # Проверяем, что update_profile_info является вызываемым объектом
+                    update_method = getattr(self.parent_dashboard, 'update_profile_info')
+                    if callable(update_method):
+                        update_method()
                 
                 self.close()
             else:
@@ -154,7 +168,7 @@ class EditCredentialsWindow(QDialog):
             log_and_notify('error', f"Ошибка обновления профиля: {e}")
             QMessageBox.warning(self, "Ошибка", "Не удалось обновить профиль.")
 
-    def closeEvent(self, a0):
+    def closeEvent(self, a0: QCloseEvent | None) -> None:
         """Безопасное закрытие окна"""
         self.closed.emit()
         super().closeEvent(a0)

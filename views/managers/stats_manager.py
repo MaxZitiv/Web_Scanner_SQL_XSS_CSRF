@@ -8,7 +8,7 @@ class StatsManager(QObject):
     # Сигнал для обновления UI
     stats_updated = pyqtSignal(str, int)  # key, value
 
-    def __init__(self, parent=None):
+    def __init__(self, parent: Optional[QObject] = None):
         super().__init__(parent)
         # Стандартная статистика для сканера
         self._stats = {
@@ -22,7 +22,7 @@ class StatsManager(QObject):
         }
 
         # Накопленные обновления для пакетного применения
-        self._pending_stats_updates = {}
+        self._pending_stats_updates: Dict[str, int] = {}
 
         # Таймер для пакетного обновления UI
         self._stats_update_timer = QTimer(self)

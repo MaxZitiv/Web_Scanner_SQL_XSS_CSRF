@@ -9,7 +9,7 @@ from typing import Optional, Any, Dict
 class ScanTabStatsMixin:
     """Миксин для добавления функциональности статистики сканирования"""
 
-    def __init__(self, parent=None):
+    def __init__(self, parent: Optional[QObject] = None):
         """Инициализация миксина"""
         self._scan_stats_timer = None
         # Инициализируем атрибуты, которые могут использоваться в методах
@@ -92,7 +92,9 @@ class ScanTabStatsMixin:
                     from datetime import datetime
                     scan_time = datetime.now() - self._scan_start_time
                     # Используем total_seconds() вместо seconds для учета дней
+                    hours: float; remainder: float
                     hours, remainder = divmod(scan_time.total_seconds(), 3600)
+                    minutes: float; seconds: float
                     minutes, seconds = divmod(remainder, 60)
                     time_str = f"{int(hours):02d}:{int(minutes):02d}:{int(seconds):02d}"
                     if 'scan_time' in self.stats_labels:

@@ -1,5 +1,5 @@
 from typing import Any, Optional
-from PyQt5.QtWidgets import QWidget, QMessageBox
+from PyQt5.QtWidgets import QWidget, QMessageBox, QSpinBox, QCheckBox, QComboBox
 from utils.logger import logger
 from views.dashboard_window_main import DashboardWindow
 from views.dashboard_window_methods import DashboardWindowMethodsMixin
@@ -14,14 +14,34 @@ class DashboardWindowNew(DashboardWindow, DashboardWindowMethodsMixin):
     Наследует функциональность из DashboardWindow и DashboardWindowMethodsMixin
     """
 
-    def __init__(self, user_id: int, username, user_model: Any, parent: Optional[QWidget] = None) -> None:
-        # Вызываем конструктор базового класса
-        super().__init__(user_id, username, user_model, parent)
+    def __init__(self, user_id: int, username: str, user_model: Any, parent: Optional[QWidget] = None) -> None:
+        # Инициализируем только DashboardWindow, который уже содержит все необходимые миксины
+        DashboardWindow.__init__(self, user_id, username, user_model, parent)
+        
+        # Инициализируем атрибуты, специфичные для DashboardWindowMethodsMixin
+        # без вызова его конструктора, чтобы избежать конфликтов
+        # Явно указываем типы для совместимости с базовыми классами
+        from PyQt5.QtWidgets import QTextEdit, QLabel, QTableWidget, QWidget
+        from views.tabs.stats_tab import StatsTabWidget
+        
+        self.detailed_log: Optional[QTextEdit] = None
+        self.log_status_label: Optional[QLabel] = None
+        self.recent_scans_table: Optional[QTableWidget] = None
+        self.stats_tab: Optional[StatsTabWidget] = None
+
+        # Явное указание типа для атрибутов
+        self.max_depth_spin: Optional[QSpinBox] = None
+        self.timeout_spin: Optional[QSpinBox] = None
+        self.threads_spin: Optional[QSpinBox] = None
+        self.check_forms_check: Optional[QCheckBox] = None
+        self.check_links_check: Optional[QCheckBox] = None
+        self.check_headers_check: Optional[QCheckBox] = None
+        self.scan_type_combo: Optional[QComboBox] = None
 
         # Дополнительная инициализация, если необходима
         logger.info("Initialized optimized DashboardWindow")
         
-    def _process_log_content(self, content: str, *args, **kwargs) -> None:
+    def _process_log_content(self, content: str, *args: Any, **kwargs: Any) -> None:
         """Обработка загруженного содержимого лога
         
         Универсальный метод, совместимый с обоими базовыми классами.
@@ -67,7 +87,7 @@ class DashboardWindowNew(DashboardWindow, DashboardWindowMethodsMixin):
                 QMessageBox.Yes | QMessageBox.No
             )
 
-            if confirm == QMessageBox.Yes:
+            if confirm == QMessageBox.StandardButton.Yes:
                 policy_manager = PolicyManager()
 
                 success = policy_manager.delete_policy(policy_id)
@@ -93,7 +113,15 @@ class DashboardWindowNew(DashboardWindow, DashboardWindowMethodsMixin):
 
             if policy:
                 # Получение параметров политики
-                params = policy.get('parameters', {})
+                # Используем прямой доступ к атрибутам вместо метода get
+                params = {
+                    'max_depth': policy.max_depth,
+                    'timeout': policy.timeout,
+                    'threads': policy.max_concurrent,
+                    'check_forms': 'sql' in policy.enabled_vulns,
+                    'check_links': True,  # Значение по умолчанию
+                    'check_headers': False  # Значение по умолчанию
+                }
 
                 # Применение параметров к настройкам сканирования
                 if hasattr(self, 'max_depth_spin') and self.max_depth_spin is not None:
@@ -116,17 +144,17 @@ class DashboardWindowNew(DashboardWindow, DashboardWindowMethodsMixin):
 
                 # Установка типа сканирования в соответствии с типом политики
                 if hasattr(self, 'scan_type_combo') and self.scan_type_combo is not None:
-                    policy_type = policy.get('type', '')
-                    if policy_type == "SQL-инъекции":
-                        self.scan_type_combo.setCurrentIndex(0)
-                    elif policy_type == "XSS":
-                        self.scan_type_combo.setCurrentIndex(1)
-                    elif policy_type == "CSRF":
-                        self.scan_type_combo.setCurrentIndex(2)
+                    # Определяем тип политики на основе включенных уязвимостей
+                    if 'sql' in policy.enabled_vulns and len(policy.enabled_vulns) == 1:
+                        self.scan_type_combo.setCurrentIndex(0)  # SQL-инъекции
+                    elif 'xss' in policy.enabled_vulns and len(policy.enabled_vulns) == 1:
+                        self.scan_type_combo.setCurrentIndex(1)  # XSS
+                    elif 'csrf' in policy.enabled_vulns and len(policy.enabled_vulns) == 1:
+                        self.scan_type_combo.setCurrentIndex(2)  # CSRF
                     else:  # Общая
                         self.scan_type_combo.setCurrentIndex(3)
 
-                QMessageBox.information(self, "Успех", f"Политика '{policy.get('name', '')}' успешно применена")
+                QMessageBox.information(self, "Успех", f"Политика '{policy.name}' успешно применена")
                 logger.info(f"Applied policy with ID: {policy_id}")
             else:
                 QMessageBox.warning(self, "Предупреждение", "Политика не найдена")

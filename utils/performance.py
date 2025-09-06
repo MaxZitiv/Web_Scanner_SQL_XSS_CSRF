@@ -6,7 +6,6 @@ from collections import OrderedDict
 import psutil
 import os
 from utils.logger import logger, log_and_notify
-import asyncio
 from datetime import datetime
 import pytz
 import gc
@@ -16,7 +15,7 @@ class LRUCache:
     
     def __init__(self, max_size: int = 100):
         self.max_size = max_size
-        self.cache = OrderedDict()
+        self.cache: OrderedDict[str, Any] = OrderedDict()
         self.lock = threading.RLock()  # Используем RLock для лучшей производительности
     
     def get(self, key: str) -> Optional[Any]:
@@ -61,16 +60,17 @@ class PerformanceMonitor:
     """Монитор производительности приложения"""
     
     def __init__(self):
-        self.metrics = {}
-        self.async_metrics = {}
-        self.start_time = time.time()
-        self.lock = threading.RLock()
-        self.cache = LRUCache(max_size=1000)
-        self._system_info_cache = {}
-        self._system_info_cache_time = 0
-        self._system_info_ttl = 5  # 5 секунд
+        self.metrics: Dict[str, List[float]] = {}
+        self.async_metrics: Dict[str, List[float]] = {}
+        self.start_time: float = time.time()
+        self.lock: threading.RLock = threading.RLock()
+        self.cache: LRUCache = LRUCache(max_size=1000)
+        self._system_info_cache: Dict[str, Any] = {}
+        self._system_info_cache_time: float = 0
+        self._system_info_ttl: int = 5  # 5 секунд
     
-    def start_timer(self, operation: str) -> float:
+    @staticmethod
+    def start_timer(operation: str) -> float:
         """Начинает отсчет времени для операции"""
         return time.time()
     
@@ -83,7 +83,8 @@ class PerformanceMonitor:
             self.metrics[operation].append(duration)
         return duration
     
-    async def start_async_timer(self, operation: str) -> float:
+    @staticmethod
+    async def start_async_timer(operation: str) -> float:
         """Начинает отсчет времени для асинхронной операции"""
         return time.time()
     
@@ -156,10 +157,10 @@ class PerformanceMonitor:
 # Глобальный монитор производительности
 performance_monitor = PerformanceMonitor()
 
-def measure_time(func: Callable) -> Callable:
+def measure_time(func: Callable[..., Any]) -> Callable[..., Any]:
     """Декоратор для измерения времени выполнения функции"""
     @functools.wraps(func)
-    def wrapper(*args, **kwargs):
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
         start_time = performance_monitor.start_timer(func.__name__)
         try:
             return func(*args, **kwargs)
@@ -167,10 +168,10 @@ def measure_time(func: Callable) -> Callable:
             performance_monitor.end_timer(func.__name__, start_time)
     return wrapper
 
-def measure_async_time(func: Callable) -> Callable:
+def measure_async_time(func: Callable[..., Any]) -> Callable[..., Any]:
     """Декоратор для измерения времени выполнения асинхронной функции"""
     @functools.wraps(func)
-    async def wrapper(*args, **kwargs):
+    async def wrapper(*args: Any, **kwargs: Any) -> Any:
         start_time = await performance_monitor.start_async_timer(func.__name__)
         try:
             return await func(*args, **kwargs)
@@ -183,15 +184,15 @@ def cache_result(max_size: int = 100, ttl: int = 300):
     cache = LRUCache(max_size=max_size)
     cache_times = {}
     
-    def decorator(func: Callable) -> Callable:
+    def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
         @functools.wraps(func)
-        def wrapper(*args, **kwargs):
+        def wrapper(*args: Any, **kwargs: Any):
             # Создаем ключ кэша
-            key = str(args) + str(sorted(kwargs.items()))
-            current_time = time.time()
+            key: str = str(args) + str(sorted(kwargs.items()))
+            current_time: float = time.time()
             
             # Проверяем, есть ли результат в кэше и не истек ли срок действия
-            cached_result = cache.get(key)
+            cached_result: Any = cache.get(key)
             if cached_result and key in cache_times and current_time - cache_times[key] < ttl:
                 return cached_result
             
@@ -203,8 +204,8 @@ def cache_result(max_size: int = 100, ttl: int = 300):
             cache_times[key] = current_time
             
             # Очищаем старые записи времени
-            current_keys = set(cache_times.keys())
-            cache_keys = set(cache.keys())
+            current_keys: set[str] = set(cache_times.keys())  # type: ignore
+            cache_keys: set[str] = set(cache.keys())  # type: ignore
             for old_key in current_keys - cache_keys:
                 del cache_times[old_key]
             
@@ -214,16 +215,18 @@ def cache_result(max_size: int = 100, ttl: int = 300):
 
 def retry(max_attempts: int = 3, delay: float = 1.0, backoff: float = 2.0):
     """Декоратор для повторных попыток выполнения функции"""
-    def decorator(func: Callable) -> Callable:
+    def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
         @functools.wraps(func)
-        def wrapper(*args, **kwargs):
-            last_exception = None
-            current_delay = delay
+        def wrapper(*args: Any, **kwargs: Any) -> Any:
+            last_exception: Optional[Exception] = None
+            current_delay: float = delay
             
             for attempt in range(max_attempts):
+                attempt: int
                 try:
                     return func(*args, **kwargs)
                 except Exception as e:
+                    e: Exception
                     last_exception = e
                     if attempt < max_attempts - 1:
                         time.sleep(current_delay)
@@ -240,11 +243,11 @@ class ResourceManager:
     """Менеджер ресурсов для автоматической очистки"""
     
     def __init__(self):
-        self.resources = {}
-        self.cleanup_funcs = {}
-        self.lock = threading.RLock()
+        self.resources: Dict[str, Any] = {}
+        self.cleanup_funcs: Dict[str, Callable[[Any], Any]] = {}
+        self.lock: threading.RLock = threading.RLock()
     
-    def register_resource(self, name: str, resource: Any, cleanup_func: Optional[Callable] = None) -> None:
+    def register_resource(self, name: str, resource: Any, cleanup_func: Optional[Callable[[Any], Any]] = None) -> None:
         """Регистрирует ресурс с функцией очистки"""
         with self.lock:
             self.resources[name] = resource
@@ -260,7 +263,7 @@ class ResourceManager:
         """Очищает конкретный ресурс"""
         with self.lock:
             if name in self.resources:
-                resource = self.resources[name]
+                resource: object = self.resources[name]
                 cleanup_func = self.cleanup_funcs.get(name)
                 
                 if cleanup_func:
@@ -282,7 +285,8 @@ class ResourceManager:
             for name in list(self.resources.keys()):
                 self.cleanup_resource(name)
     
-    def get_memory_usage(self) -> Dict[str, Any]:
+    @staticmethod
+    def get_memory_usage() -> Dict[str, Any]:
         """Получает информацию об использовании памяти"""
         try:
             process = psutil.Process(os.getpid())
@@ -318,22 +322,22 @@ def optimize_memory_usage() -> Dict[str, Any]:
         log_and_notify('error', f"Error optimizing memory usage: {e}")
         return {'objects_collected': 0, 'memory_stats': {}}
 
-def monitor_performance(func: Callable) -> Callable:
+def monitor_performance(func: Callable[..., Any]) -> Callable[..., Any]:
     """Декоратор для мониторинга производительности функции"""
     @functools.wraps(func)
-    def wrapper(*args, **kwargs):
-        start_time = time.time()
-        start_memory = resource_manager.get_memory_usage()
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
+        start_time: float = time.time()
+        start_memory: Dict[str, Any] = resource_manager.get_memory_usage()
         
         try:
-            result = func(*args, **kwargs)
+            result: Any = func(*args, **kwargs)
             return result
         finally:
-            end_time = time.time()
-            end_memory = resource_manager.get_memory_usage()
+            end_time: float = time.time()
+            end_memory: Dict[str, Any] = resource_manager.get_memory_usage()
             
-            duration = end_time - start_time
-            memory_diff = end_memory['rss_mb'] - start_memory['rss_mb']
+            duration: float = end_time - start_time
+            memory_diff: float = end_memory['rss_mb'] - start_memory['rss_mb']
             
             logger.debug(f"Function {func.__name__} took {duration:.3f}s, memory change: {memory_diff:.2f}MB")
     
@@ -371,10 +375,10 @@ def format_duration(seconds: float) -> str:
     if seconds < 60:
         return f"{seconds:.1f}с"
     elif seconds < 3600:
-        minutes = int(seconds // 60)
-        remaining_seconds = seconds % 60
+        minutes: int = int(seconds // 60)
+        remaining_seconds: float = seconds % 60
         return f"{minutes}м {remaining_seconds:.1f}с"
     else:
-        hours = int(seconds // 3600)
-        remaining_minutes = int((seconds % 3600) // 60)
+        hours: int = int(seconds // 3600)
+        remaining_minutes: int = int((seconds % 3600) // 60)
         return f"{hours}ч {remaining_minutes}м" 

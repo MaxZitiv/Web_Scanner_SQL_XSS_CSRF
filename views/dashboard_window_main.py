@@ -1,57 +1,39 @@
-import asyncio
 import json
-from multiprocessing import Value
 import os
 import sqlite3
-import threading
-import time
-from attr import has
 from datetime import datetime
-from pathlib import Path
 from typing import Dict, List, Any, Optional
-from PyQt5.QtCore import Qt, QTimer, QDateTime, QTime, QMetaObject, Q_ARG, pyqtSignal
-from PyQt5.QtGui import QPixmap, QIcon, QColor
-from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-                         QPushButton, QLineEdit, QCheckBox,
-                         QTabWidget, QSpinBox, QMessageBox,
-                         QFileDialog, QComboBox, QTableWidgetItem,
-                         QGroupBox, QDateTimeEdit, QDialog, QDialogButtonBox, QTreeWidgetItem, QApplication,
-                         QFormLayout, QTextEdit, QScrollArea, QTreeWidget, QProgressBar, QTableWidget)
+from PyQt5.QtCore import pyqtSignal
+from PyQt5.QtGui import QPixmap
+from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QLineEdit, QCheckBox,
+                         QSpinBox, QMessageBox,
+                         QFileDialog, QComboBox, QGroupBox, QDialog, QApplication,
+                         QFormLayout, QTextEdit, QProgressBar)
 
-from controllers.scan_controller import ScanController
 from utils import error_handler
 from utils.database import db
-from utils.error_handler import ErrorHandler
-from utils.logger import logger, log_and_notify
-from utils.performance import performance_monitor, get_local_timestamp, extract_time_from_timestamp
-from utils.security import is_safe_url, sanitize_filename
-from views.edit_profile_window import EditProfileWindow
-from views.tabs.profile_tab import ProfileTabWidget
-from views.tabs.reports_tab import ReportsTabWidget
-from views.tabs.scan_tab import ScanTabWidget
-from views.tabs.stats_tab import StatsTabWidget
-from views.managers.scan_manager import ScanManagerStatsMixin
+from utils.logger import logger
+from utils.security import is_safe_url
 from views.managers.stats_manager import StatsManager
 from views.dashboard_optimized import DashboardStatsMixin
+from views.tabs.stats_tab import StatsTabWidget
 from views.mixins.export_mixin import ExportMixin
 from views.mixins.scan_mixin import ScanMixin
 from views.mixins.log_mixin import LogMixin
 
-import matplotlib
-matplotlib.use('Qt5Agg')
-
 # Импорт matplotlib с обработкой ошибок
 try:
-    from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
+    import matplotlib
+    matplotlib.use('Qt5Agg')
+    from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
     from matplotlib.figure import Figure
-    MATPLOTLIB_AVAILABLE = True
+    matplotlib_available = True
 except ImportError as e:
     logger.warning(f"matplotlib not available: {e}")
-    MATPLOTLIB_AVAILABLE = False
+    matplotlib_available = False
     FigureCanvas = None
     Figure = None
 
-from qasync import asyncSlot
 from policies.policy_manager import PolicyManager
 
 # Импортируем оптимизированные компоненты
@@ -71,18 +53,21 @@ class DashboardWindow(DashboardWindowBase, DashboardWindowUI, DashboardWindowHan
     _log_loaded_signal = pyqtSignal(str, int)
     _scan_result_signal = pyqtSignal(dict)
     
-    def setParent(self, parent: Optional[QWidget] = None):
+    def setParent(self, parent: Optional['QWidget'] = None) -> None:
         """Корректная реализация метода setParent для совместимости со всеми базовыми классами"""
         QWidget.setParent(self, parent)
 
-    def __init__(self, user_id: int, username, user_model: Any, parent: Optional[QWidget] = None) -> None:
+    def __init__(self, user_id: int, username: str, user_model: Any, parent: Optional[QWidget] = None) -> None:
         # Инициализация родительского класса QWidget
         QWidget.__init__(self, parent)
+        
+        # Инициализация атрибутов с явным указанием типов
+        self.stats_tab: Optional[StatsTabWidget] = None
 
         # Инициализация миксинов
         DashboardStatsMixin.__init__(self)
         ExportMixin.__init__(self, user_id)
-        ScanMixin.__init__(self)
+        ScanMixin.__init__(self, user_id)
         LogMixin.__init__(self)
 
         # Базовые настройки
@@ -126,10 +111,11 @@ class DashboardWindow(DashboardWindowBase, DashboardWindowUI, DashboardWindowHan
     def load_policies_to_combobox(self):
         """Загрузка политик в выпадающий список"""
         try:
-            if hasattr(self, 'policy_combo') and self.policy_combo is not None:
+            if hasattr(self, 'policy_combo'):
                 policy_manager = PolicyManager()
                 policy_names = policy_manager.list_policies()
 
+                self.policy_combo: QComboBox
                 self.policy_combo.clear()
                 self.policy_combo.addItem("Выберите политику", None)
 
@@ -202,7 +188,6 @@ class DashboardWindow(DashboardWindowBase, DashboardWindowUI, DashboardWindowHan
     def logout(self):
         """Выход из системы"""
         try:
-            from PyQt5.QtCore import QCoreApplication
             from views.login_window import LoginWindow
 
             # Закрываем текущее окно
@@ -243,29 +228,36 @@ class DashboardWindow(DashboardWindowBase, DashboardWindowUI, DashboardWindowHan
                 scan_types = ["sql", "xss", "csrf"]
 
             # Показываем индикатор прогресса
-            if hasattr(self, 'scan_progress') and self.scan_progress is not None:
+            if hasattr(self, 'scan_progress'):
+                self.scan_progress: QProgressBar
                 self.scan_progress.setVisible(True)
                 self.scan_progress.setRange(0, 0)  # Неопределенный прогресс
             if hasattr(self, 'scan_button') and self.scan_button is not None:
                 self.scan_button.setEnabled(False)
 
             # Запускаем сканирование
-            self.start_url_scan(url, scan_types)
+            # Явно указываем типы для Pylance
+            import asyncio
+            url_str: str = url
+            scan_types_list: List[str] = scan_types
+
+            # Запускаем асинхронное сканирование
+            asyncio.create_task(self._run_scan(url_str, scan_types_list))
 
             logger.info(f"Started scan for URL: {url} with types: {scan_types}")
         except Exception as e:
             logger.error(f"Error starting scan: {e}")
             QMessageBox.critical(self, "Ошибка", f"Не удалось начать сканирование: {e}")
-            if hasattr(self, 'scan_progress') and self.scan_progress is not None:
+            if hasattr(self, 'scan_progress'):
                 self.scan_progress.setVisible(False)
             if hasattr(self, 'scan_button') and self.scan_button is not None:
                 self.scan_button.setEnabled(True)
 
-    def handle_scan_completed(self, results):
+    def handle_scan_completed(self, results: Dict[str, Any]):
         """Обработка завершения сканирования"""
         try:
             # Скрываем индикатор прогресса
-            if hasattr(self, 'scan_progress') and self.scan_progress is not None:
+            if hasattr(self, 'scan_progress'):
                 self.scan_progress.setVisible(False)
             if hasattr(self, 'scan_button') and self.scan_button is not None:
                 self.scan_button.setEnabled(True)
@@ -286,7 +278,7 @@ class DashboardWindow(DashboardWindowBase, DashboardWindowUI, DashboardWindowHan
         except Exception as e:
             logger.error(f"Error handling scan completion: {e}")
 
-    def update_scan_stats(self, results):
+    def update_scan_stats(self, results: Dict[str, Any]):
         """Обновление статистики сканирования"""
         try:
             # Обновляем статистику в миксине
@@ -294,13 +286,13 @@ class DashboardWindow(DashboardWindowBase, DashboardWindowUI, DashboardWindowHan
 
             # Обновляем вкладку статистики, если она инициализирована
             if self.stats_tab is not None:
-                self.stats_tab.refresh_stats()
+                self.stats_tab.load_statistics()
 
             logger.info("Updated scan statistics")
         except Exception as e:
             logger.error(f"Error updating scan statistics: {e}")
 
-    def _update_scan_statistics(self, results):
+    def _update_scan_statistics(self, results: Dict[str, Any]):
         """Внутренний метод для обновления статистики сканирования"""
         try:
             url = results.get('url', '')
@@ -331,8 +323,8 @@ class DashboardWindow(DashboardWindowBase, DashboardWindowUI, DashboardWindowHan
             conn.close()
 
             # Обновляем статистику в менеджере
-            if hasattr(self, 'scan_manager') and self.scan_manager is not None:
-                self.scan_manager.update_stats(key="scan_results", value=results)
+            if hasattr(self, 'scan_manager'):
+                self.scan_manager.update_stats(key="scan_results", value=len(results.get("vulnerabilities", [])))
 
             logger.info(f"Saved scan results for URL: {url}")
         except Exception as e:
@@ -342,7 +334,7 @@ class DashboardWindow(DashboardWindowBase, DashboardWindowUI, DashboardWindowHan
         """Обработка загруженного содержимого лога"""
         try:
             # Разбираем содержимое лога
-            entries = []
+            entries: List[Dict[str, Any]] = []
             for line in content.split('\n'):
                 if line.strip():
                     try:
@@ -408,14 +400,14 @@ class DashboardWindow(DashboardWindowBase, DashboardWindowUI, DashboardWindowHan
         except Exception as e:
             logger.error(f"Error initializing stats manager: {e}")
 
-    def _handle_stats_updated(self, stats):
+    def _handle_stats_updated(self, stats: Dict[str, Any]):
         """Обработка обновления статистики"""
         try:
             self._stats = stats
 
             # Обновляем отображение статистики
             if hasattr(self, 'stats_tab') and self.stats_tab is not None:
-                self.stats_tab.update_stats(stats)
+                self.stats_tab.load_statistics()
 
             logger.info("Stats updated and displayed")
         except Exception as e:
@@ -424,7 +416,7 @@ class DashboardWindow(DashboardWindowBase, DashboardWindowUI, DashboardWindowHan
     def refresh_stats(self):
         """Обновление статистики"""
         try:
-            if hasattr(self, 'stats_manager') and self.stats_manager is not None:
+            if hasattr(self, 'stats_manager'):
                 # Используем существующий метод вместо несуществующего refresh_stats
                 self._handle_stats_updated({})
                 logger.info("Stats refresh requested")
@@ -521,7 +513,7 @@ class DashboardWindow(DashboardWindowBase, DashboardWindowUI, DashboardWindowHan
             scans = cursor.fetchall()
 
             # Получаем уязвимости для каждого сканирования
-            data = []
+            data: List[Dict[str, Any]] = []
             for scan in scans:
                 scan_dict = dict(scan)
 
@@ -628,7 +620,7 @@ class DashboardWindow(DashboardWindowBase, DashboardWindowUI, DashboardWindowHan
 class PolicyEditDialog(QDialog):
     """Диалог редактирования политики безопасности"""
 
-    def __init__(self, policy_id=None, parent=None):
+    def __init__(self, policy_id: Optional[int] = None, parent: Optional[QDialog] = None):
         super().__init__(parent)
         self.policy_id = policy_id
         self.policy_manager = PolicyManager()
@@ -691,7 +683,10 @@ class PolicyEditDialog(QDialog):
         scan_layout.addRow("", self.csrf_check)
 
         # Кнопки
+        from PyQt5.QtWidgets import QDialogButtonBox
         buttons = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
@@ -707,7 +702,7 @@ class PolicyEditDialog(QDialog):
                 self.description_edit.setText(policy.get('description', ''))
 
                 # Загрузка настроек
-                settings = policy.get('settings', {})
+                settings: Dict[str, Any] = policy.get('settings', {})
                 if isinstance(settings, str):
                     try:
                         settings = json.loads(settings)
@@ -734,7 +729,7 @@ class PolicyEditDialog(QDialog):
                 return
 
             # Формируем настройки
-            settings = {
+            settings: Dict[str, Any] = {
                 'max_depth': self.max_depth_spin.value(),
                 'timeout': self.timeout_spin.value(),
                 'scan_types': []
@@ -748,7 +743,7 @@ class PolicyEditDialog(QDialog):
                 settings['scan_types'].append('csrf')
 
             # Формируем объект политики
-            policy_data = {
+            policy_data: Dict[str, Any] = {
                 'name': name,
                 'description': self.description_edit.toPlainText(),
                 'settings': settings

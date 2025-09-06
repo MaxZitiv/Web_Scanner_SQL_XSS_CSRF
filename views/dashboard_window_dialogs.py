@@ -1,7 +1,6 @@
-from typing import Optional, cast, Any, Callable
+from typing import Optional
 from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QLineEdit, QTextEdit, QComboBox, QCheckBox,
-                         QDialogButtonBox, QMessageBox, QFormLayout, QSpinBox, QGroupBox)
-from PyQt5.QtCore import QObject, pyqtSignal
+                         QMessageBox, QFormLayout, QSpinBox, QGroupBox)
 
 from utils.logger import logger
 from policies.policy_manager import PolicyManager
@@ -103,8 +102,8 @@ class PolicyEditDialog(QDialog):
         from PyQt5.QtWidgets import QDialogButtonBox
         # Явно указываем стандартные кнопки через перечисление
         buttons = QDialogButtonBox()
-        buttons.addButton(QDialogButtonBox.Save)
-        buttons.addButton(QDialogButtonBox.Cancel)
+        buttons.addButton(QDialogButtonBox.Save)  # type: ignore
+        buttons.addButton(QDialogButtonBox.Cancel)  # type: ignore
 
         # Подключаем сигналы напрямую без приведения типов
         buttons.accepted.connect(self.save_policy)
@@ -143,7 +142,7 @@ class PolicyEditDialog(QDialog):
                 params = policy.get('parameters', {})
                 if isinstance(params, dict):
                     # Явно указываем тип params для Pylance с конкретными типами ключей и значений
-                    from typing import Dict, Any, Union, cast
+                    from typing import Dict, Union, cast
                     # Используем cast для явного преобразования типа, чтобы Pylance понимал точный тип
                     params_dict: Dict[str, Union[int, bool, str]] = cast(Dict[str, Union[int, bool, str]], params)
 
@@ -173,7 +172,7 @@ class PolicyEditDialog(QDialog):
                 QMessageBox.warning(self, "Предупреждение", "Политика не найдена")
         except Exception:
             import sys
-            exc_type, exc_value, _ = sys.exc_info()
+            _, exc_value, _ = sys.exc_info()
             logger.error(f"Error loading policy data: {exc_value}")
             QMessageBox.critical(self, "Ошибка", f"Не удалось загрузить данные политики: {exc_value}")
 
@@ -192,7 +191,7 @@ class PolicyEditDialog(QDialog):
             severity = self.severity_combo.currentText()
 
             # Формирование параметров с явной типизацией
-            from typing import Dict, Union, cast
+            from typing import Dict, Union
             parameters: Dict[str, Union[int, bool]] = {
                 'max_depth': int(self.max_depth_spin.value()),
                 'timeout': int(self.timeout_spin.value()),
@@ -225,7 +224,7 @@ class PolicyEditDialog(QDialog):
                     logger.info(f"Created new policy with ID: {policy_id}")
                 except Exception:
                     import sys
-                    exc_type, exc_value, _ = sys.exc_info()
+                    _, exc_value, _ = sys.exc_info()
                     QMessageBox.critical(self, "Ошибка", "Не удалось создать политику")
                     logger.error(f"Failed to create policy: {exc_value}")
             else:
@@ -237,13 +236,13 @@ class PolicyEditDialog(QDialog):
                     logger.info(f"Updated policy with ID: {self.policy_id}")
                 except Exception:
                     import sys
-                    exc_type, exc_value, _ = sys.exc_info()
+                    _, exc_value, _ = sys.exc_info()
                     QMessageBox.critical(self, "Ошибка", "Не удалось обновить политику")
                     logger.error(f"Failed to update policy with ID: {self.policy_id}: {exc_value}")
 
             self.accept()
         except Exception:
             import sys
-            exc_type, exc_value, _ = sys.exc_info()
+            _, exc_value, _ = sys.exc_info()
             logger.error(f"Error saving policy: {exc_value}")
             QMessageBox.critical(self, "Ошибка", f"Не удалось сохранить политику: {exc_value}")

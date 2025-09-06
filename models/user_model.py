@@ -2,7 +2,7 @@ import bcrypt
 import re
 import time
 from datetime import datetime
-from typing import Optional, Dict, Tuple, List
+from typing import Optional, Dict, Tuple, List, Any
 import sqlite3
 
 # Импортируем только нужные зависимости
@@ -11,9 +11,9 @@ from utils.logger import logger, log_and_notify
 from utils.security import validate_password_strength, validate_email_format
 
 # Кэш для пользователей
-_user_cache = {}
+_user_cache: Dict[str, Dict[str, Any]] = {}
 _cache_ttl = 300  # 5 минут
-_cache_timestamps = {}
+_cache_timestamps: Dict[str, float] = {}
 
 class UserModel:
     """
@@ -50,7 +50,7 @@ class UserModel:
         logger.info("Current user data cleared (logout).")
 
     @staticmethod
-    def _get_cached_user(key: str) -> Optional[Dict]:
+    def _get_cached_user(key: str) -> Optional[Dict[str, Any]]:
         """Получает пользователя из кэша"""
         if key in _user_cache:
             if time.time() - _cache_timestamps.get(key, 0) < _cache_ttl:
@@ -63,7 +63,7 @@ class UserModel:
         return None
 
     @staticmethod
-    def _cache_user(key: str, user_data: Dict) -> None:
+    def _cache_user(key: str, user_data: Dict[str, Any]) -> None:
         """Сохраняет пользователя в кэш"""
         _user_cache[key] = user_data
         _cache_timestamps[key] = time.time()
@@ -79,7 +79,7 @@ class UserModel:
         """Валидация данных регистрации пользователя."""
         try:
             # 1. Проверка на наличие и тип данных
-            if not all(isinstance(arg, str) and arg.strip() for arg in [username, email, password]):
+            if not all(arg.strip() for arg in [username, email, password]):
                 return False, "Неверный формат данных. Поля не могут быть пустыми."
             
             # 2. Валидация имени пользователя
@@ -142,10 +142,10 @@ class UserModel:
         else:
             return False, message
 
-    def authenticate_user(self, username: str, password: str) -> Tuple[bool, Optional[Dict], Optional[str]]:
+    def authenticate_user(self, username: str, password: str) -> Tuple[bool, Optional[Dict[str, Any]], Optional[str]]:
         """Аутентифицирует пользователя."""
         try:
-            if not all(isinstance(arg, str) and arg.strip() for arg in [username, password]):
+            if not all(arg.strip() for arg in [username, password]):
                 return False, None, "Неверный формат данных"
             
             is_locked, lock_message = self.is_account_locked(username)
@@ -171,7 +171,7 @@ class UserModel:
     def change_password(user_id: int, old_password: str, new_password: str) -> Tuple[bool, str]:
         """Изменяет пароль пользователя."""
         try:
-            if not all([isinstance(user_id, int), old_password, new_password]):
+            if not all([old_password, new_password]):
                 return False, "Неверные параметры"
             
             user_data = db.get_user_by_id(user_id)
@@ -199,12 +199,9 @@ class UserModel:
             return False, "Ошибка изменения пароля"
 
     @staticmethod
-    def get_user_profile(user_id: int) -> Optional[Dict]:
+    def get_user_profile(user_id: int) -> Optional[Dict[str, Any]]:
         """Получает профиль пользователя."""
         try:
-            if not isinstance(user_id, int):
-                return None
-            
             user_data = db.get_user_by_id(user_id)
             if user_data:
                 del user_data['password_hash']
@@ -218,7 +215,7 @@ class UserModel:
     def update_user_profile(user_id: int, email: str) -> Tuple[bool, str]:
         """Обновляет профиль пользователя."""
         try:
-            if not isinstance(user_id, int) or not email.strip():
+            if not email.strip():
                 return False, "Неверные параметры"
             
             if not validate_email_format(email):
@@ -235,7 +232,7 @@ class UserModel:
             return False, "Ошибка обновления профиля"
 
     @staticmethod
-    def get_all_users(limit: int = 100) -> List[Dict]:
+    def get_all_users(limit: int = 100) -> List[Dict[str, Any]]:
         """Получает список всех пользователей (для административных целей)."""
         return db.get_all_users(limit)
 

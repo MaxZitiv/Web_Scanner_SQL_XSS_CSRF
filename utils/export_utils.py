@@ -1,9 +1,8 @@
 """
 Утилиты для экспорта данных в различные форматы
 """
-import os
 from typing import List, Dict, Any
-from PyQt5.QtWidgets import QFileDialog
+from PyQt5.QtWidgets import QFileDialog, QWidget
 from utils.performance import get_local_timestamp
 from utils import error_handler
 
@@ -12,7 +11,7 @@ class ExportUtils:
     """Класс с утилитами для экспорта данных"""
 
     @staticmethod
-    def export_data(parent_widget, scans: List[Dict[str, Any]], format_name: str, 
+    def export_data(parent_widget: QWidget, scans: List[Dict[str, Any]], format_name: str, 
                    file_extension: str, user_id: int) -> bool:
         """
         Общий метод для экспорта данных в различные форматы

@@ -1,3 +1,5 @@
+from typing import Dict, Any, Optional, Union, List
+
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QGroupBox, QFormLayout, QLabel, 
     QPushButton, QFileDialog, QHBoxLayout
@@ -10,12 +12,12 @@ from utils.performance import get_local_timestamp
 from utils.database import db
 import json
 import os
-from datetime import datetime
+# # from datetime import datetime  # Не используется в текущем коде  # Не используется в текущем коде
 
 class ProfileTabWidget(QWidget):
-    def __init__(self, user_id, parent=None):
+    def __init__(self, user_id: int, parent: Optional[QWidget] = None):
         super().__init__(parent)
-        self.user_id = user_id
+        self.user_id: int = user_id
         self.setup_ui()
         
     def setup_ui(self):
@@ -101,7 +103,7 @@ class ProfileTabWidget(QWidget):
         
     def load_user_data(self):
         try:
-            user_data = db.get_user_by_id(self.user_id)
+            user_data: Optional[Dict[str, Any]] = db.get_user_by_id(self.user_id)
             if user_data:
                 self.username_label.setText(user_data.get('username', ''))
                 self.email_label.setText(user_data.get('email', ''))
@@ -122,7 +124,7 @@ class ProfileTabWidget(QWidget):
     
     def load_scan_statistics(self):
         try:
-            scans = db.get_scans_by_user(self.user_id)
+            scans: List[Dict[str, Any]] = db.get_scans_by_user(self.user_id)
             if scans:
                 total_scans = len(scans)
                 successful_scans = sum(1 for scan in scans if scan.get('status') == 'completed')
@@ -130,7 +132,7 @@ class ProfileTabWidget(QWidget):
                 
                 total_vulns = 0
                 for scan in scans:
-                    results = scan.get('result', scan.get('results', []))
+                    results: Union[List[Any], str] = scan.get('result', scan.get('results', []))
                     if isinstance(results, str):
                         try:
                             results = json.loads(results)
@@ -182,7 +184,7 @@ class ProfileTabWidget(QWidget):
     def remove_avatar(self):
         try:
             # Get current avatar path
-            user_data = db.get_user_by_id(self.user_id)
+            user_data: Optional[Dict[str, Any]] = db.get_user_by_id(self.user_id)
             if user_data:
                 avatar_path = user_data.get('avatar_path', '')
                 if avatar_path and os.path.exists(avatar_path):
@@ -207,17 +209,17 @@ class ProfileTabWidget(QWidget):
     def update_profile(self):
         try:
             from views.edit_profile_window import EditProfileWindow
-            user_data = db.get_user_by_id(self.user_id)
+            user_data: Optional[Dict[str, Any]] = db.get_user_by_id(self.user_id)
             username = user_data.get('username', '') if user_data else ''
-            edit_window = EditProfileWindow(self.user_id, username, self)
-            if edit_window.exec_():
+            edit_window: EditProfileWindow = EditProfileWindow(self.user_id, username, self)
+            if edit_window.exec_(): # type: ignore
                 # Refresh data after profile update
                 self.load_user_data()
         except Exception as e:
             error_handler.handle_validation_error(e, "update_profile")
             log_and_notify('error', f"Error updating profile: {e}")
 
-    def set_avatar(self, pixmap):
+    def set_avatar(self, pixmap: QPixmap):
         """Установка аватара пользователя"""
         try:
             if hasattr(self, 'avatar_label'):
