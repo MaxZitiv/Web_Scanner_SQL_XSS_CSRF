@@ -24,7 +24,8 @@ def create_base_tables():
             username TEXT UNIQUE NOT NULL,
             email TEXT UNIQUE NOT NULL,
             password_hash TEXT NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            avatar_path TEXT DEFAULT "default_avatar.png"
         )
         ''')
         
@@ -74,7 +75,8 @@ def migrate_database():
     """Migrate existing database to add new security fields."""
     conn = None
     try:
-        conn = sqlite3.connect('scanner.db')
+        # Use the database connection from db module
+        conn = db.get_db_connection()
         cursor = conn.cursor()
         
         # Проверяем существующие колонки в таблице users
@@ -85,7 +87,8 @@ def migrate_database():
         new_columns = [
             ('last_login', 'TIMESTAMP'),
             ('failed_attempts', 'INTEGER DEFAULT 0'),
-            ('locked_until', 'TIMESTAMP')
+            ('locked_until', 'TIMESTAMP'),
+            ('avatar_path', 'TEXT DEFAULT "default_avatar.png"')
         ]
         
         for column_name, column_type in new_columns:

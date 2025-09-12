@@ -1,4 +1,4 @@
-from PyQt5.QtWidgets import QWidget, QPushButton, QLineEdit, QVBoxLayout, QLabel, QMessageBox, QHBoxLayout
+from PyQt5.QtWidgets import QWidget, QPushButton, QLineEdit, QVBoxLayout, QLabel, QMessageBox, QHBoxLayout, QApplication
 from controllers.auth_controller import AuthController
 from utils.logger import logger, log_and_notify
 import os
@@ -22,7 +22,8 @@ class LoginWindow(QWidget):
     def load_styles(self):
         """Загрузка стилей из файла styles.qss"""
         try:
-            style_path = 'styles.qss'
+            from main import resource_path
+            style_path = resource_path("styles.qss")
             if os.path.exists(style_path):
                 with open(style_path, 'r', encoding='utf-8') as f:
                     self.setStyleSheet(f.read())
@@ -116,7 +117,10 @@ class LoginWindow(QWidget):
                 logger.info(f"User {username} logged in successfully.")
                 user_id = self.user_model.get_user_id()
                 username = self.user_model.get_username()
+                
+                # Проверяем состояние приложения перед переходом
                 if self.parent_window and user_id is not None:
+                    QApplication.processEvents()
                     self.parent_window.go_to_dashboard(user_id, username)
                 else:
                     log_and_notify('error', "Parent window or user_id is not set")

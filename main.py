@@ -165,7 +165,7 @@ def main() -> int:
     exit_code = 0
     try:
         logger.info("Starting GUI application...")
-        start_time = performance_monitor.start_timer("startup")
+        start_time = performance_monitor.start_timer()
 
         app_candidate = QApplication.instance()
         if not isinstance(app_candidate, QApplication):
@@ -189,7 +189,13 @@ def main() -> int:
             try:
                 loop.run_forever()
             except Exception as e:
-                log_and_notify('error', f"Exception in event loop: {e}")
+                logger.error('error', f"Exception in event loop: {e}")
+                if not loop.is_closed():
+                    try:
+                        loop.stop()
+                        logger.info("Event loop stopped gracefully")
+                    except RuntimeError as e:
+                        logger.warning(f"Event loop already stopped or closed: {e}")
             finally:
                 if not loop.is_closed():
                     try:

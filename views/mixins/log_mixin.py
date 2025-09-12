@@ -140,8 +140,12 @@ class LogMixin:
             self.log_status_label.setText("Лог очищен")
         logger.info("Log cleared")
 
-    def _process_log_content(self, content: str, line_count: int) -> None:
-        """Обработать содержимое лога, загруженное из файла"""
+    def _process_log_content(self, content: str, log_type: int) -> None:
+        """
+        Обработать содержимое лога, загруженное из файла
+        :param content: Содержимое лога
+        :param log_type: Тип лога (1 - системный, 2 - сканирование)
+        """
         try:
             lines: List[str] = content.split('\n')
             for line in lines:

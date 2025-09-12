@@ -1,7 +1,10 @@
 import os
+import asyncio
+import inspect
 from datetime import datetime
-from typing import Dict, List, Any, Optional, Self, cast
-from PyQt5.QtCore import Qt, pyqtSignal
+from typing import Dict, List, Any, Optional, Self, cast, Coroutine, Awaitable
+from types import CoroutineType
+from PyQt5.QtCore import Qt, pyqtSignal, pyqtSlot
 from PyQt5.QtGui import QPixmap
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                          QPushButton, QLineEdit, QCheckBox,
@@ -12,27 +15,36 @@ from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
 # Импортируем константы из QMessageBox
 StandardButton = QMessageBox.StandardButton
 StandardButtons = QMessageBox.StandardButtons
+
+# Контроллеры и утилиты
 from controllers.scan_controller import ScanController
 from utils import error_handler
 from utils.database import db
 from utils.logger import logger
 from utils.security import is_safe_url
+from utils.qt_utils import SignalWrapper
+
+# Представления и компоненты
 from views.edit_profile_window import EditProfileWindow
+from views.dialogs import PolicyEditDialog, ScanSettingsDialog
 from views.tabs.profile_tab import ProfileTabWidget
 from views.tabs.reports_tab import ReportsTabWidget
 from views.tabs.scan_tab import ScanTabWidget
 from views.tabs.stats_tab import StatsTabWidget
+
+# Менеджеры и миксины
 from views.managers.scan_manager import ScanManagerStatsMixin
-from views.dashboard_optimized import DashboardStatsMixin
 from views.mixins.export_mixin import ExportMixin
 from views.mixins.scan_mixin import ScanMixin
 from views.mixins.log_mixin import LogMixin
+from views.mixins.log_processor_mixin import LogProcessorMixin
 
 # Импорт matplotlib с обработкой ошибок
 try:
     import matplotlib
     matplotlib.use('Qt5Agg')
-    from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+    # Используем правильный импорт для matplotlib
+    from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
     from matplotlib.figure import Figure
     matplotlib_available = True
 except ImportError as e:
@@ -40,13 +52,6 @@ except ImportError as e:
     matplotlib_available = False
     FigureCanvas = None
     Figure = None
-
-try:
-    from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
-    from matplotlib.figure import Figure
-    matplotlib_available = True
-except ImportError as e:
-    logger.warning(f"matplotlib not available: {e}")
 
 # Для обратной совместимости создаем константу
 # MATPLOTLIB_AVAILABLE = matplotlib_available  # Закомментировано, чтобы избежать предупреждения о переопределении константы
@@ -84,6 +89,138 @@ class DashboardWindowBase:
         """
         # Базовая реализация - ничего не делаем
         pass
+
+    def _process_scan_results(self, results: Dict[str, Any]) -> None:
+        """Обработка результатов сканирования."""
+        vulnerabilities = results.get("vulnerabilities", [])
+
+        if not vulnerabilities:
+            QMessageBox.information(None, "Результаты сканирования", "Уязвимости не обнаружены")
+            return
+
+        # Формируем сообщение с результатами
+        message = f"Обнаружено уязвимостей: {len(vulnerabilities)}\n\n"
+
+        # Группируем по типам
+        by_type = {}
+        for vuln in vulnerabilities:
+            vuln_type = vuln.get("type", "Unknown")
+            if vuln_type not in by_type:
+                by_type[vuln_type] = []
+            by_type[vuln_type].append(vuln)
+
+        # Добавляем информацию по каждому типу
+        for vuln_type, vulns in by_type.items():
+            message += f"{vuln_type}: {len(vulns)}\n"
+
+        QMessageBox.information(None, "Результаты сканирования", message)
+
+        # Обновляем вкладку сканирования, если она существует
+        if hasattr(self, 'scan_tab') and self.scan_tab is not None:
+            self.scan_tab.add_scan_results(results)
+
+    async def _start_scan_async(self) -> None:
+        """Асинхронный метод для выполнения сканирования."""
+        scan_progress_attr = None
+        scan_url: Optional[str] = None
+        try:
+            # Получаем URL для сканирования
+            url_input_attr = getattr(self, 'url_input', None)
+            if not isinstance(url_input_attr, QLineEdit):
+                QMessageBox.warning(None, "Ошибка", "Компонент для ввода URL не найден")
+                return
+
+            scan_url = url_input_attr.text().strip()
+                
+            if not scan_url:
+                QMessageBox.warning(None, "Предупреждение", "Пожалуйста, введите URL для сканирования")
+                return
+
+            if not is_safe_url(scan_url):
+                QMessageBox.warning(None, "Предупреждение", "Введенный URL небезопасен")
+                return
+                
+            logger.info(f"Starting scan for URL: {scan_url}")
+
+            # Определение типа сканирования
+            scan_type_combo_attr = getattr(self, 'scan_type_combo', None)
+            if not isinstance(scan_type_combo_attr, QComboBox):
+                QMessageBox.warning(None, "Ошибка", "Компонент выбора типа сканирования не найден")
+                return
+
+            scan_type_text: str = scan_type_combo_attr.currentText()
+            scan_types: list[str] = []
+
+            if scan_type_text == "SQL-инъекции":
+                scan_types = ["sql"]
+            elif scan_type_text == "XSS":
+                scan_types = ["xss"]
+            elif scan_type_text == "CSRF":
+                scan_types = ["csrf"]
+            else:  # "Все"
+                scan_types = ["sql", "xss", "csrf"]
+
+            # Показываем индикатор прогресса
+            scan_progress_attr = getattr(self, 'scan_progress', None)
+            if isinstance(scan_progress_attr, QProgressBar):
+                scan_progress_attr.setVisible(True)
+                scan_progress_attr.setRange(0, 0)  # Неопределенный прогресс
+
+            # Запускаем асинхронное сканирование
+            await self._run_scan(scan_url, scan_types)
+
+        except Exception as e:
+            logger.error(f"Error during scan: {e}")
+            QMessageBox.critical(None, "Ошибка", f"Ошибка во время сканирования: {e}")
+        finally:
+            # Скрываем индикатор прогресса в любом случае
+            if isinstance(scan_progress_attr, QProgressBar):
+                scan_progress_attr.setVisible(False)
+
+    async def _run_scan(self, url: str, scan_types: List[str]) -> None:
+        """Запуск сканирования в асинхронном режиме"""
+        try:
+            # Создаем контроллер сканирования
+            controller_params: Dict[str, Any] = {
+                'url': url,
+                'scan_types': scan_types,
+                'user_id': self.user_id,
+                'max_depth': 2,
+                'max_concurrent': 5,
+                'timeout': 30
+            }
+
+            # Фильтруем только те параметры, которые поддерживает конструктор
+            sig = inspect.signature(ScanController.__init__)
+            valid_params = {k: v for k, v in controller_params.items() if k in sig.parameters}
+
+            controller = ScanController(**valid_params)
+
+            # Запускаем сканирование
+            scan_results: Any = await controller.scan()
+
+            # Обрабатываем результаты
+            if isinstance(scan_results, dict):
+                typed_results: Dict[str, Any] = scan_results
+                self._process_scan_results(typed_results)
+            else:
+                logger.warning(f"Scan results are not in expected format: {type(scan_results)}")
+
+            # Обновляем статистику
+            update_stats_method = getattr(self, 'update_scan_stats', None)
+            if update_stats_method is not None and callable(update_stats_method):
+                update_stats_method()
+            else:
+                logger.warning("update_scan_stats method not found or not callable")
+
+        except Exception as e:
+            logger.error(f"Error during scan: {e}")
+            QMessageBox.critical(None, "Ошибка", f"Произошла ошибка при сканировании: {e}")
+        finally:
+            # Скрываем индикатор прогресса
+            scan_progress_attr = getattr(self, 'scan_progress', None)
+            if isinstance(scan_progress_attr, QProgressBar):
+                scan_progress_attr.setVisible(False)
 
     def _init_attributes(self):
         """Инициализация атрибутов класса"""
@@ -193,7 +330,7 @@ class DashboardWindowBase:
             QMessageBox.critical(None, "Error", f"Failed to initialize tabs: {e}")
 
 
-class DashboardWindowUI(QWidget):
+class DashboardWindowUI(DashboardWindowBase):
     """Класс для управления UI компонентами DashboardWindow"""
 
     def open_edit_profile(self) -> None:
@@ -206,16 +343,24 @@ class DashboardWindowUI(QWidget):
         # Будет реализовано в DashboardWindowHandlers
         pass
 
-    def start_scan(self) -> None:
-        """Начало сканирования"""
-        # Будет реализовано в DashboardWindowHandlers
+    @asyncSlot()
+    async def start_scan(self, *, url: Optional[str] = None) -> None:
+        """Начало сканирования
+        
+        Args:
+            url: URL для сканирования. Если не указан, берется из поля ввода.
+        """
         pass
+
+    @pyqtSlot()
+    def on_scan_button_clicked(self) -> None:
+        """Handle scan button click by starting the scan asynchronously."""
+        asyncio.create_task(self._start_scan_async())
 
     def init_components(self):
         """Инициализация компонентов интерфейса"""
         # Основной макет
         self.main_layout = QVBoxLayout()
-        self.setLayout(self.main_layout)
         
         # Инициализация атрибутов пользователя
         self.username = ""
@@ -292,7 +437,6 @@ class DashboardWindowUI(QWidget):
 
         # Кнопка запуска сканирования
         self.scan_button = QPushButton("Начать сканирование")
-        self.scan_button.clicked.connect(self.start_scan)
         scan_layout.addWidget(self.scan_button)
 
         # Индикатор прогресса
@@ -306,12 +450,16 @@ class DashboardWindowUI(QWidget):
         """Настройка пользовательского интерфейса"""
         self.init_components()
 
+        # Подключение обработчиков событий
+        if hasattr(self, 'scan_button'):
+            self.scan_button.clicked.connect(self.on_scan_button_clicked)
+
         # Применение стилей
         self._apply_styles()
 
     def _apply_styles(self):
         """Применение стилей к компонентам"""
-        self.setStyleSheet("""
+        self.styleSheet = """
             QWidget {
                 background-color: #f5f5f5;
                 font-family: Arial, sans-serif;
@@ -359,7 +507,7 @@ class DashboardWindowUI(QWidget):
                 background-color: #4a86e8;
                 color: white;
             }
-        """)
+        """
 
 
 class DashboardWindowHandlers:
@@ -427,82 +575,85 @@ class DashboardWindowHandlers:
             logger.error(f"Error during logout: {e}")
             QMessageBox.critical(None, "Ошибка", f"Ошибка при выходе из системы: {e}")
 
-    def start_scan(self) -> None:
-        """Начало сканирования"""
-        url: str = ""  # Initialize url variable
+    @pyqtSlot()
+    def on_scan_button_clicked(self) -> None:
+        """Handle scan button click by starting the scan asynchronously."""
+        asyncio.create_task(self._start_scan_async())
+
+    async def _start_scan_async(self) -> None:
+        """Асинхронный метод для выполнения сканирования."""
+        scan_progress_attr = None
+        scan_url: Optional[str] = None
         try:
-            # Явно указываем типы для Pylance
+            # Получаем URL для сканирования
             url_input_attr = getattr(self, 'url_input', None)
-            if url_input_attr is None:
+            if not isinstance(url_input_attr, QLineEdit):
                 QMessageBox.warning(None, "Ошибка", "Компонент для ввода URL не найден")
                 return
 
-            url_input_widget: QLineEdit = url_input_attr
-            url_text: str = url_input_widget.text()
-            url: str = url_text.strip()
-            if not url:
+            scan_url = url_input_attr.text().strip()
+                
+            if not scan_url:
                 QMessageBox.warning(None, "Предупреждение", "Пожалуйста, введите URL для сканирования")
                 return
 
-            if not is_safe_url(url):
+            if not is_safe_url(scan_url):
                 QMessageBox.warning(None, "Предупреждение", "Введенный URL небезопасен")
                 return
                 
-            logger.info(f"Starting scan for URL: {url}")
-        except Exception as e:
-            logger.error(f"Error starting scan: {e}")
-            QMessageBox.critical(None, "Ошибка", f"Ошибка при начале сканирования: {e}")
+            logger.info(f"Starting scan for URL: {scan_url}")
 
-        # Определение типа сканирования
-        # Явно указываем типы для Pylance
-        scan_type_combo_attr = getattr(self, 'scan_type_combo', None)
-        if scan_type_combo_attr is None:
-            QMessageBox.warning(None, "Ошибка", "Компонент выбора типа сканирования не найден")
-            return
+            # Определение типа сканирования
+            scan_type_combo_attr = getattr(self, 'scan_type_combo', None)
+            if not isinstance(scan_type_combo_attr, QComboBox):
+                QMessageBox.warning(None, "Ошибка", "Компонент выбора типа сканирования не найден")
+                return
 
-        scan_type_combo: QComboBox = scan_type_combo_attr
-        scan_type_text: str = scan_type_combo.currentText()
-        scan_types = []
+            scan_type_text: str = scan_type_combo_attr.currentText()
+            scan_types: list[str] = []
 
-        if scan_type_text == "SQL-инъекции":
-            scan_types = ["sql"]
-        elif scan_type_text == "XSS":
-            scan_types = ["xss"]
-        elif scan_type_text == "CSRF":
-            scan_types = ["csrf"]
-        else:  # "Все"
-            scan_types = ["sql", "xss", "csrf"]
+            if scan_type_text == "SQL-инъекции":
+                scan_types = ["sql"]
+            elif scan_type_text == "XSS":
+                scan_types = ["xss"]
+            elif scan_type_text == "CSRF":
+                scan_types = ["csrf"]
+            else:  # "Все"
+                scan_types = ["sql", "xss", "csrf"]
 
-        # Показываем индикатор прогресса
-        # Явно указываем типы для Pylance
-        scan_progress_attr = getattr(self, 'scan_progress', None)
-        if scan_progress_attr is None:
-            QMessageBox.warning(None, "Ошибка", "Индикатор прогресса не найден")
-            return
-
-        scan_progress: QProgressBar = scan_progress_attr
-        scan_progress.setVisible(True)
-        scan_progress.setRange(0, 0)  # Неопределенный прогресс
-
-        # Запускаем сканирование
-        # Явно указываем типы для Pylance
-        try:
-            url_str: str = url
-            scan_types_list: List[str] = scan_types
+            # Показываем индикатор прогресса
+            scan_progress_attr = getattr(self, 'scan_progress', None)
+            if isinstance(scan_progress_attr, QProgressBar):
+                scan_progress_attr.setVisible(True)
+                scan_progress_attr.setRange(0, 0)  # Неопределенный прогресс
 
             # Запускаем асинхронное сканирование
-            import asyncio
-            asyncio.create_task(self._run_scan(url_str, scan_types_list))
-        except NameError as e:
-            logger.error(f"Variable not defined: {e}")
-            QMessageBox.warning(None, "Ошибка", "Внутренняя ошибка: переменная не определена")
+            await self._run_scan(scan_url, scan_types)
+
+        except Exception as e:
+            logger.error(f"Error during scan: {e}")
+            QMessageBox.critical(None, "Ошибка", f"Ошибка во время сканирования: {e}")
+        finally:
+            # Скрываем индикатор прогресса в любом случае
+            if isinstance(scan_progress_attr, QProgressBar):
+                scan_progress_attr.setVisible(False)
+                
+            if not scan_url:
+                QMessageBox.warning(None, "Предупреждение", "Пожалуйста, введите URL для сканирования")
+                return
+
+            if not is_safe_url(scan_url):
+                QMessageBox.warning(None, "Предупреждение", "Введенный URL небезопасен")
+                return
+                
+            logger.info(f"Starting scan for URL: {scan_url}")
+
 
     @asyncSlot()
-    async def _run_scan(self, url: str, scan_types: List[str]):
+    async def _run_scan(self, url: str, scan_types: List[str]) -> None:
         """Запуск сканирования в асинхронном режиме"""
         try:
             # Создаем контроллер сканирования
-            # Явно указываем типы для Pylance
             controller_params: Dict[str, Any] = {
                 'url': url,
                 'scan_types': scan_types,
@@ -513,7 +664,6 @@ class DashboardWindowHandlers:
             }
 
             # Фильтруем только те параметры, которые поддерживает конструктор
-            import inspect
             sig = inspect.signature(ScanController.__init__)
             valid_params = {k: v for k, v in controller_params.items() if k in sig.parameters}
 
@@ -593,8 +743,8 @@ class DashboardWindowHandlers:
             self.scan_tab.add_scan_results(results)
 
 
-class DashboardWindow(DashboardWindowBase, DashboardWindowUI, DashboardWindowHandlers, 
-                    DashboardStatsMixin, ExportMixin, ScanMixin, LogMixin, QWidget):
+class DashboardWindow(QWidget, DashboardWindowUI, DashboardWindowHandlers,
+                    ScanManagerStatsMixin, ExportMixin, ScanMixin, LogMixin, LogProcessorMixin):
     """
     Основное окно приложения - панель управления сканером
     Объединяет функциональность из нескольких классов-миксинов
@@ -606,22 +756,71 @@ class DashboardWindow(DashboardWindowBase, DashboardWindowUI, DashboardWindowHan
     _log_loaded_signal = pyqtSignal(str, int)
     _scan_result_signal = pyqtSignal(dict)
 
-    def __init__(self, user_id: int, username, user_model: Any, parent: Optional[QWidget] = None) -> None:
-        # Инициализация родительского класса QWidget
+    @property
+    def user_id(self) -> int:
+        """Получить ID пользователя."""
+        return self._user_id
+
+    @user_id.setter
+    def user_id(self, value: int) -> None:
+        """Установить ID пользователя."""
+        self._user_id = value
+
+    @property
+    def username(self) -> str:
+        """Получить имя пользователя."""
+        return self._username
+
+    @username.setter
+    def username(self, value: str) -> None:
+        """Установить имя пользователя."""
+        self._username = value
+
+    @property
+    def user_model(self) -> Any:
+        """Получить модель пользователя."""
+        return self._user_model
+
+    def __init__(self, user_id: int, username: str, user_model: Any, parent: Optional[QWidget] = None) -> None:
+        """
+        Инициализация окна панели управления
+        
+        Args:
+            user_id: ID пользователя
+            username: Имя пользователя
+            user_model: Модель данных пользователя
+            parent: Родительский виджет
+        """
+        # Инициализация базового класса QWidget первым
         QWidget.__init__(self, parent)
 
-        # Инициализация миксинов
-        DashboardStatsMixin.__init__(self)
+        # Инициализация основного лейаута
+        self.main_layout = QVBoxLayout()
+        self.setLayout(self.main_layout)
+        
+        # Инициализация вкладок
+        self.tabs = QTabWidget()
+        self.main_layout.addWidget(self.tabs)
+        self.tabs_initialized = False
+
+        # Сохраняем критичные атрибуты
+        self._user_id = user_id  # Используем защищенное имя
+        self._username = username
+        self._user_model = user_model
+        
+        # Инициализируем вкладки после установки всех атрибутов
+        self.initialize_tabs()
+
+        # Инициализация всех миксинов
+        ScanManagerStatsMixin.__init__(self)
         ExportMixin.__init__(self, user_id)
         ScanMixin.__init__(self, user_id)
         LogMixin.__init__(self)
+        LogProcessorMixin.__init__(self)
 
         # Базовые настройки
         self.error_handler = error_handler
-        self.setWindowTitle("Web Scanner - Control Panel")
-        self.user_id = user_id
-        self.user_model = user_model
-        self.username = username
+        self.setWindowTitle(f"Web Scanner - Control Panel [{username}]")
         self.avatar_path = "default_avatar.png"
         self.tabs_initialized = False
 
@@ -648,6 +847,9 @@ class DashboardWindow(DashboardWindowBase, DashboardWindowUI, DashboardWindowHan
 
         # Настройка UI
         self.setup_ui()
+        
+        if hasattr(self, 'stylesheet'):
+            self.setStyleSheet(self.stylesheet)
 
         # Загрузка политик
         self.load_policies_to_combobox()
@@ -708,32 +910,14 @@ class DashboardWindow(DashboardWindowBase, DashboardWindowUI, DashboardWindowHan
                 self.avatar_label.setText("👤")
                 self.avatar_label.setStyleSheet("font-size: 32px;")
 
-    def _process_log_content(self, content: str, line_count: int) -> None:
-        """Обработка загруженного содержимого лога"""
-        try:
-            # Проверяем, что line_count содержит ID пользователя
-            user_id = line_count
-            if user_id != self.user_id:
-                logger.warning(f"Log content for different user received: {user_id} != {self.user_id}")
-                return
-
-            # Обрабатываем содержимое лога
-            self._log_entries = []
-            for line in content.split('\n'):
-                if line.strip():
-                    # Создаем словарь для записи лога вместо простой строки
-                    log_entry = {
-                        'timestamp': '',  # Пустая метка времени
-                        'level': 'INFO',   # Уровень по умолчанию
-                        'message': line     # Содержимое строки
-                    }
-                    self._log_entries.append(log_entry)
-
-            # Обновляем UI
-            self._update_log_display()
-
-        except Exception as e:
-            logger.error(f"Error processing log content: {e}")
+    def _process_log_content(self, content: str, log_type: int) -> None:
+        """
+        Обработка загруженного содержимого лога
+        :param content: Содержимое лога
+        :param log_type: Тип лога (1 - системный, 2 - сканирование)
+        """
+        # Вызываем метод из миксина
+        super()._process_log_content(content, log_type)
 
     def _update_log_display(self) -> None:
         """Обновление отображения логов"""

@@ -221,7 +221,8 @@ class RegistrationWindow(QWidget):
     def load_styles(self):
         """Загрузка стилей из файла styles.qss"""
         try:
-            style_path = 'styles.qss'
+            from main import resource_path
+            style_path = resource_path("styles.qss")
             if os.path.exists(style_path):
                 with open(style_path, 'r', encoding='utf-8') as f:
                     self.setStyleSheet(f.read())

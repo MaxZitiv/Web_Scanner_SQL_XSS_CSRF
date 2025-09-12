@@ -22,7 +22,14 @@ class ScanTabWidget(ScanTabStatsMixin, QWidget):
         ScanTabStatsMixin.__init__(self, parent)
 
         self.user_id = user_id
-        self.scan_controller: ScanController = ScanController(user_id)
+        # Initialize with default values
+        self.scan_controller: ScanController = ScanController(
+            url="",  # Empty URL initially
+            scan_types=["sql", "xss", "csrf"],  # Default scan types
+            user_id=user_id,
+            max_depth=2,  # Default depth
+            max_concurrent=5  # Default concurrent scans
+        )
         self._scan_start_time = None
         self._total_urls = 0
         self._completed_urls = 0

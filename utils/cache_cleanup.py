@@ -45,8 +45,8 @@ class CacheCleanupManager:
         try:
             # Размер кэша безопасности
             from utils.security import get_security_cache_stats
-            security_stats: Dict[str, Any] = get_security_cache_stats()
-            sizes['security_cache'] = security_stats.get('cache_size', 0)
+            security_cache_size, security_stats_dict = get_security_cache_stats()
+            sizes['security_cache'] = security_cache_size
         except Exception as e:
             logger.warning(f"Error getting security cache size: {e}")
             sizes['security_cache'] = 0

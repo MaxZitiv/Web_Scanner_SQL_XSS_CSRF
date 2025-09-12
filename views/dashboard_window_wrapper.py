@@ -1,7 +1,7 @@
 from typing import Any, Optional
 from PyQt5.QtWidgets import QWidget
 from utils.logger import logger
-from views.dashboard_window_main import DashboardWindow
+from views.dashboard_window_optimized import DashboardWindow
 
 
 class DashboardWindowWrapper(DashboardWindow):

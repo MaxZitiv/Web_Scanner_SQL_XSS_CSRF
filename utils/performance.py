@@ -1,6 +1,7 @@
 import time
 import functools
 import threading
+from PyQt5.QtCore import QCoreApplication, QThread
 from typing import Callable, Any, Dict, List, Optional
 from collections import OrderedDict
 import psutil
@@ -70,7 +71,7 @@ class PerformanceMonitor:
         self._system_info_ttl: int = 5  # 5 секунд
     
     @staticmethod
-    def start_timer(operation: str) -> float:
+    def start_timer() -> float:
         """Начинает отсчет времени для операции"""
         return time.time()
     
@@ -84,7 +85,7 @@ class PerformanceMonitor:
         return duration
     
     @staticmethod
-    async def start_async_timer(operation: str) -> float:
+    async def start_async_timer() -> float:
         """Начинает отсчет времени для асинхронной операции"""
         return time.time()
     
@@ -161,9 +162,18 @@ def measure_time(func: Callable[..., Any]) -> Callable[..., Any]:
     """Декоратор для измерения времени выполнения функции"""
     @functools.wraps(func)
     def wrapper(*args: Any, **kwargs: Any) -> Any:
-        start_time = performance_monitor.start_timer(func.__name__)
+        app = QCoreApplication.instance()
+        if app is not None and not app.thread() is QThread.currentThread():
+            logger.error(f"UI operation {func.__name__} must be in main thread")
+        start_time = time.time()
         try:
-            return func(*args, **kwargs)
+            result = func(*args, **kwargs)
+            end_time = time.time()
+            logger.info(f"{func.__name__} took {end_time - start_time:.2f} seconds")
+            return result
+        except Exception as e:
+            logger.error(f"Error in {func.__name__}: {e}")
+            raise e
         finally:
             performance_monitor.end_timer(func.__name__, start_time)
     return wrapper
@@ -172,7 +182,7 @@ def measure_async_time(func: Callable[..., Any]) -> Callable[..., Any]:
     """Декоратор для измерения времени выполнения асинхронной функции"""
     @functools.wraps(func)
     async def wrapper(*args: Any, **kwargs: Any) -> Any:
-        start_time = await performance_monitor.start_async_timer(func.__name__)
+        start_time = await performance_monitor.start_async_timer()
         try:
             return await func(*args, **kwargs)
         finally:

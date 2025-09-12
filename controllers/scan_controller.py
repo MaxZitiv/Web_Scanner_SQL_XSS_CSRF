@@ -7,17 +7,57 @@ from utils.security import is_safe_url, validate_input_length
 from utils.error_handler import error_handler
 
 class ScanController:
-    def __init__(self, user_id: int, username: Optional[str] = None):
+    def __init__(self, url: str, scan_types: List[str], user_id: int, max_depth: int = 2,
+                 max_concurrent: int = 5, timeout: int = 30, username: Optional[str] = None):
         """
         Контроллер для управления сканированием.
+        :param url: URL для сканирования
+        :param scan_types: Список типов сканирования
         :param user_id: ID пользователя
+        :param max_depth: Максимальная глубина сканирования
+        :param max_concurrent: Максимальное количество параллельных запросов
+        :param timeout: Таймаут в секундах
         :param username: Имя пользователя
         """
+        self.url: str = url
+        self.scan_types: List[str] = scan_types
         self.user_id: int = user_id
+        self.max_depth: int = max_depth
+        self.max_concurrent: int = max_concurrent
+        self.timeout: int = timeout
         self.username: Optional[str] = username
         self.active_scans: Dict[str, ScanWorker] = {}
-        self.max_active_scans: int = 5  # Максимальное количество активных сканирований
-        logger.info(f'Initialized Async ScanController for user {self.user_id}')
+        self.max_active_scans: int = max_concurrent
+        logger.info(f'Initialized Async ScanController for user {self.user_id} to scan {url}')
+
+    async def scan(self) -> Dict[str, Any]:
+        """Запуск сканирования и получение результатов."""
+        try:
+            # Создаем и запускаем новый ScanWorker
+            worker = ScanWorker(
+                url=self.url,
+                scan_types=self.scan_types,
+                user_id=self.user_id,
+                max_depth=self.max_depth,
+                max_concurrent=self.max_concurrent,
+                timeout=self.timeout
+            )
+
+            # Сохраняем в активных сканированиях
+            scan_id = get_local_timestamp()
+            self.active_scans[scan_id] = worker
+
+            # Запускаем сканирование и ждем результатов
+            results = await worker.run_scan()
+
+            # Удаляем из активных сканирований
+            del self.active_scans[scan_id]
+
+            return results
+
+        except Exception as e:
+            logger.error(f"Error during scan: {e}")
+            raise
 
     def _validate_scan_parameters(self, url: str, scan_types: List[str], max_depth: int, 
                                  max_concurrent: int, timeout: int) -> Tuple[bool, str]:
@@ -104,7 +144,7 @@ class ScanController:
                     "URL может быть небезопасным. Убедитесь, что вы сканируете только свои собственные сайты.")
             
             # Начинаем мониторинг производительности
-            scan_start_time = performance_monitor.start_timer("scan_operation")
+            scan_start_time = performance_monitor.start_timer()
             
             # Логируем начало сканирования
             logger.info(f"Starting scan for URL: {url} with types: {scan_types}")
@@ -163,12 +203,12 @@ class ScanController:
             scan_types_lower: List[str] = []
             for scan_type in scan_types:
                 # scan_type всегда имеет тип str из-за аннотации List[str]
-                    if 'sql' in scan_type.lower():
-                        scan_types_lower.append('sql')
-                    elif 'xss' in scan_type.lower():
-                        scan_types_lower.append('xss')
-                    elif 'csrf' in scan_type.lower():
-                        scan_types_lower.append('csrf')
+                if 'sql' in scan_type.lower():
+                    scan_types_lower.append('sql')
+                elif 'xss' in scan_type.lower():
+                    scan_types_lower.append('xss')
+                elif 'csrf' in scan_type.lower():
+                    scan_types_lower.append('csrf')
             
             # Если scan_types не определены, используем все типы
             if not scan_types_lower:

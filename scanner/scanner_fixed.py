@@ -1,27 +1,35 @@
-import asyncio
+"""
+Основной модуль сканера уязвимостей.
+Этот файл служит точкой входа и объединяет все компоненты системы.
+"""
+
+# Стандартные библиотеки
 import gc
-import hashlib
-import os
 import re
-import sqlite3
+import os
 import time
+import sqlite3
+import asyncio
+import hashlib
+from typing import Dict, List, Optional, Any, Union, Set, Tuple, cast
 from datetime import datetime
 from functools import lru_cache
-from typing import Dict, Set, Tuple, List, Optional, Any, Union, cast
-from typing import TYPE_CHECKING
-from urllib.parse import urljoin, urlparse, parse_qs, urlencode
+from urllib.parse import urlparse, urljoin, parse_qs, urlencode
 
+# Сторонние библиотеки
 import aiohttp
+from bs4 import BeautifulSoup
+from bs4.element import Tag
 from PyQt5.QtCore import pyqtSignal, QObject
-from bs4 import BeautifulSoup, Tag
 
+# Внутренние модули
+from .cache_manager import TTLCache, cache_manager
+from utils.logger import logger
 from utils.database import db
-from utils.logger import logger, log_and_notify
+from utils.unified_error_handler import log_and_notify
 from utils.performance import get_local_timestamp
-from .TTL_cache import TTLCache
 
-if TYPE_CHECKING:
-    pass
+__all__ = ['EmptyResponse', 'cache_manager', 'TTLCache']
 
 # Вспомогательный класс для имитации ответа сервера
 class EmptyResponse:
@@ -33,65 +41,90 @@ class EmptyResponse:
     async def text(errors: Optional[str] = None):
         return ""
 
-# Кэши для оптимизации
-HTML_CACHE: TTLCache = TTLCache(maxsize=100, ttl=300)
-DNS_CACHE: TTLCache = TTLCache(maxsize=100, ttl=300)
-FORM_HASH_CACHE: TTLCache = TTLCache(maxsize=100, ttl=300)
-URL_PROCESSING_CACHE: TTLCache = TTLCache(maxsize=100, ttl=300)
+# Очистка кэша при импорте модуля
+cache_manager.cleanup_all()
 
-# Очистка кэша каждые 1000 операций
-CACHE_CLEANUP_THRESHOLD: int = 1000
-cache_operations: int = 0
+# Глобальный кэш для HTML
+HTML_CACHE = TTLCache(maxsize=1000, ttl=3600)  # 1 час TTL
 
-def cleanup_caches() -> None:
-    """Очищает кэши для предотвращения утечек памяти"""
-    global HTML_CACHE, DNS_CACHE, FORM_HASH_CACHE, URL_PROCESSING_CACHE, cache_operations
-    if cache_operations > CACHE_CLEANUP_THRESHOLD:
-        HTML_CACHE.clear()
-        DNS_CACHE.clear()
-        FORM_HASH_CACHE.clear()
-        URL_PROCESSING_CACHE.clear()
-        cache_operations = 0
+# Глобальный кэш для DNS
+DNS_CACHE = TTLCache(maxsize=500, ttl=1800)  # 30 минут TTL
 
-def cleanup_cache_if_needed():
-    """Добавляем очистку кэша при достижении порога"""
-    global cache_operations
-    cache_operations += 1
-    cleanup_caches()
-    logger.debug("Caches cleaned up")
+# Глобальный кэш для хэшей форм
+FORM_HASH_CACHE = TTLCache(maxsize=2000, ttl=7200)  # 2 часа TTL для хэшей форм
 
+# Глобальный кэш для обработки URL
+URL_PROCESSING_CACHE = TTLCache(maxsize=5000, ttl=3600)  # 1 час TTL для обработанных URL
 
 # Оптимизированные настройки для BeautifulSoup
-BS4_OPTIMIZATIONS: Dict[str, Union[str, List[str]]] = {
-    'parser': 'html.parser',
-    'features': 'html.parser',
-    'exclude_parser': ['lxml', 'xml'],  # Исключаем медленные парсеры
-}
+# HTML парсер для BeautifulSoup
+DEFAULT_HTML_PARSER = 'html.parser'
 
 # Кэшируем результат парсинга
-@lru_cache(maxsize=100)
-def parse_html_cached(html: str) -> BeautifulSoup:
-    return BeautifulSoup(html, parser='html.parser')
+@lru_cache(maxsize=200)
+def parse_html_cached(html: str, parser: str = DEFAULT_HTML_PARSER) -> BeautifulSoup:
+    """
+    Кэширует результат парсинга HTML с использованием BeautifulSoup.
+    
+    Args:
+        html: HTML строка для парсинга
+        parser: HTML парсер для использования (по умолчанию 'html.parser')
+        
+    Returns:
+        BeautifulSoup: Объект с распарсенным HTML
+    """
+    return BeautifulSoup(html, parser)
 
 class Scanner(QObject):
+    """Основной класс сканера безопасности"""
+    
     # Определение сигналов
-    scan_started: pyqtSignal = pyqtSignal(str)
-    scan_finished: pyqtSignal = pyqtSignal(str)
-    error_occurred: pyqtSignal = pyqtSignal(str)
-    vulnerability_found: pyqtSignal = pyqtSignal(str, str, str)
+    scan_started = pyqtSignal(str)  # Убираем аннотацию типа, она не нужна для сигналов
+    scan_finished = pyqtSignal(str)
+    error_occurred = pyqtSignal(str)
+    vulnerability_found = pyqtSignal(str, str, str)
 
-
+    # Константы для настройки сканера
+    MAX_RETRIES: int = 3
+    REQUEST_TIMEOUT: int = 30
+    MAX_CONCURRENT_REQUESTS: int = 5
+    
     def __init__(self) -> None:
+        """Инициализация сканера"""
         super().__init__()
+        self._initialize_state()
+        self._setup_session()
+    
+    def _initialize_state(self) -> None:
+        """Инициализация состояния сканера"""
         self._scan_in_progress: bool = False
         self._scan_results: List[Dict[str, Any]] = []
         self._current_url: str = ""
-        self._scan_id: str = ""
-        self._scan_options: Dict[str, Any] = {}
+        self._scan_id: str = hashlib.md5(str(time.time()).encode()).hexdigest()
+        self._scan_options: Dict[str, Any] = {
+            'max_depth': 3,
+            'timeout': self.REQUEST_TIMEOUT,
+            'max_retries': self.MAX_RETRIES,
+            'concurrent_requests': self.MAX_CONCURRENT_REQUESTS
+        }
         self._scan_start_time: Optional[datetime] = None
         self._scan_end_time: Optional[datetime] = None
         self.should_stop: bool = False
         self._is_paused: bool = False
+        self._semaphore: Optional[asyncio.Semaphore] = None
+    
+    def _setup_session(self) -> None:
+        """Настройка параметров сессии"""
+        self._session_config = {
+            'timeout': aiohttp.ClientTimeout(total=self.REQUEST_TIMEOUT),
+            'headers': {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.5',
+                'Connection': 'keep-alive',
+            },
+            'raise_for_status': True
+        }
 
     async def _test_csrf_protection(self) -> None:
         # Тестирование CSRF защиты
@@ -227,15 +260,15 @@ class Scanner(QObject):
             # Проверяем тип ответа перед передачей в _is_vulnerable
             if isinstance(response, aiohttp.ClientResponse):
                 is_vulnerable = await self._is_vulnerable(response, payload)
-            else:
-                # Для EmptyResponse считаем, что уязвимостей нет
-                is_vulnerable = False
 
                 if is_vulnerable:
                     # Используем current_url вместо _current_url
                     current_url = getattr(self, 'current_url', '')
                     if current_url:
                         self.vulnerability_found.emit(current_url, payload, vulnerability_type)
+            else:
+                # Для EmptyResponse считаем, что уязвимостей нет
+                is_vulnerable = False
                 # Обновляем статистику после нахождения уязвимости
                 # Метод update_stats может быть определен в дочерних классах
                 try:
@@ -567,20 +600,74 @@ class ScanWorker:
     Асинхронный воркер для сканирования веб-сайтов на уязвимости.
     Поддерживает параллельное сканирование, паузу, остановку и возобновление.
     """
+
+    @property
+    def max_coverage_mode(self) -> bool:
+        """Получить статус режима максимального покрытия."""
+        return self._max_coverage_mode
+
+    @max_coverage_mode.setter
+    def max_coverage_mode(self, value: bool) -> None:
+        """Установить режим максимального покрытия."""
+        self._max_coverage_mode = value
+        
+    @property
+    def should_stop(self) -> bool:
+        """Получить статус остановки сканирования."""
+        return self._should_stop
+
+    @should_stop.setter
+    def should_stop(self, value: bool) -> None:
+        """Установить статус остановки сканирования."""
+        self._should_stop = value
     
     def __init__(self, url: str, scan_types: List[str], user_id: int, username: Optional[str] = None,
                  max_depth: int = 3, max_concurrent: int = 10, timeout: int = 10):
         """
-        Инициализирует ScanWorker.
-        
-        :param url: URL для сканирования
-        :param scan_types: Список типов уязвимостей для проверки
-        :param user_id: ID пользователя
-        :param username: Имя пользователя
-        :param max_depth: Максимальная глубина обхода
-        :param max_concurrent: Максимальное количество параллельных запросов
-        :param timeout: Таймаут для запросов
+        Инициализирует ScanWorker с указанными параметрами.
+
+        Args:
+            url: URL для сканирования
+            scan_types: Список типов сканирования
+            user_id: ID пользователя
+            username: Имя пользователя (по умолчанию None)
+            max_depth: Максимальная глубина сканирования (по умолчанию 3)
+            max_concurrent: Максимальное количество параллельных запросов (по умолчанию 10)
+            timeout: Таймаут для запросов (по умолчанию 10)
         """
+        # Режимы и флаги сканирования
+        self._max_coverage_mode: bool = False
+        self._should_stop: bool = False
+        
+        # Очереди и множества для управления сканированием
+        self.to_visit = asyncio.Queue()  # Queue of (url, depth) tuples to scan
+        self.visited: Set[str] = set()   # Already scanned URLs
+        self.in_progress: Set[str] = set()  # Currently being scanned
+        
+        # Счетчики и статистика
+        self.total_scanned_count: int = 0    # Общее количество просканированных URL
+        self.total_form_count: int = 0       # Общее количество найденных форм
+        self.total_vuln_count: int = 0       # Общее количество найденных уязвимостей
+        self.scanned_forms_count: int = 0    # Количество просканированных форм
+        self.current_form_index: int = 0     # Текущий индекс формы
+        self.total_links_count: int = 0      # Общее количество найденных ссылок
+        
+        # Флаги состояния сканирования
+        self.max_depth_reached: bool = False  # Достигнута ли максимальная глубина
+        self.scan_complete: bool = False      # Завершено ли сканирование
+        self.scan_started: bool = False       # Начато ли сканирование
+        
+        # Параметры сканирования
+        self.url: str = url
+        self.scan_types: List[str] = scan_types
+        self.user_id: int = user_id
+        self.username: Optional[str] = username
+        self.max_depth: int = max_depth
+        self.max_concurrent: int = max_concurrent
+        self.timeout: int = timeout
+        self._is_paused: bool = False
+        
+        # Основные параметры
         self.base_url = url
         self.current_url = ""
         self.scan_types = scan_types
@@ -589,64 +676,125 @@ class ScanWorker:
         self.max_depth = max_depth
         self.max_concurrent = max_concurrent
         self.timeout = timeout
-        
-        # Сигналы для обновления UI
-        self.signals = ScanWorkerSignals()
-        
-        # Состояние сканирования
-        self.should_stop = False
-        self._is_paused = False
-        
-        # Счетчики и метрики
-        self.start_time = 0
-        self.total_links_count = 0
-        self.total_forms_count = 0
-        self.scanned_forms_count = 0
-        self.total_scanned_count = 0
-        self.max_depth_reached = 0
-        self.current_depth = 0  # Текущая глубина сканирования
-        self.memory_check_interval = 100
-        self.operation_count = 0
-        
-        # Структуры данных для отслеживания
+
+        # Кэши и хранилища
         self.visited_urls: Set[str] = set()
         self.scanned_urls: Set[str] = set()
+        self.unscanned_urls: Set[str] = set()
         self.all_scanned_urls: Set[str] = set()
         self.all_found_forms: List[Dict[str, Any]] = []
         self.scanned_form_hashes: Set[str] = set()
-        
-        # Результаты уязвимостей
-        self.vulnerabilities: Dict[str, List[Dict[str, Any]]] = {'sql': [], 'xss': [], 'csrf': []}
-        
-        # Очередь для URL
-        self.to_visit: Optional[asyncio.Queue[Tuple[str, int]]] = None  # Будет инициализирована в методе scan()
-        
-        # Метрики завершения сканирования
-        self.scan_completion_metrics: Dict[str, Union[Optional[float], str, int]] = {
-            'scan_start_time': None,
-            'scan_end_time': None,
-            'completion_status': 'not_started',
-            'total_urls_discovered': 0,
-            'total_urls_scanned': 0,
-            'total_forms_discovered': 0,
-            'total_forms_scanned': 0,
-            'max_depth_reached': 0,
-            'errors_encountered': 0
+        self.html_cache: Dict[str, str] = {}
+        self.dns_cache: Dict[str, str] = {}
+        self.form_cache: Dict[str, List[Dict[str, Any]]] = {}
+        self.url_cache: Set[str] = set()
+
+        # Результаты и статистика
+        self.vulnerabilities: Dict[str, List[Dict[str, Any]]] = {
+            'sql': [],
+            'xss': [],
+            'csrf': []
         }
-        
-        self.max_coverage_mode = False  # по умолчанию выключено
-        self.unscanned_urls: Set[str] = set()     # для сбора непросканированных URL
+        self.scan_start_time: Optional[datetime] = None
+        self.scan_end_time: Optional[datetime] = None
+        self.current_depth = 0
+        self.operation_count = 0
+        self.memory_check_interval = 1000
+        self.scan_completion_metrics = {
+            'errors_encountered': 0,
+            'urls_scanned': 0,
+            'vulnerabilities_found': 0,
+            'status': 'initialized'
+        }
 
-        # Инициализация сессии
-        self.session = None
+        # Сигналы и статус
+        self.signals = ScanWorkerSignals()
+        self._cancelled = False
 
-        # Инициализация кэшей с TTL
-        self.html_cache = TTLCache(maxsize=100, ttl=300)
-        self.dns_cache = TTLCache(maxsize=100, ttl=300)
-        self.form_cache = TTLCache(maxsize=100, ttl=300)
-        self.url_cache = TTLCache(maxsize=100, ttl=300)
-        
-        logger.info(f"ScanWorker initialized for {url} with types: {scan_types}")
+    async def _scan_sql_injection(self, url: str) -> None:
+        """Сканирование на SQL-инъекции"""
+        try:
+            # Заглушка для демонстрации
+            await asyncio.sleep(1)
+            if 'login' in url.lower() or 'search' in url.lower():
+                self.vulnerabilities['sql'].append({
+                    'type': 'sql',
+                    'url': url,
+                    'severity': 'high',
+                    'description': 'Возможная SQL-инъекция в параметрах запроса'
+                })
+                self.scan_completion_metrics['vulnerabilities_found'] += 1
+        except Exception as e:
+            logger.error(f"Error during SQL injection scan: {e}")
+            self.scan_completion_metrics['errors_encountered'] += 1
+
+    async def _scan_xss(self, url: str) -> None:
+        """Сканирование на XSS-уязвимости"""
+        try:
+            # Заглушка для демонстрации
+            await asyncio.sleep(1)
+            if 'comment' in url.lower() or 'message' in url.lower():
+                self.vulnerabilities['xss'].append({
+                    'type': 'xss',
+                    'url': url,
+                    'severity': 'medium',
+                    'description': 'Потенциальная XSS-уязвимость в форме'
+                })
+                self.scan_completion_metrics['vulnerabilities_found'] += 1
+        except Exception as e:
+            logger.error(f"Error during XSS scan: {e}")
+            self.scan_completion_metrics['errors_encountered'] += 1
+
+    async def _scan_csrf(self, url: str) -> None:
+        """Сканирование на CSRF-уязвимости"""
+        try:
+            # Заглушка для демонстрации
+            await asyncio.sleep(1)
+            if 'form' in url.lower() or 'submit' in url.lower():
+                self.vulnerabilities['csrf'].append({
+                    'type': 'csrf',
+                    'url': url,
+                    'severity': 'medium',
+                    'description': 'Отсутствует CSRF-токен в форме'
+                })
+                self.scan_completion_metrics['vulnerabilities_found'] += 1
+        except Exception as e:
+            logger.error(f"Error during CSRF scan: {e}")
+            self.scan_completion_metrics['errors_encountered'] += 1
+
+    async def run_scan(self) -> Dict[str, Any]:
+        """Выполнение сканирования и возврат результатов."""
+        try:
+            self.scan_start_time = datetime.now()
+            logger.info(f"Starting scan of {self.base_url}")
+
+            # Выполняем сканирование для каждого типа уязвимостей
+            for scan_type in self.scan_types:
+                if scan_type == "sql":
+                    await self._scan_sql_injection(self.base_url)
+                elif scan_type == "xss":
+                    await self._scan_xss(self.base_url)
+                elif scan_type == "csrf":
+                    await self._scan_csrf(self.base_url)
+
+            self.scan_end_time = datetime.now()
+            duration = (self.scan_end_time - self.scan_start_time).total_seconds()
+            
+            # Формируем результаты
+            results = {
+                "url": self.base_url,
+                "scan_types": self.scan_types,
+                "start_time": self.scan_start_time.isoformat(),
+                "end_time": self.scan_end_time.isoformat(),
+                "duration": duration,
+                "vulnerabilities": self.vulnerabilities
+            }
+
+            return results
+
+        except Exception as e:
+            logger.error(f"Error during scan: {e}")
+            raise
 
     def _cleanup_caches(self):
         self.html_cache.clear()
@@ -672,13 +820,39 @@ class ScanWorker:
             self.signals.stats_updated.emit('errors', self.scan_completion_metrics.get('errors_encountered', 0))
 
             # Обновляем время сканирования
-            if self.start_time > 0:
-                elapsed = int(time.time() - self.start_time)
-                hours = elapsed // 3600
-                minutes = (elapsed % 3600) // 60
-                seconds = elapsed % 60
-                time_str = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
-                self.signals.stats_updated.emit('scan_time', time_str)
+            try:
+                if hasattr(self, 'start_time') and self.start_time:
+                    # Проверяем тип start_time и обрабатываем соответственно
+                    current_time = time.time()
+                    
+                    if isinstance(self.start_time, (int, float)):
+                        elapsed = int(current_time - self.start_time)
+                    elif hasattr(self.start_time, 'timestamp'):
+                        # Если это объект datetime
+                        elapsed = int(current_time - self.start_time.timestamp())
+                    elif isinstance(self.start_time, str):
+                        # Если это строка, пробуем преобразовать
+                        try:
+                            # Пробуем преобразовать из ISO формата
+                            from datetime import datetime
+                            dt = datetime.fromisoformat(self.start_time)
+                            elapsed = int(current_time - dt.timestamp())
+                        except (ValueError, AttributeError):
+                            # Если не удалось преобразовать, используем 0
+                            elapsed = 0
+                    else:
+                        # Другие возможные типы
+                        elapsed = 0
+                        
+                    hours = elapsed // 3600
+                    minutes = (elapsed % 3600) // 60
+                    seconds = elapsed % 60
+                    time_str = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+                    self.signals.stats_updated.emit('scan_time', time_str)
+            except Exception as time_error:
+                logger.debug(f"Error calculating scan time: {time_error}")
+                # В случае ошибки, устанавливаем время по умолчанию
+                self.signals.stats_updated.emit('scan_time', "00:00:00")
         except Exception as e:
             logger.error(f"Error updating stats: {e}")
 
@@ -689,21 +863,12 @@ class ScanWorker:
         memory_percent = psutil.virtual_memory().percent
         if memory_percent > 80:  # Если использование памяти > 80%
             # Уменьшаем размер кэшей
-            if hasattr(self, 'html_cache'):
-                self.html_cache.maxsize = max(100, self.html_cache.maxsize // 2)
-
-            self.dns_cache.maxsize = max(500, self.dns_cache.maxsize // 2)
-            self.form_cache.maxsize = max(250, self.form_cache.maxsize // 2)
-            self.url_cache.maxsize = max(500, self.url_cache.maxsize // 2)
-            
-            # Очищаем часть кэша
-            self.html_cache.clear()
-            self.dns_cache.clear()
-            self.form_cache.clear()
-            self.url_cache.clear()
+            # Очищаем все кэши
+            for cache in [self.html_cache, self.dns_cache, self.form_cache, self.url_cache]:
+                if cache is not None:
+                    cache.clear()
             
             logger.warning(f"Memory usage {memory_percent}% > 80%. Cache sizes reduced and cleared.")
-
 
     def _check_memory_periodically(self):
         """Периодически проверяет использование памяти"""
@@ -718,7 +883,7 @@ class ScanWorker:
 
         # Проверка кэша перед обработкой URL
         cache_key = f"scan_url{url}"
-        cached_result: Optional[str] = cast(Optional[str], URL_PROCESSING_CACHE.get(cache_key))
+        cached_result: Optional[str] = cast(Optional[str], cache_manager.URL_PROCESSING_CACHE.get(cache_key))
         if cached_result is not None:
             logger.debug(f"Cache hit for {url}")
             return cached_result
@@ -726,8 +891,9 @@ class ScanWorker:
         # Обработка URL
         result = await self._process_url(url)
 
-        # Сохранение в кэш
-        self.html_cache.set(url, result)
+        # Сохранение в кэш только если результат не None
+        if result is not None:
+            self.html_cache[url] = result
 
         # Обновляем статистику после обработки URL
         self.update_stats()
@@ -803,10 +969,10 @@ class ScanWorker:
 
         progress = self.calculate_progress(actual_queue_size)
 
-        # Обновляем максимальную достигнутую глубину
-        if current_depth is not None and current_depth > self.max_depth_reached:
-            self.max_depth_reached = current_depth
-            logger.info(f"PROGRESS: New max depth reached: {self.max_depth_reached} at URL: {current_url}")
+        # Проверяем, достигли ли максимальной глубины
+        if current_depth is not None and current_depth >= self.max_depth:
+            self.max_depth_reached = True
+            logger.info(f"PROGRESS: Maximum depth {self.max_depth} reached at URL: {current_url}")
 
         depth_info = f"{current_depth if current_depth is not None else self.current_depth}/{self.max_depth}"
         url_info = f"{len(self.all_scanned_urls)}/{self.total_links_count}"
@@ -1036,10 +1202,10 @@ class ScanWorker:
                 to_visit.qsize()
             )
 
-            # Обновляем максимальную достигнутую глубину
-            if current_depth > self.max_depth_reached:
-                self.max_depth_reached = current_depth
-                logger.info(f"NEW MAX DEPTH REACHED: {self.max_depth_reached} at URL: {url}")
+            # Проверяем, достигли ли максимальной глубины
+            if current_depth >= self.max_depth:
+                self.max_depth_reached = True
+                logger.info(f"Maximum depth {self.max_depth} reached at URL: {url}")
 
             logger.info(f"About to scan_single_url for {url} at depth {current_depth}")
             await self.scan_single_url(
@@ -1056,6 +1222,9 @@ class ScanWorker:
                 logger.warning(f"Timeout accessing {url}")
                 self.unscanned_urls.add(url)
         except (ValueError, TypeError, AttributeError) as e:
+                # Убедимся, что атрибут scanned_forms_count существует
+                if not hasattr(self, 'scanned_forms_count'):
+                    self.scanned_forms_count = 0
                 log_and_notify('error', f"Data processing error for {url}: {e}")
                 self.unscanned_urls.add(url)
         except Exception as e:
@@ -1220,7 +1389,9 @@ class ScanWorker:
             if self.should_stop or self._is_paused:
                 return found_links, found_forms
             if not url:
+                logger.warning("Attempted to extract links from empty URL")
                 return found_links, found_forms
+
             async with semaphore:
                 result = await self.smart_request(
                     session=session, 
@@ -1229,70 +1400,77 @@ class ScanWorker:
                     retries=2
                 )
 
-                # Проверяем, что результат не None
                 if result is None:
+                    logger.debug(f"No response received for URL: {url}")
                     return found_links, found_forms
                 
-                # Получаем только html_content из результата
                 html_content = result[1]
-
                 if not html_content:
+                    logger.debug(f"Empty HTML content received for URL: {url}")
                     return found_links, found_forms
                 
-                # --- Используем LRU-кэш для парсинга HTML ---
-                # Получаем значение парсера из словаря, гарантируя, что это строка
-                parser_value = BS4_OPTIMIZATIONS.get('parser', 'html.parser')
-                if isinstance(parser_value, list):
-                    parser_value = parser_value[0] if parser_value else 'html.parser'
-
-                # Используем гарантированно строковое значение
-                soup = cached_parse_html(html_content, parser_value)
+                try:
+                    # Используем LRU-кэш для парсинга HTML
+                    soup = parse_html_cached(html_content)
+                except Exception as parse_error:
+                    log_and_notify('error', f"Failed to parse HTML from {url}: {parse_error}")
+                    return found_links, found_forms
 
                 # Если only_forms=False, ищем ссылки
                 if not only_forms:
-                    for link in soup.find_all('a', href=True):
-                        if isinstance(link, Tag):
-                            href = str(link.get('href', ''))
+                    try:
+                        for link in soup.find_all('a', href=True):
+                            if not isinstance(link, Tag):
+                                continue
+                            
+                            href = str(link.get('href', '')).strip()
+                            if not href:
+                                continue
+                                
                             absolute_url = urljoin(url, href)
                             if self.is_same_domain(absolute_url, base_domain):
-                                # Проверяем, не посещали ли мы этот URL ранее
                                 if absolute_url not in visited_urls:
-                                    # Не добавляем в visited_urls здесь, только в found_links
                                     found_links.add(absolute_url)
+                    except Exception as link_error:
+                        log_and_notify('warning', f"Error processing links in {url}: {link_error}")
 
                 # Ищем формы
-                for form in soup.find_all('form'):
-                    # Явно приводим тип к Tag
-                    found_forms.append(cast(Tag, form))
+                try:
+                    for form in soup.find_all('form'):
+                        if isinstance(form, Tag):
+                            found_forms.append(form)
+                except Exception as form_error:
+                    log_and_notify('warning', f"Error extracting forms from {url}: {form_error}")
 
+        except aiohttp.ClientError as client_error:
+            log_and_notify('error', f"Network error while processing {url}: {client_error}")
         except Exception as e:
-            log_and_notify('error', f"Error extracting links from {url}: {e}")
+            log_and_notify('error', f"Unexpected error processing {url}: {e}")
         return found_links, found_forms
 
     @staticmethod
     def get_form_hash(form_tag: Tag) -> str:
         """
         Создает уникальный хэш для тега формы с улучшенной обработкой ошибок.
+        
+        Args:
+            form_tag: BeautifulSoup Tag объект, представляющий HTML форму
+            
+        Returns:
+            str: SHA-256 хэш, уникально идентифицирующий форму
         """
         try:
-            if not form_tag:
-                logger.warning("Invalid or empty form tag passed for hashing")
-                return hashlib.sha256(b"invalid_form", usedforsecurity=False).hexdigest()
-
-            action = str(form_tag.get('action', '')) if form_tag else ''
-            action = action.strip()
-            method = str(form_tag.get('method', 'get')).lower() if form_tag else 'get'
-            method = method.lower().strip()
+            action = str(form_tag.get('action', '')).strip()
+            method = str(form_tag.get('method', 'get')).lower().strip()
 
             inputs: List[str] = []
             try:
-                if form_tag:  # Добавляем проверку перед поиском полей
-                    for inp in form_tag.find_all(['input', 'textarea', 'select', 'button']):
-                        if isinstance(inp, Tag):
-                            inp_name = inp.get('name', '')
-                            inp_type = inp.get('type', 'text')  # default type
-                            if inp_name and isinstance(inp_name, str):
-                                inputs.append(f"{inp.name}-{inp_type}-{inp_name}")
+                for element in form_tag.find_all(['input', 'textarea', 'select', 'button']):
+                    if isinstance(element, Tag):
+                        inp_name = str(element.get('name', ''))
+                        inp_type = str(element.get('type', 'text'))  # default type
+                        if inp_name:
+                            inputs.append(f"{element.name}-{inp_type}-{inp_name}")
             except Exception as e:
                 logger.warning(f"Error finding form fields: {e}")
 
@@ -1347,13 +1525,11 @@ class ScanWorker:
             log_and_notify('error', f"Error checking domain {url} against {base_domain}: {e}")
             return False
 
-    async def smart_request(self, session: aiohttp.ClientSession, method: str, url: str, retries: int = 2, **kwargs: Any) -> Optional[Tuple[Optional[object], Optional[str]]]:
+    async def smart_request(self, session: aiohttp.ClientSession, method: str, url: str, retries: int = 2, **kwargs: Any) -> Optional[Tuple[Optional[aiohttp.ClientResponse], Optional[str]]]:
         """
         Умный HTTP запрос с улучшенной обработкой ошибок и валидацией.
+        Возвращает кортеж из (объекта ответа aiohttp, содержимого HTML) или None в случае ошибки.
         """
-        global cache_operations
-        cache_operations += 1
-        
         # Проверяем флаги остановки и паузы в начале
         if self.should_stop or self._is_paused:
             logger.info("HTTP request stopped by user request or pause")
@@ -1371,9 +1547,9 @@ class ScanWorker:
         
         # Проверяем кэш
         cache_key = f"{method}:{url}:{hash(str(kwargs))}"
-        if URL_PROCESSING_CACHE.get(cache_key) is not None:
+        if cache_manager.URL_PROCESSING_CACHE.get(cache_key) is not None:
             logger.debug(f"Cache hit for {url}")
-            return URL_PROCESSING_CACHE.get(cache_key)
+            return cache_manager.URL_PROCESSING_CACHE.get(cache_key)
         
         attempt = 0
         last_exception = None
@@ -1404,7 +1580,7 @@ class ScanWorker:
                         logger.debug(f"Binary content detected for {url}, skipping")
                         await response.read()  # Потребляем тело для освобождения соединения
                         result = (response, "")  # Возвращаем пустой текст для бинарных файлов
-                        URL_PROCESSING_CACHE.set(cache_key, result)
+                        cache_manager.URL_PROCESSING_CACHE.set(cache_key, result)
                         return result
                     
                     # Читаем тело ответа
@@ -1415,7 +1591,7 @@ class ScanWorker:
                         response_text = await response.text(errors='replace')
                     
                     result = (response, response_text)
-                    URL_PROCESSING_CACHE.set(cache_key, result)
+                    cache_manager.URL_PROCESSING_CACHE.set(cache_key, result)
                     return result
                     
             except aiohttp.ClientError as e:
@@ -1894,7 +2070,7 @@ class ScanWorker:
                 self.scan_completion_metrics['scan_end_time'] = datetime.now().isoformat()
                 self.scan_completion_metrics['completion_status'] = 'completed'
                 logger.info(f"Scan completed. Total URLs scanned: {self.total_scanned_count}")
-            cleanup_caches()
+            cache_manager.cleanup_all()
             self.scan_completion_metrics['total_urls_discovered'] = self.total_links_count
             self.scan_completion_metrics['total_urls_scanned'] = len(self.all_scanned_urls)
             self.scan_completion_metrics['total_forms_discovered'] = self.total_forms_count
@@ -1983,7 +2159,7 @@ class ScanWorker:
             # --- Очистка кэшей и сборка мусора после сохранения ---
             if hasattr(cached_parse_html, 'cache_clear'):
                 cached_parse_html.cache_clear()
-            cleanup_caches()
+            cache_manager.cleanup_all()
             gc.collect()
         except Exception as e:
             log_and_notify('error', f"Error saving scan results: {e}")

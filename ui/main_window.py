@@ -1,6 +1,6 @@
 from typing import Optional
-from PyQt5.QtWidgets import QMainWindow, QStackedWidget, QGraphicsOpacityEffect, QWidget
-from PyQt5.QtCore import QPropertyAnimation, QEasingCurve
+from PyQt5.QtWidgets import QMainWindow, QStackedWidget, QGraphicsOpacityEffect, QWidget, QApplication
+from PyQt5.QtCore import QPropertyAnimation, QEasingCurve, QThread, QCoreApplication
 from PyQt5.QtGui import QIcon, QCloseEvent
 
 from models.user_model import UserModel
@@ -8,7 +8,7 @@ from utils import error_handler
 from utils.performance import measure_time
 from views.login_window import LoginWindow
 from ui.registration_window import RegistrationWindow
-from views.dashboard_window_main import DashboardWindow
+from views.dashboard_window_optimized import DashboardWindow
 from utils.cache_cleanup import cleanup_on_exit
 from utils.logger import logger, log_and_notify
 from utils.database import db
@@ -61,8 +61,7 @@ class MainWindow(QMainWindow):
                 raise ValueError("Registration window not properly initialized")
 
             # Проверяем dashboard_window (может быть None, это нормально)
-            if hasattr(self, 'dashboard_window') and self.dashboard_window is not None:
-                raise ValueError("Dashboard window not properly initialized")
+            # Никакой проверки не требуется, так как dashboard_window может быть None
 
             # Проверяем подключение сигналов
             if not hasattr(self, 'login_window') or not self.login_window.receivers(self.login_window.login_successful):
@@ -183,20 +182,29 @@ class MainWindow(QMainWindow):
     @measure_time
     def go_to_dashboard(self, user_id: int, username: str):
         try:
-            # Проверка инициализации компонентов
-            if not hasattr(self, 'stack'):
-                logger.error("Stack not initialized")
+            # Проверяем наличие экземпляра QApplication
+            app = QApplication.instance()
+            if app is None:
+                logger.error("QApplication instance not found")
                 return
 
-            # Создаем dashboard_window при первом обращении
-            if not hasattr(self, 'dashboard_window') or self.dashboard_window is None:
-                self.dashboard_window = DashboardWindow(user_id, username, self.user_model, self)
-                self.stack.addWidget(self.dashboard_window)
+            # Проверяем, что мы в основном потоке
+            if app.thread() is not QThread.currentThread():
+                logger.error("Dashboard creation must be in main thread")
+                return
 
+            # Очищаем старый экземпляр панели управления
+            if hasattr(self, 'dashboard_window') and self.dashboard_window is not None:
+                self.dashboard_window.deleteLater()
+                self.dashboard_window = None
+
+            # Создаем новый экземпляр панели управления
+            self.dashboard_window = DashboardWindow(user_id, username, self.user_model, self)
+            self.stack.addWidget(self.dashboard_window)
             self.stack.setCurrentWidget(self.dashboard_window)
+            
+            # Безопасно изменяем размер окна
             self.safe_resize_window(self.dashboard_window)
-
-            # Максимизируем окно после перехода к дашборду
             self.showMaximized()
 
         except Exception as e:
@@ -291,6 +299,15 @@ class MainWindow(QMainWindow):
     def show_dashboard(self, user_id: int, username: str) -> None:
         """Показывает главное окно приложения после успешной аутентификации"""
         try:
+            # Проверка обязательных параметров
+            if not user_id:
+                logger.error("Cannot show dashboard: user_id is missing")
+                return
+                
+            if not username:
+                logger.error("Cannot show dashboard: username is missing")
+                return
+
             # Создаем экземпляр UserModel, если его нет
             if not hasattr(self, 'user_model'):
                 from models.user_model import UserModel
@@ -300,6 +317,24 @@ class MainWindow(QMainWindow):
             if not hasattr(self, 'stack'):
                 logger.error("Stack not initialized")
                 return
+                
+            # Очищаем старый экземпляр dashboard если есть
+            if self.dashboard_window:
+                self.stack.removeWidget(self.dashboard_window)
+                self.dashboard_window.deleteLater()
+                
+            # Создаем новый экземпляр dashboard
+            from views.dashboard_window_wrapper import DashboardWindowWrapper
+            self.dashboard_window = DashboardWindowWrapper(
+                user_id=user_id,
+                username=username,
+                user_model=self.user_model,
+                parent=self
+            )
+            
+            # Добавляем в стек и показываем
+            self.stack.addWidget(self.dashboard_window)
+            self.stack.setCurrentWidget(self.dashboard_window)
 
             # Создаем dashboard_window при первом обращении
             if not hasattr(self, 'dashboard_window') or self.dashboard_window is None:
