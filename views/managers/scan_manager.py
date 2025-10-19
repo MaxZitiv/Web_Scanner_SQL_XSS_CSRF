@@ -1,10 +1,10 @@
 from typing import Dict, Any, List, cast
 from PyQt5.QtCore import QObject
 from utils.logger import logger
+from typing import Tuple
 
 class ScanManagerStatsMixin:
     """Миксин класс для оптимизации работы со статистикой в ScanManager"""
-
     def init_stats_manager(self):
         """Инициализация StatsManager и подключение сигналов"""
         if not hasattr(self, 'stats_manager'):

@@ -104,6 +104,14 @@ class ScanTabWidget(ScanTabStatsMixin, QWidget):
                 'log_filter', 'log_search', 'clear_search_button',
                 'stats_labels'
             ]
+            
+            self.site_tree = QTreeWidget()
+            self.site_tree.setHeaderLabels(["URL", "Status", "Type"])
+
+            # Подключаем сигналы и слоты
+            if hasattr(self.scan_controller, 'site_structure_updated') and hasattr(self.scan_controller, 'stats_updated'):
+                self.scan_controller.site_structure_updated.connect(self.update_site_tree)
+                self.scan_controller.stats_updated.connect(self.update_stats)
 
             for component in required_components:
                 if not hasattr(self, component):
@@ -586,6 +594,8 @@ class ScanTabWidget(ScanTabStatsMixin, QWidget):
 
             # Запускаем сканирование
             self._scan_start_time = get_local_timestamp()
+            self.scan_status.setText("Сканирование...")
+                
             await self.scan_controller.start_scan(
                 url=url,
                 scan_types=vuln_types,
@@ -594,7 +604,8 @@ class ScanTabWidget(ScanTabStatsMixin, QWidget):
                 timeout=timeout,
                 on_progress=self.update_scan_progress,
                 on_log=self.add_log_entry,
-                on_vulnerability=self.update_stats
+                on_vulnerability=self.update_stats,
+                on_status=lambda status: self.scan_status.setText(status)
             )
 
             # Обновляем UI после завершения

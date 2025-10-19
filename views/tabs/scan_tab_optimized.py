@@ -2,8 +2,9 @@
 Миксин для оптимизации вкладки сканирования
 """
 from PyQt5.QtCore import QTimer, QObject
+from PyQt5.QtWidgets import QTreeWidget, QTreeWidgetItem
 from utils.logger import logger
-from typing import Optional, Any, Dict
+from typing import Optional, Any, Dict, List
 
 
 class ScanTabStatsMixin:
@@ -17,10 +18,37 @@ class ScanTabStatsMixin:
         self._scan_start_time = None
         self.stats_manager: Optional[Any] = None  # Явно указываем, что stats_manager может быть None
         self._setup_stats_timer()
-        # Сначала инициализируем stats_manager, а потом обновляем статистику
         self.init_stats_manager()
         self._update_scan_stats()
-
+        
+        self.site_tree = QTreeWidget()
+        self.site_tree.setHeaderLabels(["URL", "Статус"])
+        
+    def update_site_tree(self, data):
+        """Обновление структуры сайта"""
+        if not data:
+            logger.warning("Empty data received")
+            return
+        
+        try:
+            if isinstance(data, dict):
+                urls = data.get('urls', [])
+                status = data.get('status', [])
+                if not urls or not status:
+                    raise ValueError("Missing required fields in data")
+            else:
+                if len(data) != 2:
+                    raise ValueError("Invalid data format")
+                urls, status = data
+                
+            self.site_tree.clear()
+            for url, stat in zip(urls, status):
+                item = QTreeWidgetItem(self.site_tree)
+                item.setText(0, url)
+                item.setText(1, stat)
+        except Exception as e:
+            logger.error(f"Error updating site structure: {e}")
+                
 
     def _setup_stats_timer(self):
         """Настройка таймера для обновления статистики"""
@@ -79,8 +107,13 @@ class ScanTabStatsMixin:
         """Обновление статистики сканирования"""
         try:
             # Проверяем, что stats_manager существует и инициализирован
-            if self.stats_manager is not None:
+            if not hasattr(self, 'stats_manager') or self.stats_manager is None:
+                logger.warning("StatsManager is not initialized")
+                return
+            try:
                 stats = self.stats_manager.get_stats()
+                if not stats:
+                    return
 
                 # Обновляем все метки статистики
                 for key, label in self.stats_labels.items():
@@ -88,9 +121,20 @@ class ScanTabStatsMixin:
                         label.setText(str(stats[key]))
 
                 # Дополнительно обновляем время сканирования, если сканирование активно
-                if self._scan_start_time is not None:
+                if hasattr(self, '_scan_start_time') and self._scan_start_time is not None:
                     from datetime import datetime
-                    scan_time = datetime.now() - self._scan_start_time
+                    # Преобразуем _scan_start_time в datetime если это строка
+                    if isinstance(self._scan_start_time, str):
+                        try:
+                            self._scan_start_time = datetime.fromisoformat(self._scan_start_time)
+                            scan_start_time = self._scan_start_time
+                        except ValueError:
+                            # Если не удалось преобразовать из ISO формата, используем текущее время
+                            scan_start_time = datetime.now()
+                    else:
+                        scan_start_time = self._scan_start_time
+                        
+                    scan_time = datetime.now() - scan_start_time
                     # Используем total_seconds() вместо seconds для учета дней
                     hours: float; remainder: float
                     hours, remainder = divmod(scan_time.total_seconds(), 3600)
@@ -99,5 +143,11 @@ class ScanTabStatsMixin:
                     time_str = f"{int(hours):02d}:{int(minutes):02d}:{int(seconds):02d}"
                     if 'scan_time' in self.stats_labels:
                         self.stats_labels['scan_time'].setText(time_str)
+            except Exception as e:
+                logger.error(f"Error getting stats: {e}")            
+                # Обновляем структуру сайта
+                if hasattr(self, 'site_tree') and hasattr(self.stats_manager, 'get_site_structure'):
+                    urls, status = self.stats_manager.get_site_structure()
+                    self.update_site_tree((urls, status))
         except Exception as e:
             logger.error(f"Error updating scan stats: {e}")

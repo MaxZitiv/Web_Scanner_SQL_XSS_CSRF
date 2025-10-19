@@ -335,13 +335,9 @@ class MainWindow(QMainWindow):
             # Добавляем в стек и показываем
             self.stack.addWidget(self.dashboard_window)
             self.stack.setCurrentWidget(self.dashboard_window)
-
-            # Создаем dashboard_window при первом обращении
-            if not hasattr(self, 'dashboard_window') or self.dashboard_window is None:
-                self.dashboard_window = DashboardWindow(user_id, username, self.user_model, self)
-                self.stack.addWidget(self.dashboard_window)
-
+            self.stack.addWidget(self.dashboard_window)
             self.stack.setCurrentWidget(self.dashboard_window)
+            
             self.safe_resize_window(self.dashboard_window)
 
             # Максимизируем окно после перехода к дашборду

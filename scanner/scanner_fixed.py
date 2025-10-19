@@ -589,6 +589,7 @@ class ScanWorkerSignals(QObject):
     vulnerability_found: pyqtSignal = pyqtSignal(str, str, str, str) # Сигнал для отправки найденных уязвимостей
     log_event: pyqtSignal = pyqtSignal(str) # Сигнал для логирования событий
     stats_updated: pyqtSignal = pyqtSignal(str, int)  # Сигнал для обновления статистики (ключ, значение)
+    site_structure_updated = pyqtSignal(list, list)  # Сигнал для обновления структуры сайта (URLs, forms)
 
 # --- LRU-кэш для парсинга HTML (100 последних страниц) ---
 @lru_cache(maxsize=100)
@@ -821,6 +822,9 @@ class ScanWorker:
 
             # Обновляем время сканирования
             try:
+                elapsed = 0
+                
+                # Проверяем наличие и тип start_time
                 if hasattr(self, 'start_time') and self.start_time:
                     # Проверяем тип start_time и обрабатываем соответственно
                     current_time = time.time()
@@ -843,12 +847,17 @@ class ScanWorker:
                     else:
                         # Другие возможные типы
                         elapsed = 0
+                # Проверяем наличие и тип scan_start_time (объект datetime)
+                elif hasattr(self, 'scan_start_time') and self.scan_start_time:
+                    from datetime import datetime
+                    if isinstance(self.scan_start_time, datetime):
+                        elapsed = int(time.time() - self.scan_start_time.timestamp())
                         
-                    hours = elapsed // 3600
-                    minutes = (elapsed % 3600) // 60
-                    seconds = elapsed % 60
-                    time_str = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
-                    self.signals.stats_updated.emit('scan_time', time_str)
+                hours = elapsed // 3600
+                minutes = (elapsed % 3600) // 60
+                seconds = elapsed % 60
+                time_str = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+                self.signals.stats_updated.emit('scan_time', time_str)
             except Exception as time_error:
                 logger.debug(f"Error calculating scan time: {time_error}")
                 # В случае ошибки, устанавливаем время по умолчанию
@@ -968,6 +977,10 @@ class ScanWorker:
         actual_queue_size = int(queue_size)
 
         progress = self.calculate_progress(actual_queue_size)
+        
+        # Отправляем сигналы о обновлении прогресса
+        self.signals.progress.emit(progress, current_url)
+        self.signals.progress_updated.emit(progress)
 
         # Проверяем, достигли ли максимальной глубины
         if current_depth is not None and current_depth >= self.max_depth:
@@ -1094,6 +1107,8 @@ class ScanWorker:
 
                     # Обновляем статистику после обработки каждого URL
                     self.update_stats()
+                    # Отправляем сигнал для обновления структуры сайта
+                    self.signals.site_structure_updated.emit(list(self.all_scanned_urls), self.all_found_forms)
 
                 except asyncio.CancelledError:
                     logger.info("Scanning task cancelled.")
@@ -1301,6 +1316,8 @@ class ScanWorker:
                             logger.info(f"ADD_LINK: {link} with depth {new_depth} (total_links_count={self.total_links_count})")
                             # Не добавляем ссылку в visited_urls здесь, это будет сделано при фактическом посещении
                     logger.info(f"Added {new_links_added} new links to queue. Queue size after adding links: {to_visit.qsize()}")
+                    # Отправляем сигнал для обновления структуры сайта
+                    self.signals.site_structure_updated.emit(list(self.all_scanned_urls), self.all_found_forms)
 
                     # Обновляем формы для сканирования уязвимостей
                     forms_to_scan = [f['form'] for f in self.all_found_forms if f['url'] == url]

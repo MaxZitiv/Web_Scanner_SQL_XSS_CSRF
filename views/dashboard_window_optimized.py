@@ -637,17 +637,6 @@ class DashboardWindowHandlers:
             # Скрываем индикатор прогресса в любом случае
             if isinstance(scan_progress_attr, QProgressBar):
                 scan_progress_attr.setVisible(False)
-                
-            if not scan_url:
-                QMessageBox.warning(None, "Предупреждение", "Пожалуйста, введите URL для сканирования")
-                return
-
-            if not is_safe_url(scan_url):
-                QMessageBox.warning(None, "Предупреждение", "Введенный URL небезопасен")
-                return
-                
-            logger.info(f"Starting scan for URL: {scan_url}")
-
 
     @asyncSlot()
     async def _run_scan(self, url: str, scan_types: List[str]) -> None:

@@ -1,6 +1,7 @@
 from typing import Dict, Any, Optional
 from PyQt5.QtCore import QTimer, QObject, pyqtSignal
 from utils.logger import logger
+from typing import Tuple, List
 
 class StatsManager(QObject):
     """Базовый класс для управления статистикой в приложении"""
@@ -18,7 +19,11 @@ class StatsManager(QObject):
             'forms_scanned': 0,
             'vulnerabilities': 0,
             'requests_sent': 0,
-            'errors': 0,
+            'errors': 0
+        }
+        self._site_structure = {
+            'urls': [],
+            'status': []
         }
 
         # Накопленные обновления для пакетного применения
@@ -43,6 +48,19 @@ class StatsManager(QObject):
                 self._stats_update_timer.start(100)  # Обновляем не чаще чем раз в 100 мс
         except Exception as e:
             logger.error(f"Error in update_stats: {e}")
+            
+    def update_site_structure(self, url: str, status: str):
+        """Обновление структуры сайта"""
+        if url not in self._site_structure['urls']:
+            self._site_structure['urls'].append(url)
+            self._site_structure['status'].append(status)
+        else:
+            index = self._site_structure['urls'].index(url)
+            self._site_structure['status'][index] = status
+            
+    def get_site_structure(self) -> Tuple[List[str], List[str]]:
+        """Получение структуры сайта"""
+        return self._site_structure['urls'], self._site_structure['status']
 
     def increment_stats(self, key: str) -> None:
         """Увеличивает значение статистики на 1"""

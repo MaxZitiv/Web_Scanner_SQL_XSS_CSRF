@@ -1,3 +1,4 @@
+from PyQt5.QtCore import QObject, pyqtSignal
 from scanner.scanner_fixed import ScanWorker
 from utils.logger import logger, log_and_notify
 import asyncio
@@ -6,7 +7,10 @@ from utils.performance import performance_monitor, get_local_timestamp
 from utils.security import is_safe_url, validate_input_length
 from utils.error_handler import error_handler
 
-class ScanController:
+class ScanController(QObject):
+    site_structure_updated = pyqtSignal(dict)
+    stats_updated = pyqtSignal(str, int)
+    status_updated = pyqtSignal(str)
     def __init__(self, url: str, scan_types: List[str], user_id: int, max_depth: int = 2,
                  max_concurrent: int = 5, timeout: int = 30, username: Optional[str] = None):
         """
@@ -19,6 +23,7 @@ class ScanController:
         :param timeout: Таймаут в секундах
         :param username: Имя пользователя
         """
+        super().__init__()
         self.url: str = url
         self.scan_types: List[str] = scan_types
         self.user_id: int = user_id
@@ -121,8 +126,8 @@ class ScanController:
         on_log: Optional[Callable[[str, str], None]] = None,
         on_vulnerability: Optional[Callable[[str, int], None]] = None,
         on_result: Optional[Callable[[Dict[str, Any]], None]] = None,
-        max_coverage_mode: bool = False
-    ) -> None:
+        on_status: Optional[Callable[[str], None]] = None,
+        max_coverage_mode: bool = False) -> None:
         """Запускает сканирование веб-сайта"""
         try:
             # Очищаем завершенные сканирования
@@ -153,7 +158,7 @@ class ScanController:
             
             # Выполняем сканирование
             results = await self._perform_scan(url, scan_types, max_depth, max_concurrent, timeout,
-                                             on_progress, on_log, on_vulnerability, max_coverage_mode)
+                                             on_progress, on_log, on_vulnerability, None, max_coverage_mode)
             
             # Завершаем мониторинг производительности
             performance_monitor.end_timer("scan_operation", scan_start_time)
@@ -196,9 +201,11 @@ class ScanController:
                            on_progress: Optional[Callable[[float], None]] = None,
                            on_log: Optional[Callable[[str, str], None]] = None,
                            on_vulnerability: Optional[Callable[[str, int], None]] = None,
+                           on_status: Optional[Callable[[str], None]] = None,
                            max_coverage_mode: bool = False) -> Dict[str, Any]:
         """Выполняет основное сканирование"""
         try:
+            self.status_updated.emit("Сканирование...")
             # Преобразуем scan_types в правильный формат для нового ScanWorker
             scan_types_lower: List[str] = []
             for scan_type in scan_types:
