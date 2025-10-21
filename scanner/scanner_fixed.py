@@ -115,7 +115,7 @@ class Scanner(QObject):
     
     def _setup_session(self) -> None:
         """Настройка параметров сессии"""
-        self._session_config = {
+        self._session_config: Dict[str, Any] = {
             'timeout': aiohttp.ClientTimeout(total=self.REQUEST_TIMEOUT),
             'headers': {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
@@ -641,7 +641,7 @@ class ScanWorker:
         self._should_stop: bool = False
         
         # Очереди и множества для управления сканированием
-        self.to_visit = asyncio.Queue()  # Queue of (url, depth) tuples to scan
+        self.to_visit: Optional[asyncio.Queue[Tuple[str, int]]] = asyncio.Queue()  # Queue of (url, depth) tuples to scan
         self.visited: Set[str] = set()   # Already scanned URLs
         self.in_progress: Set[str] = set()  # Currently being scanned
         
@@ -701,7 +701,7 @@ class ScanWorker:
         self.current_depth = 0
         self.operation_count = 0
         self.memory_check_interval = 1000
-        self.scan_completion_metrics = {
+        self.scan_completion_metrics: Dict[str, Any] = {
             'errors_encountered': 0,
             'urls_scanned': 0,
             'vulnerabilities_found': 0,
@@ -782,7 +782,7 @@ class ScanWorker:
             duration = (self.scan_end_time - self.scan_start_time).total_seconds()
             
             # Формируем результаты
-            results = {
+            results: Dict[str, Any] = {
                 "url": self.base_url,
                 "scan_types": self.scan_types,
                 "start_time": self.scan_start_time.isoformat(),
@@ -809,61 +809,66 @@ class ScanWorker:
     def update_stats(self):
         """Обновляет статистику сканирования через сигнал stats_updated"""
         try:
-            # Отправляем сигналы для обновления статистики
-            self.signals.stats_updated.emit('urls_found', len(self.visited_urls))
-            self.signals.stats_updated.emit('urls_scanned', len(self.all_scanned_urls))
-            self.signals.stats_updated.emit('forms_found', self.total_forms_count)
-            self.signals.stats_updated.emit('forms_scanned', self.scanned_forms_count)
-            self.signals.stats_updated.emit('vulnerabilities', len(self.vulnerabilities.get('sql', [])) + 
-                                                              len(self.vulnerabilities.get('xss', [])) + 
-                                                              len(self.vulnerabilities.get('csrf', [])))
-            self.signals.stats_updated.emit('requests_sent', self.total_scanned_count)
-            self.signals.stats_updated.emit('errors', self.scan_completion_metrics.get('errors_encountered', 0))
+            # Получаем текущие значения
+            urls_found = len(self.visited_urls)
+            urls_scanned = len(self.all_scanned_urls)
+            forms_found = self.total_forms_count
+            forms_scanned = self.scanned_forms_count
+            
+            # Подсчитываем уязвимости
+            total_vulns = (
+                len(self.vulnerabilities.get('sql', [])) + 
+                len(self.vulnerabilities.get('xss', [])) + 
+                len(self.vulnerabilities.get('csrf', []))
+            )
+            
+            # Подсчитываем ошибки
+            errors = self.scan_completion_metrics.get('errors_encountered', 0)
+            
+            # Убеждаемся, что это целые числа
+            stats_data = {
+                'urls_found': int(urls_found),
+                'urls_scanned': int(urls_scanned),
+                'forms_found': int(forms_found),
+                'forms_scanned': int(forms_scanned),
+                'vulnerabilities': int(total_vulns),
+                'requests_sent': int(self.total_scanned_count),
+                'errors': int(errors) if isinstance(errors, int) else 0
+            }
+            
+            # Отправляем каждый счетчик отдельным сигналом
+            for key, value in stats_data.items():
+                try:
+                    self.signals.stats_updated.emit(key, value)
+                except Exception as signal_error:
+                    logger.debug(f"Error emitting stat {key}: {signal_error}")
 
-            # Обновляем время сканирования
+            # Вычисляем время сканирования
             try:
                 elapsed = 0
+                current_time = time.time()
                 
                 # Проверяем наличие и тип start_time
                 if hasattr(self, 'start_time') and self.start_time:
-                    # Проверяем тип start_time и обрабатываем соответственно
-                    current_time = time.time()
-                    
-                    if isinstance(self.start_time, (int, float)):
-                        elapsed = int(current_time - self.start_time)
-                    elif hasattr(self.start_time, 'timestamp'):
-                        # Если это объект datetime
-                        elapsed = int(current_time - self.start_time.timestamp())
-                    elif isinstance(self.start_time, str):
-                        # Если это строка, пробуем преобразовать
-                        try:
-                            # Пробуем преобразовать из ISO формата
-                            from datetime import datetime
-                            dt = datetime.fromisoformat(self.start_time)
-                            elapsed = int(current_time - dt.timestamp())
-                        except (ValueError, AttributeError):
-                            # Если не удалось преобразовать, используем 0
-                            elapsed = 0
-                    else:
-                        # Другие возможные типы
-                        elapsed = 0
-                # Проверяем наличие и тип scan_start_time (объект datetime)
+                    elapsed = int(current_time - self.start_time) if self.start_time else 0
                 elif hasattr(self, 'scan_start_time') and self.scan_start_time:
-                    from datetime import datetime
-                    if isinstance(self.scan_start_time, datetime):
-                        elapsed = int(time.time() - self.scan_start_time.timestamp())
-                        
+                    elapsed = int(current_time - self.scan_start_time.timestamp()) if self.scan_start_time else 0
+                
+                # Форматируем время
                 hours = elapsed // 3600
                 minutes = (elapsed % 3600) // 60
                 seconds = elapsed % 60
                 time_str = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+                
+                # Отправляем время сканирования
                 self.signals.stats_updated.emit('scan_time', time_str)
+                
             except Exception as time_error:
                 logger.debug(f"Error calculating scan time: {time_error}")
-                # В случае ошибки, устанавливаем время по умолчанию
                 self.signals.stats_updated.emit('scan_time', "00:00:00")
+        
         except Exception as e:
-            logger.error(f"Error updating stats: {e}")
+            logger.error(f"Error in update_stats: {e}")
 
     def _manage_memory_usage(self):
         """Управляет использованием памяти через контроль кэшей"""
@@ -875,7 +880,9 @@ class ScanWorker:
             # Очищаем все кэши
             for cache in [self.html_cache, self.dns_cache, self.form_cache, self.url_cache]:
                 if cache is not None:
-                    cache.clear()
+                    typed_cache: Union[Dict[str, str], Dict[str, List[Dict[str, Any]]], Set[str]] = cache
+                    if hasattr(typed_cache, 'clear'):
+                        typed_cache.clear()
             
             logger.warning(f"Memory usage {memory_percent}% > 80%. Cache sizes reduced and cleared.")
 
@@ -915,10 +922,7 @@ class ScanWorker:
             # Проверяем флаги остановки и паузы перед обработкой URL
             if self.should_stop or self._is_paused:
                 return None
-
-            if self.session is None:
-                logger.warning(f"Session is None for URL {url}")
-                return None
+            
             async with self.session.get(url) as response:
                 return await response.text()
         except Exception as e:
@@ -962,67 +966,65 @@ class ScanWorker:
         return min(progress, 100)
 
     def update_progress(self, current_url: str = "", current_depth: Optional[int] = None, queue_size: Optional[int] = None):
-        # Если queue_size не передан, пытаемся получить из очереди
-        if queue_size is None:
-            if self.to_visit is not None and hasattr(self.to_visit, 'qsize'):
-                try:
-                    queue_size = self.to_visit.qsize()
-                except (AttributeError, RuntimeError) as e:
-                    logger.warning(f"Error getting queue size for {self.base_url}: {e} ")
+        """Обновляет прогресс сканирования с улучшенной статистикой"""
+        try:
+            # Получаем размер очереди
+            if queue_size is None:
+                if self.to_visit is not None and hasattr(self.to_visit, 'qsize'):
+                    try:
+                        queue_size = self.to_visit.qsize()
+                    except (AttributeError, RuntimeError):
+                        queue_size = 0
+                else:
                     queue_size = 0
-            else:
-                queue_size = 0
-        
-        # Убедимся, что queue_size является целым числом
-        actual_queue_size = int(queue_size)
-
-        progress = self.calculate_progress(actual_queue_size)
-        
-        # Отправляем сигналы о обновлении прогресса
-        self.signals.progress.emit(progress, current_url)
-        self.signals.progress_updated.emit(progress)
-
-        # Проверяем, достигли ли максимальной глубины
-        if current_depth is not None and current_depth >= self.max_depth:
-            self.max_depth_reached = True
-            logger.info(f"PROGRESS: Maximum depth {self.max_depth} reached at URL: {current_url}")
-
-        depth_info = f"{current_depth if current_depth is not None else self.current_depth}/{self.max_depth}"
-        url_info = f"{len(self.all_scanned_urls)}/{self.total_links_count}"
-        
-        # Убеждаемся, что scanned_forms_count не превышает total_forms_count
-        if self.scanned_forms_count > self.total_forms_count:
-            self.scanned_forms_count = self.total_forms_count
-        
-        form_info = f"{self.scanned_forms_count}/{self.total_forms_count}"
-        
-        # Добавляем отладочную информацию
-        if self.total_forms_count > 0 or self.scanned_forms_count > 0:
-            logger.debug(f"Form counters: scanned={self.scanned_forms_count}, total={self.total_forms_count}")
-            logger.info(f"Forms progress: {self.scanned_forms_count}/{self.total_forms_count} ({len(self.scanned_form_hashes)} unique forms scanned)")
-        
-        progress_info = (
-            f"Progress: {progress}% | "
-            f"Depth: {depth_info} | "
-            f"URL: {url_info} | "
-            f"Forms: {form_info}"
-        )
-        if current_url:
-            progress_info += f" | Processed URL: {current_url}"
-        
-        # Отправляем информацию в лог
-        self.signals.log_event.emit(progress_info)
-
-        # Дополнительное логирование для отладки
-        logger.info(f"DEBUG: Progress update - current_depth: {current_depth}, max_depth_reached: {self.max_depth_reached}, queue_size: {actual_queue_size}")
-        
-        # Отправляем прогресс в UI (обновляем каждые 5% или при каждом URL)
-        if progress % 5 == 0 or current_url:
-            self.signals.progress.emit(progress, current_url or self.base_url)
-        
-        # Принудительно обновляем прогресс каждые 10 обработанных URL
-        if len(self.all_scanned_urls) % 10 == 0 and len(self.all_scanned_urls) > 0:
-            self.signals.progress.emit(progress, current_url or self.base_url)
+            
+            actual_queue_size = int(queue_size) if queue_size else 0
+            
+            # Вычисляем прогресс
+            progress = self.calculate_progress(actual_queue_size)
+            
+            # Отправляем сигналы о прогрессе
+            self.signals.progress.emit(progress, current_url)
+            self.signals.progress_updated.emit(progress)
+            
+            # Проверяем максимальную глубину
+            if current_depth is not None and current_depth >= self.max_depth:
+                self.max_depth_reached = True
+                logger.info(f"PROGRESS: Maximum depth {self.max_depth} reached at URL: {current_url}")
+            
+            # Формируем строку информации о прогрессе
+            depth_info = f"{current_depth if current_depth is not None else self.current_depth}/{self.max_depth}"
+            url_info = f"{len(self.all_scanned_urls)}/{self.total_links_count}"
+            
+            # Гарантируем, что scanned_forms_count не превышает total_forms_count
+            if self.scanned_forms_count > self.total_forms_count:
+                self.scanned_forms_count = self.total_forms_count
+            
+            form_info = f"{self.scanned_forms_count}/{self.total_forms_count}"
+            
+            # Логируем информацию о формах при необходимости
+            if self.total_forms_count > 0 or self.scanned_forms_count > 0:
+                logger.debug(f"Form counters: scanned={self.scanned_forms_count}, total={self.total_forms_count}")
+                logger.info(f"Forms progress: {self.scanned_forms_count}/{self.total_forms_count} ({len(self.scanned_form_hashes)} unique forms scanned)")
+            
+            # Формируем полную информацию о прогрессе
+            progress_info = (
+                f"Progress: {progress}% | "
+                f"Depth: {depth_info} | "
+                f"URL: {url_info} | "
+                f"Forms: {form_info}"
+            )
+            if current_url:
+                progress_info += f" | Processed URL: {current_url}"
+            
+            # Отправляем в лог
+            self.signals.log_event.emit(progress_info)
+            
+            # Обновляем статистику
+            self.update_stats()
+            
+        except Exception as e:
+            logger.error(f"Error in update_progress: {e}")
 
     async def crawl(self, session: aiohttp.ClientSession, semaphore: asyncio.Semaphore) -> None:
         """
@@ -1044,7 +1046,7 @@ class ScanWorker:
             self.total_links_count = 1
 
             # Инициализируем results_by_type перед использованием
-            results_by_type: Dict[str, List[str]] = {'sql': [], 'xss': [], 'csrf': []}
+            results_by_type: Dict[str, List[Dict[str, Any]]] = {'sql': [], 'xss': [], 'csrf': []}
 
             # Запуск обхода с параллелизмом
             await self.crawl_and_scan_parallel(session, semaphore, self.base_url,
@@ -1060,26 +1062,20 @@ class ScanWorker:
             raise
 
     async def crawl_and_scan_parallel(self, session: aiohttp.ClientSession, semaphore: asyncio.Semaphore,
-                                      start_url: str, results_by_type: Dict[str, List[str]], visited_urls: Set[str], scanned_urls: Set[str]):
+                                      start_url: str, results_by_type: Dict[str, List[Dict[str, Any]]], visited_urls: Set[str], scanned_urls: Set[str]):
         """
         Параллельное сканирование с обходом ссылок.
         """
         try:
             logger.info(f"Starting crawl_and_scan_parallel for {start_url}")
-
-            # Проверяем, что очередь создана
-            if self.to_visit is None:
-                log_and_notify('error', "Queue to_visit is None! Cannot proceed with scanning.")
-                return
-
-            logger.info(f"Queue size at start: {self.to_visit.qsize()}")
+            logger.info(f"Queue size at start: {self.to_visit.qsize() if self.to_visit else 0}")
             # Проверяем, что очередь не пуста
-            if self.to_visit.qsize() == 0:
+            if self.to_visit is None or self.to_visit.qsize() == 0:
                 logger.warning("Queue is empty at start of crawl_and_scan_parallel!")
             processed_count = 0
 
             # Обрабатываем URL из очереди
-            logger.info(f"Starting to process URLs from queue. Queue size: {self.to_visit.qsize()}")
+            logger.info(f"Starting to process URLs from queue. Queue size: {self.to_visit.qsize() if self.to_visit else 0}")
             while not self.to_visit.empty() and not self.should_stop:
                 try:
                     # Проверяем паузу перед обработкой URL
@@ -1090,7 +1086,7 @@ class ScanWorker:
                     url, current_depth = await self.to_visit.get()
                     processed_count += 1
                     logger.info(f"Processing URL {processed_count}: {url} at depth {current_depth} (max_depth: {self.max_depth})")
-                    logger.info(f"Queue size after getting URL: {self.to_visit.qsize()}")
+                    logger.info(f"Queue size after getting URL: {self.to_visit.qsize() if self.to_visit else 0}")
 
                     if self.should_stop:
                         logger.info("Received request to stop scanning. Finishing...")
@@ -1117,7 +1113,7 @@ class ScanWorker:
                     log_and_notify('error', f"Error in scanning task: {e}")
 
             logger.info(f"Main scanning loop completed. Processed {processed_count} URLs.")
-            logger.info(f"Final queue size: {self.to_visit.qsize()}")
+            logger.info(f"Final queue size: {self.to_visit.qsize() if self.to_visit else 0}")
             logger.info(f"Max depth reached: {self.max_depth_reached}")
 
         except Exception as e:
@@ -1204,7 +1200,7 @@ class ScanWorker:
                 seen_urls.add(link)
 
             logger.info(f"Link processing summary: total={len(links)}, added={new_links_added}, skipped_visited={skipped_visited}, skipped_file={skipped_file}")
-            logger.info(f"Added {new_links_added} new links to queue. Queue size after adding links: {to_visit.qsize()}")
+            logger.info(f"Added {new_links_added} new links to queue. Queue size after adding links: {to_visit.qsize() if to_visit else 0}")
 
             # Сканируем текущий URL
             unique_forms = [f['form'] for f in self.all_found_forms if f['url'] == url]
@@ -1214,7 +1210,7 @@ class ScanWorker:
             self.update_progress(
                 url,
                 current_depth,
-                to_visit.qsize()
+    to_visit.qsize() if to_visit else 0
             )
 
             # Проверяем, достигли ли максимальной глубины
@@ -1315,7 +1311,7 @@ class ScanWorker:
                             new_links_added += 1
                             logger.info(f"ADD_LINK: {link} with depth {new_depth} (total_links_count={self.total_links_count})")
                             # Не добавляем ссылку в visited_urls здесь, это будет сделано при фактическом посещении
-                    logger.info(f"Added {new_links_added} new links to queue. Queue size after adding links: {to_visit.qsize()}")
+                    logger.info(f"Added {new_links_added} new links to queue. Queue size after adding links: {to_visit.qsize() if to_visit else 0}")
                     # Отправляем сигнал для обновления структуры сайта
                     self.signals.site_structure_updated.emit(list(self.all_scanned_urls), self.all_found_forms)
 
@@ -1358,13 +1354,14 @@ class ScanWorker:
                             log_and_notify('error', f"Failed to scan URL {url}: {result}")
                         elif result:
                             scan_type = self.scan_types[i+j] if (i+j) < len(self.scan_types) else 'unknown'
-                            self._process_scan_results(url, [result], [scan_type], results_by_type)
-            self.update_progress(url, current_depth, to_visit.qsize())
+                            if isinstance(result, dict):
+                                self._process_scan_results(url, [result], [scan_type], results_by_type)
+            self.update_progress(url, current_depth, to_visit.qsize() if to_visit else 0)
             logger.info(f"Successfully scanned URL: {url} at depth {current_depth}")
         except Exception as e:
             log_and_notify('error', f"Failed to scan URL {url}: {e}")
 
-    def _process_scan_results(self, url: str, results: List[Any], scan_types_used: List[str], results_by_type: Dict[str, List[Any]]):
+    def _process_scan_results(self, url: str, results: List[Dict[str, Any]], scan_types_used: List[str], results_by_type: Dict[str, List[Dict[str, Any]]]):
         """
         Обрабатывает результаты сканирования.
         """
@@ -1437,9 +1434,6 @@ class ScanWorker:
                 if not only_forms:
                     try:
                         for link in soup.find_all('a', href=True):
-                            if not isinstance(link, Tag):
-                                continue
-                            
                             href = str(link.get('href', '')).strip()
                             if not href:
                                 continue
@@ -1454,8 +1448,7 @@ class ScanWorker:
                 # Ищем формы
                 try:
                     for form in soup.find_all('form'):
-                        if isinstance(form, Tag):
-                            found_forms.append(form)
+                        found_forms.append(form)
                 except Exception as form_error:
                     log_and_notify('warning', f"Error extracting forms from {url}: {form_error}")
 
@@ -1483,11 +1476,10 @@ class ScanWorker:
             inputs: List[str] = []
             try:
                 for element in form_tag.find_all(['input', 'textarea', 'select', 'button']):
-                    if isinstance(element, Tag):
-                        inp_name = str(element.get('name', ''))
-                        inp_type = str(element.get('type', 'text'))  # default type
-                        if inp_name:
-                            inputs.append(f"{element.name}-{inp_type}-{inp_name}")
+                    inp_name = str(element.get('name', ''))
+                    inp_type = str(element.get('type', 'text'))  # default type
+                    if inp_name:
+                        inputs.append(f"{element.name}-{inp_type}-{inp_name}")
             except Exception as e:
                 logger.warning(f"Error finding form fields: {e}")
 
@@ -1834,7 +1826,7 @@ class ScanWorker:
                 inputs = form.find_all(['input', 'textarea', 'select'])
                 for input_elem in inputs:
                     # Явное указание типа с приведением
-                    input_elem_tag: Tag = cast(Tag, input_elem)
+                    input_elem_tag = input_elem
                     name: str = str(input_elem_tag.get('name', ''))
                     if name:
                         form_data[name] = '1'
@@ -1926,7 +1918,7 @@ class ScanWorker:
                 inputs = form.find_all(['input', 'textarea', 'select'])
                 for input_elem in inputs:
                     # Явное указание типа с приведением
-                    input_elem_tag: Tag = cast(Tag, input_elem)
+                    input_elem_tag = input_elem
                     name: str = str(input_elem_tag.get('name', ''))
                     if name:
                         form_data[name] = '1'
@@ -1980,7 +1972,7 @@ class ScanWorker:
                             form_has_csrf_token = False
                             
                             for field in hidden_fields:
-                                field_tag: Tag = cast(Tag, field)
+                                field_tag = field
                                 field_name: str = str(field_tag.get('name', '')).lower()
                                 if field_name in known_csrf_token_names:
                                     form_has_csrf_token = True
@@ -2040,7 +2032,7 @@ class ScanWorker:
             await self.to_visit.put((self.base_url, 0))
             self.total_links_count = 1
             logger.info(f"Added initial URL to queue: {self.base_url}")
-            logger.info(f"Queue size after adding initial URL: {self.to_visit.qsize()}")
+            logger.info(f"Queue size after adding initial URL: {self.to_visit.qsize() if self.to_visit else 0}")
             
             # === ЭТАП 2: Сканирование уязвимостей ===
             # Создаем сессию и семафор с оптимизированными настройками
@@ -2055,7 +2047,7 @@ class ScanWorker:
                 self.session = session
                 
                 # Инициализируем структуры данных
-                results_by_type: Dict[str, List[str]] = {'sql': [], 'xss': [], 'csrf': []}
+                results_by_type: Dict[str, List[Dict[str, Any]]] = {'sql': [], 'xss': [], 'csrf': []}
                 visited_urls: Set[str] = set()
                 scanned_urls: Set[str] = set()
                 

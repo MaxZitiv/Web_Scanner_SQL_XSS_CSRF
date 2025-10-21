@@ -1,6 +1,6 @@
 {
   "python.analysis.autoImportCompletions": true,
-  "python.analysis.typeCheckingMode": "standard",
+  "python.analysis.typeCheckingMode": "strict",
   "git.ignoreLimitWarning": true,
   "cursorpyright.analysis.autoImportCompletions": true,
   "cursorpyright.analysis.typeCheckingMode": "standard",

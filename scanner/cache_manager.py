@@ -65,7 +65,7 @@ class CacheManager:
         
     def get_cached_data(self, cache_type: str, key: str) -> Optional[Any]:
         """Получение данных из указанного кэша"""
-        cache = getattr(self, f"{cache_type}_CACHE", None)
+        cache: Optional[TTLCache] = getattr(self, f"{cache_type}_CACHE", None)
         if cache:
             return cache.get(key)
         return None

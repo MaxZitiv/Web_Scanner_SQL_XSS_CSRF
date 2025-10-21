@@ -1,4 +1,5 @@
 import bcrypt
+from typing import Optional
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QLabel, QLineEdit, QPushButton, QMessageBox
 from utils.database import db
 from utils.logger import logger, log_and_notify

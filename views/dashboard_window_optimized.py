@@ -1,1116 +1,1017 @@
-import os
+"""
+Полный класс DashboardWindow для веб-сканера уязвимостей
+views/dashboard_window_optimized.py
+"""
+
 import asyncio
-import inspect
-from datetime import datetime
-from typing import Dict, List, Any, Optional, Self, cast, Coroutine, Awaitable
-from types import CoroutineType
-from PyQt5.QtCore import Qt, pyqtSignal, pyqtSlot
-from PyQt5.QtGui import QPixmap
-from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-                         QPushButton, QLineEdit, QCheckBox,
-                         QTabWidget, QSpinBox, QMessageBox,
-                         QComboBox, QGroupBox, QDialog, QDialogButtonBox, QApplication,
-                         QFormLayout, QTextEdit, QProgressBar)
+from typing import Optional, Dict, Any, TypeVar
+from PyQt5.QtWidgets import (
+    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLineEdit, QSpinBox,
+    QCheckBox, QPushButton, QTableWidget, QTableWidgetItem, QTextEdit,
+    QLabel, QMessageBox
+)
+from PyQt5.QtWidgets import QMessageBox.StandardButton as QMessageBoxButton
+from PyQt5.QtCore import pyqtSlot # type: ignore
+from PyQt5.QtGui import QFont, QColor
+from qasync import asyncSlot # type: ignore
 
-# Импортируем константы из QMessageBox
-StandardButton = QMessageBox.StandardButton
-StandardButtons = QMessageBox.StandardButtons
-
-# Контроллеры и утилиты
+from models.user_model import UserModel
 from controllers.scan_controller import ScanController
-from utils import error_handler
-from utils.database import db
+from views.statistics_widget import StatisticsWidget
 from utils.logger import logger
-from utils.security import is_safe_url
-from utils.qt_utils import SignalWrapper
+from utils.security import is_safe_url, validate_input_length
+from utils.error_handler import error_handler
 
-# Представления и компоненты
-from views.edit_profile_window import EditProfileWindow
-from views.dialogs import PolicyEditDialog, ScanSettingsDialog
-from views.tabs.profile_tab import ProfileTabWidget
-from views.tabs.reports_tab import ReportsTabWidget
-from views.tabs.scan_tab import ScanTabWidget
-from views.tabs.stats_tab import StatsTabWidget
+T = TypeVar('T')
 
-# Менеджеры и миксины
-from views.managers.scan_manager import ScanManagerStatsMixin
-from views.mixins.export_mixin import ExportMixin
-from views.mixins.scan_mixin import ScanMixin
-from views.mixins.log_mixin import LogMixin
-from views.mixins.log_processor_mixin import LogProcessorMixin
-
-# Импорт matplotlib с обработкой ошибок
-try:
-    import matplotlib
-    matplotlib.use('Qt5Agg')
-    # Используем правильный импорт для matplotlib
-    from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
-    from matplotlib.figure import Figure
-    matplotlib_available = True
-except ImportError as e:
-    logger.warning(f"matplotlib not available: {e}")
-    matplotlib_available = False
-    FigureCanvas = None
-    Figure = None
-
-# Для обратной совместимости создаем константу
-# MATPLOTLIB_AVAILABLE = matplotlib_available  # Закомментировано, чтобы избежать предупреждения о переопределении константы
-
-from qasync import asyncSlot  # type: ignore  # Игнорируем отсутствие stub-файлов для qasync
-import importlib
-import policies.policy_manager
-importlib.reload(policies.policy_manager)
-from policies.policy_manager import PolicyManager
-
-
-class DashboardWindowBase:
-    """Базовый класс для DashboardWindow, содержащий общую функциональность"""
-
-    def init_stats_manager(self):
-        """Инициализация менеджера статистики
-        
-        Базовая реализация, которая может быть переопределена в миксинах.
+class DashboardWindow(QMainWindow):
+    """Главное окно дашборда для пользователя"""
+    
+    def __init__(self, user_id: int, username: str, user_model: UserModel, 
+                 parent: Optional[QMainWindow] = None):
         """
-        # Базовая реализация - ничего не делаем
-        pass
-
-    def _init_scan_attributes(self):
-        """Инициализация атрибутов для сканирования
-        
-        Базовая реализация, которая может быть переопределена в миксинах.
-        """
-        # Базовая реализация - ничего не делаем
-        pass
-
-    def load_avatar(self):
-        """Загрузка аватара пользователя
-        
-        Базовая реализация, которая может быть переопределена в миксинах.
-        """
-        # Базовая реализация - ничего не делаем
-        pass
-
-    def _process_scan_results(self, results: Dict[str, Any]) -> None:
-        """Обработка результатов сканирования."""
-        vulnerabilities = results.get("vulnerabilities", [])
-
-        if not vulnerabilities:
-            QMessageBox.information(None, "Результаты сканирования", "Уязвимости не обнаружены")
-            return
-
-        # Формируем сообщение с результатами
-        message = f"Обнаружено уязвимостей: {len(vulnerabilities)}\n\n"
-
-        # Группируем по типам
-        by_type = {}
-        for vuln in vulnerabilities:
-            vuln_type = vuln.get("type", "Unknown")
-            if vuln_type not in by_type:
-                by_type[vuln_type] = []
-            by_type[vuln_type].append(vuln)
-
-        # Добавляем информацию по каждому типу
-        for vuln_type, vulns in by_type.items():
-            message += f"{vuln_type}: {len(vulns)}\n"
-
-        QMessageBox.information(None, "Результаты сканирования", message)
-
-        # Обновляем вкладку сканирования, если она существует
-        if hasattr(self, 'scan_tab') and self.scan_tab is not None:
-            self.scan_tab.add_scan_results(results)
-
-    async def _start_scan_async(self) -> None:
-        """Асинхронный метод для выполнения сканирования."""
-        scan_progress_attr = None
-        scan_url: Optional[str] = None
-        try:
-            # Получаем URL для сканирования
-            url_input_attr = getattr(self, 'url_input', None)
-            if not isinstance(url_input_attr, QLineEdit):
-                QMessageBox.warning(None, "Ошибка", "Компонент для ввода URL не найден")
-                return
-
-            scan_url = url_input_attr.text().strip()
-                
-            if not scan_url:
-                QMessageBox.warning(None, "Предупреждение", "Пожалуйста, введите URL для сканирования")
-                return
-
-            if not is_safe_url(scan_url):
-                QMessageBox.warning(None, "Предупреждение", "Введенный URL небезопасен")
-                return
-                
-            logger.info(f"Starting scan for URL: {scan_url}")
-
-            # Определение типа сканирования
-            scan_type_combo_attr = getattr(self, 'scan_type_combo', None)
-            if not isinstance(scan_type_combo_attr, QComboBox):
-                QMessageBox.warning(None, "Ошибка", "Компонент выбора типа сканирования не найден")
-                return
-
-            scan_type_text: str = scan_type_combo_attr.currentText()
-            scan_types: list[str] = []
-
-            if scan_type_text == "SQL-инъекции":
-                scan_types = ["sql"]
-            elif scan_type_text == "XSS":
-                scan_types = ["xss"]
-            elif scan_type_text == "CSRF":
-                scan_types = ["csrf"]
-            else:  # "Все"
-                scan_types = ["sql", "xss", "csrf"]
-
-            # Показываем индикатор прогресса
-            scan_progress_attr = getattr(self, 'scan_progress', None)
-            if isinstance(scan_progress_attr, QProgressBar):
-                scan_progress_attr.setVisible(True)
-                scan_progress_attr.setRange(0, 0)  # Неопределенный прогресс
-
-            # Запускаем асинхронное сканирование
-            await self._run_scan(scan_url, scan_types)
-
-        except Exception as e:
-            logger.error(f"Error during scan: {e}")
-            QMessageBox.critical(None, "Ошибка", f"Ошибка во время сканирования: {e}")
-        finally:
-            # Скрываем индикатор прогресса в любом случае
-            if isinstance(scan_progress_attr, QProgressBar):
-                scan_progress_attr.setVisible(False)
-
-    async def _run_scan(self, url: str, scan_types: List[str]) -> None:
-        """Запуск сканирования в асинхронном режиме"""
-        try:
-            # Создаем контроллер сканирования
-            controller_params: Dict[str, Any] = {
-                'url': url,
-                'scan_types': scan_types,
-                'user_id': self.user_id,
-                'max_depth': 2,
-                'max_concurrent': 5,
-                'timeout': 30
-            }
-
-            # Фильтруем только те параметры, которые поддерживает конструктор
-            sig = inspect.signature(ScanController.__init__)
-            valid_params = {k: v for k, v in controller_params.items() if k in sig.parameters}
-
-            controller = ScanController(**valid_params)
-
-            # Запускаем сканирование
-            scan_results: Any = await controller.scan()
-
-            # Обрабатываем результаты
-            if isinstance(scan_results, dict):
-                typed_results: Dict[str, Any] = scan_results
-                self._process_scan_results(typed_results)
-            else:
-                logger.warning(f"Scan results are not in expected format: {type(scan_results)}")
-
-            # Обновляем статистику
-            update_stats_method = getattr(self, 'update_scan_stats', None)
-            if update_stats_method is not None and callable(update_stats_method):
-                update_stats_method()
-            else:
-                logger.warning("update_scan_stats method not found or not callable")
-
-        except Exception as e:
-            logger.error(f"Error during scan: {e}")
-            QMessageBox.critical(None, "Ошибка", f"Произошла ошибка при сканировании: {e}")
-        finally:
-            # Скрываем индикатор прогресса
-            scan_progress_attr = getattr(self, 'scan_progress', None)
-            if isinstance(scan_progress_attr, QProgressBar):
-                scan_progress_attr.setVisible(False)
-
-    def _init_attributes(self):
-        """Инициализация атрибутов класса"""
-        # Системные атрибуты
-        self._log_loader_thread = None
-        self.edit_window = None
-        self._visible_rows_timer = None
-        self._filtered_scans_data = None
-        self._scan_timer = None
-        self.user_id = None
-
-        # Менеджеры
-        self.scan_manager = ScanManagerStatsMixin()
-        self.init_stats_manager()
-
-        # Инициализация атрибутов для сканирования через миксин
-        self._init_scan_attributes()
-
-        # UI компоненты (будут инициализированы в init_components)
-        self.main_layout = None
-        self.tabs = None
-        self.avatar_label = None
-        self.username_label = None
-        self.scan_button = None
-
-        # Логи и фильтры
-        self._log_entries = []
-        self._filtered_log_entries = []
-        self.detailed_log = None
-        self.log_status_label = None
-
-        # Вкладки
-        self.scan_tab = None
-        self.reports_tab = None
-        self.stats_tab = None
-        self.profile_tab = None
-
-        # Статистика
-        self._stats = None
-
-        # Сигналы будут инициализированы в дочернем классе
-
-    def _finalize_initialization(self):
-        """Завершение инициализации компонентов"""
-        try:
-            # Инициализация вкладок
-            self.initialize_tabs()
-
-            # Инициализация stats_canvas
-            self.stats_canvas = None
-            if matplotlib_available and FigureCanvas is not None and Figure is not None:
-                try:
-                    self.stats_canvas = FigureCanvas(Figure())
-                except Exception as matplotlib_error:
-                    logger.warning(f"Failed to initialize matplotlib canvas: {matplotlib_error}")
-                    self.stats_canvas = None
-
-            # Загружаем аватар после создания всех компонентов
-            if hasattr(self, 'avatar_label') and self.avatar_label is not None:
-                self.load_avatar()
-            else:
-                logger.error("Avatar label not initialized after setup_ui")
-
-        except Exception as init_error:
-            logger.error(f"Failed to initialize dashboard window: {init_error}")
-            QMessageBox.critical(None, "Error", f"Failed to initialize dashboard window: {init_error}")
-            raise
-
-    def initialize_tabs(self) -> None:
-        try:
-            if not self.tabs_initialized:
-                # Проверка инициализации вкладок
-                if not hasattr(self, 'tabs') or self.tabs is None:
-                    self.tabs = QTabWidget()
-                    if hasattr(self, 'main_layout') and self.main_layout is not None:
-                        self.main_layout.addWidget(self.tabs)
-                    else:
-                        logger.error("Main layout not initialized")
-                        return
-
-                # Проверка инициализации компонентов
-                if not hasattr(self, 'user_id'):
-                    logger.error("User ID not initialized")
-                    return
-
-                if self.user_id is not None:
-                    # Cast self to QWidget for type checker
-                    widget_self: QWidget = self  # type: ignore
-                    self.scan_tab = ScanTabWidget(self.user_id, widget_self)
-                    self.reports_tab = ReportsTabWidget(self.user_id, widget_self)
-                    self.stats_tab = StatsTabWidget(self.user_id, widget_self)
-                    self.profile_tab = ProfileTabWidget(self.user_id, widget_self)
-                else:
-                    logger.error("Cannot initialize tabs: user_id is None")
-                    return
-
-                # Добавление вкладок
-                self.tabs.addTab(self.scan_tab, "Сканирование")
-                self.tabs.addTab(self.reports_tab, "Отчеты")
-                self.tabs.addTab(self.stats_tab, "Статистика")
-                self.tabs.addTab(self.profile_tab, "Профиль")
-
-                self.tabs_initialized = True
-                logger.info("Tabs initialized successfully")
-        except Exception as e:
-            logger.error(f"Error initializing tabs: {e}")
-            QMessageBox.critical(None, "Error", f"Failed to initialize tabs: {e}")
-
-
-class DashboardWindowUI(DashboardWindowBase):
-    """Класс для управления UI компонентами DashboardWindow"""
-
-    def open_edit_profile(self) -> None:
-        """Открытие окна редактирования профиля"""
-        # Будет реализовано в DashboardWindowHandlers
-        pass
-
-    def logout(self) -> None:
-        """Обработка выхода из системы"""
-        # Будет реализовано в DashboardWindowHandlers
-        pass
-
-    @asyncSlot()
-    async def start_scan(self, *, url: Optional[str] = None) -> None:
-        """Начало сканирования
-        
-        Args:
-            url: URL для сканирования. Если не указан, берется из поля ввода.
-        """
-        pass
-
-    @pyqtSlot()
-    def on_scan_button_clicked(self) -> None:
-        """Handle scan button click by starting the scan asynchronously."""
-        asyncio.create_task(self._start_scan_async())
-
-    def init_components(self):
-        """Инициализация компонентов интерфейса"""
-        # Основной макет
-        self.main_layout = QVBoxLayout()
-        
-        # Инициализация атрибутов пользователя
-        self.username = ""
-
-        # Верхняя панель с информацией о пользователе
-        self._init_user_panel()
-
-        # Панель сканирования
-        self._init_scan_panel()
-
-        # Область для вкладок
-        self.tabs_container = QWidget()
-        self.tabs_layout = QVBoxLayout()
-        self.tabs_container.setLayout(self.tabs_layout)
-        self.main_layout.addWidget(self.tabs_container)
-
-    def _init_user_panel(self):
-        """Инициализация панели пользователя"""
-        user_panel = QWidget()
-        user_layout = QHBoxLayout()
-        user_panel.setLayout(user_layout)
-
-        # Аватар
-        self.avatar_label = QLabel()
-        self.avatar_label.setFixedSize(64, 64)
-        self.avatar_label.setScaledContents(True)
-        self.avatar_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        user_layout.addWidget(self.avatar_label)
-
-        # Информация о пользователе
-        user_info_layout = QVBoxLayout()
-        self.username_label = QLabel(self.username)
-        self.username_label.setStyleSheet("font-weight: bold; font-size: 14px;")
-        user_info_layout.addWidget(self.username_label)
-
-        # Роль пользователя
-        self.user_role_label = QLabel("Scanner")
-        user_info_layout.addWidget(self.user_role_label)
-
-        user_layout.addLayout(user_info_layout)
-        user_layout.addStretch()
-
-        # Кнопки действий
-        actions_layout = QHBoxLayout()
-
-        # Кнопка редактирования профиля
-        edit_profile_btn = QPushButton("Редактировать профиль")
-        edit_profile_btn.clicked.connect(self.open_edit_profile)
-        actions_layout.addWidget(edit_profile_btn)
-
-        # Кнопка выхода
-        logout_btn = QPushButton("Выход")
-        logout_btn.clicked.connect(self.logout)
-        actions_layout.addWidget(logout_btn)
-
-        user_layout.addLayout(actions_layout)
-        self.main_layout.addWidget(user_panel)
-
-    def _init_scan_panel(self):
-        """Инициализация панели сканирования"""
-        scan_panel = QGroupBox("Быстрое сканирование")
-        scan_layout = QHBoxLayout()
-        scan_panel.setLayout(scan_layout)
-
-        # Поле для URL
-        self.url_input = QLineEdit()
-        self.url_input.setPlaceholderText("Введите URL для сканирования...")
-        scan_layout.addWidget(self.url_input)
-
-        # Выбор типа сканирования
-        self.scan_type_combo = QComboBox()
-        self.scan_type_combo.addItems(["SQL-инъекции", "XSS", "CSRF", "Все"])
-        scan_layout.addWidget(self.scan_type_combo)
-
-        # Кнопка запуска сканирования
-        self.scan_button = QPushButton("Начать сканирование")
-        scan_layout.addWidget(self.scan_button)
-
-        # Индикатор прогресса
-        self.scan_progress = QProgressBar()
-        self.scan_progress.setVisible(False)
-        scan_layout.addWidget(self.scan_progress)
-
-        self.main_layout.addWidget(scan_panel)
-
-    def setup_ui(self):
-        """Настройка пользовательского интерфейса"""
-        self.init_components()
-
-        # Подключение обработчиков событий
-        if hasattr(self, 'scan_button'):
-            self.scan_button.clicked.connect(self.on_scan_button_clicked)
-
-        # Применение стилей
-        self._apply_styles()
-
-    def _apply_styles(self):
-        """Применение стилей к компонентам"""
-        self.styleSheet = """
-            QWidget {
-                background-color: #f5f5f5;
-                font-family: Arial, sans-serif;
-            }
-            QGroupBox {
-                font-weight: bold;
-                border: 2px solid #cccccc;
-                border-radius: 5px;
-                margin-top: 10px;
-                padding-top: 10px;
-            }
-            QGroupBox::title {
-                subcontrol-origin: margin;
-                left: 10px;
-                padding: 0 5px 0 5px;
-            }
-            QPushButton {
-                background-color: #4a86e8;
-                color: white;
-                border: none;
-                border-radius: 3px;
-                padding: 5px 15px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #3a76d8;
-            }
-            QPushButton:pressed {
-                background-color: #2a66c8;
-            }
-            QLineEdit {
-                padding: 5px;
-                border: 1px solid #cccccc;
-                border-radius: 3px;
-            }
-            QTabWidget::pane {
-                border: 1px solid #cccccc;
-            }
-            QTabBar::tab {
-                background-color: #e0e0e0;
-                padding: 8px 15px;
-                margin-right: 2px;
-            }
-            QTabBar::tab:selected {
-                background-color: #4a86e8;
-                color: white;
-            }
-        """
-
-
-class DashboardWindowHandlers:
-    """Класс для обработки событий DashboardWindow"""
-
-    def __init__(self):
-        """Инициализация атрибутов обработчика"""
-        self.user_id = None
-        self.user_model = None
-        self.username = None
-        self.edit_window = None
-        self.scan_tab = None
-
-    def open_edit_profile(self) -> None:
-        """Открытие окна редактирования профиля"""
-        try:
-            if self.edit_window is None or not self.edit_window.isVisible():
-                self.edit_window = EditProfileWindow(self.user_id, self.user_model, self)
-                self.edit_window.show()
-            else:
-                self.edit_window.raise_()
-                self.edit_window.activateWindow()
-            logger.info(f"Opened edit profile window for user {self.username}")
-        except Exception as e:
-            logger.error(f"Error opening edit profile window: {e}")
-            QMessageBox.critical(None, "Ошибка", f"Не удалось открыть окно редактирования профиля: {e}")
-
-    def logout(self) -> None:
-        """Обработка выхода из системы"""
-        try:
-            buttons = QMessageBox.StandardButtons()
-            buttons |= QMessageBox.StandardButton.Yes
-            buttons |= QMessageBox.StandardButton.No
-            reply = QMessageBox.question(
-                None, 'Подтверждение',
-                'Вы уверены, что хотите выйти?',
-                buttons,
-                QMessageBox.StandardButton.No
-            )
-
-            if reply == QMessageBox.StandardButton.Yes:
-                # Закрываем все дочерние окна
-                if self.edit_window:
-                    self.edit_window.close()
-
-                # Логируем выход
-                logger.info(f"User {self.username} logged out")
-                
-                # Отправляем сигнал о выходе
-                # Явно указываем типы для Pylance
-                parent: Any = getattr(self, 'parent', lambda: None)()
-                if parent is not None:
-                    parent_widget: QWidget = parent
-                    if hasattr(parent_widget, 'logout'):
-                        # Явно указываем тип метода logout для Pylance
-                        logout_method: Any = getattr(parent_widget, 'logout')
-                        if callable(logout_method):
-                            logout_method()
-                elif hasattr(self, 'close'):
-                    # Явно указываем тип метода close для Pylance
-                    close_method: Any = getattr(self, 'close')
-                    if callable(close_method):
-                        close_method()
-        except Exception as e:
-            logger.error(f"Error during logout: {e}")
-            QMessageBox.critical(None, "Ошибка", f"Ошибка при выходе из системы: {e}")
-
-    @pyqtSlot()
-    def on_scan_button_clicked(self) -> None:
-        """Handle scan button click by starting the scan asynchronously."""
-        asyncio.create_task(self._start_scan_async())
-
-    async def _start_scan_async(self) -> None:
-        """Асинхронный метод для выполнения сканирования."""
-        scan_progress_attr = None
-        scan_url: Optional[str] = None
-        try:
-            # Получаем URL для сканирования
-            url_input_attr = getattr(self, 'url_input', None)
-            if not isinstance(url_input_attr, QLineEdit):
-                QMessageBox.warning(None, "Ошибка", "Компонент для ввода URL не найден")
-                return
-
-            scan_url = url_input_attr.text().strip()
-                
-            if not scan_url:
-                QMessageBox.warning(None, "Предупреждение", "Пожалуйста, введите URL для сканирования")
-                return
-
-            if not is_safe_url(scan_url):
-                QMessageBox.warning(None, "Предупреждение", "Введенный URL небезопасен")
-                return
-                
-            logger.info(f"Starting scan for URL: {scan_url}")
-
-            # Определение типа сканирования
-            scan_type_combo_attr = getattr(self, 'scan_type_combo', None)
-            if not isinstance(scan_type_combo_attr, QComboBox):
-                QMessageBox.warning(None, "Ошибка", "Компонент выбора типа сканирования не найден")
-                return
-
-            scan_type_text: str = scan_type_combo_attr.currentText()
-            scan_types: list[str] = []
-
-            if scan_type_text == "SQL-инъекции":
-                scan_types = ["sql"]
-            elif scan_type_text == "XSS":
-                scan_types = ["xss"]
-            elif scan_type_text == "CSRF":
-                scan_types = ["csrf"]
-            else:  # "Все"
-                scan_types = ["sql", "xss", "csrf"]
-
-            # Показываем индикатор прогресса
-            scan_progress_attr = getattr(self, 'scan_progress', None)
-            if isinstance(scan_progress_attr, QProgressBar):
-                scan_progress_attr.setVisible(True)
-                scan_progress_attr.setRange(0, 0)  # Неопределенный прогресс
-
-            # Запускаем асинхронное сканирование
-            await self._run_scan(scan_url, scan_types)
-
-        except Exception as e:
-            logger.error(f"Error during scan: {e}")
-            QMessageBox.critical(None, "Ошибка", f"Ошибка во время сканирования: {e}")
-        finally:
-            # Скрываем индикатор прогресса в любом случае
-            if isinstance(scan_progress_attr, QProgressBar):
-                scan_progress_attr.setVisible(False)
-
-    @asyncSlot()
-    async def _run_scan(self, url: str, scan_types: List[str]) -> None:
-        """Запуск сканирования в асинхронном режиме"""
-        try:
-            # Создаем контроллер сканирования
-            controller_params: Dict[str, Any] = {
-                'url': url,
-                'scan_types': scan_types,
-                'user_id': self.user_id,
-                'max_depth': 2,
-                'max_concurrent': 5,
-                'timeout': 30
-            }
-
-            # Фильтруем только те параметры, которые поддерживает конструктор
-            sig = inspect.signature(ScanController.__init__)
-            valid_params = {k: v for k, v in controller_params.items() if k in sig.parameters}
-
-            controller = ScanController(**valid_params)
-
-            # Запускаем сканирование
-            # Явно указываем типы для Pylance
-            scan_method = getattr(controller, 'scan', None)
-            if scan_method is None:
-                logger.error("Scan method not found in controller")
-                return
-
-            # Вызываем метод сканирования и получаем результаты
-            scan_results: Any = await scan_method()
-            # Явно указываем тип для результатов
-            results: Dict[str, Any] = {}
-            # Явно указываем тип для результатов
-            if isinstance(scan_results, dict):
-                # Явное приведение типа для Pylance
-                results = cast(Dict[str, Any], scan_results)
-            else:
-                # Если результаты не в формате словаря, создаем пустой словарь
-                results = {}
-                logger.warning(f"Scan results are not in expected format: {type(scan_results)}")
-
-            # Обрабатываем результаты
-            # Явно указываем тип для Pylance
-            typed_results: Dict[str, Any] = results
-            self._process_scan_results(typed_results)
-
-            # Обновляем статистику
-            # Явно указываем тип метода для Pylance
-            update_stats_method = getattr(self, 'update_scan_stats', None)
-            if update_stats_method is not None and callable(update_stats_method):
-                update_stats_method()
-            else:
-                logger.warning("update_scan_stats method not found or not callable")
-
-        except Exception as e:
-            logger.error(f"Error during scan: {e}")
-            QMessageBox.critical(None, "Ошибка", f"Произошла ошибка при сканировании: {e}")
-        finally:
-            # Скрываем индикатор прогресса
-            # Явно указываем типы для Pylance
-            scan_progress_attr = getattr(self, 'scan_progress', None)
-            if scan_progress_attr is not None:
-                scan_progress: QProgressBar = scan_progress_attr
-                scan_progress.setVisible(False)
-
-    def _process_scan_results(self, results: Dict[str, Any]) -> None:
-        """Обработка результатов сканирования"""
-        vulnerabilities = results.get("vulnerabilities", [])
-
-        if not vulnerabilities:
-            QMessageBox.information(None, "Результаты сканирования", "Уязвимости не обнаружены")
-            return
-
-        # Формируем сообщение с результатами
-        message = f"Обнаружено уязвимостей: {len(vulnerabilities)}\n\n"
-
-        # Группируем по типам
-        by_type = {}
-        for vuln in vulnerabilities:
-            vuln_type = vuln.get("type", "Unknown")
-            if vuln_type not in by_type:
-                by_type[vuln_type] = []
-            by_type[vuln_type].append(vuln)
-
-        # Добавляем информацию по каждому типу
-        for vuln_type, vulns in by_type.items():
-            message += f"{vuln_type}: {len(vulns)}\n"
-
-        QMessageBox.information(None, "Результаты сканирования", message)
-
-        # Обновляем вкладку сканирования, если она существует
-        if self.scan_tab:
-            self.scan_tab.add_scan_results(results)
-
-
-class DashboardWindow(QWidget, DashboardWindowUI, DashboardWindowHandlers,
-                    ScanManagerStatsMixin, ExportMixin, ScanMixin, LogMixin, LogProcessorMixin):
-    """
-    Основное окно приложения - панель управления сканером
-    Объединяет функциональность из нескольких классов-миксинов
-    """
-
-    # Сигналы
-    scan_completed = pyqtSignal(dict)
-    error_occurred = pyqtSignal(str)
-    _log_loaded_signal = pyqtSignal(str, int)
-    _scan_result_signal = pyqtSignal(dict)
-
-    @property
-    def user_id(self) -> int:
-        """Получить ID пользователя."""
-        return self._user_id
-
-    @user_id.setter
-    def user_id(self, value: int) -> None:
-        """Установить ID пользователя."""
-        self._user_id = value
-
-    @property
-    def username(self) -> str:
-        """Получить имя пользователя."""
-        return self._username
-
-    @username.setter
-    def username(self, value: str) -> None:
-        """Установить имя пользователя."""
-        self._username = value
-
-    @property
-    def user_model(self) -> Any:
-        """Получить модель пользователя."""
-        return self._user_model
-
-    def __init__(self, user_id: int, username: str, user_model: Any, parent: Optional[QWidget] = None) -> None:
-        """
-        Инициализация окна панели управления
+        Инициализация окна дашборда
         
         Args:
             user_id: ID пользователя
             username: Имя пользователя
-            user_model: Модель данных пользователя
-            parent: Родительский виджет
+            user_model: Модель пользователя
+            parent: Родительское окно
         """
-        # Инициализация базового класса QWidget первым
-        QWidget.__init__(self, parent)
-
-        # Инициализация основного лейаута
-        self.main_layout = QVBoxLayout()
-        self.setLayout(self.main_layout)
-        
-        # Инициализация вкладок
-        self.tabs = QTabWidget()
-        self.main_layout.addWidget(self.tabs)
-        self.tabs_initialized = False
-
-        # Сохраняем критичные атрибуты
-        self._user_id = user_id  # Используем защищенное имя
-        self._username = username
-        self._user_model = user_model
-        
-        # Инициализируем вкладки после установки всех атрибутов
-        self.initialize_tabs()
-
-        # Инициализация всех миксинов
-        ScanManagerStatsMixin.__init__(self)
-        ExportMixin.__init__(self, user_id)
-        ScanMixin.__init__(self, user_id)
-        LogMixin.__init__(self)
-        LogProcessorMixin.__init__(self)
-
-        # Базовые настройки
-        self.error_handler = error_handler
-        self.setWindowTitle(f"Web Scanner - Control Panel [{username}]")
-        self.avatar_path = "default_avatar.png"
-        self.tabs_initialized = False
-
-        # Адаптация размера окна под размер экрана
-        screen = QApplication.primaryScreen()
-        if screen is not None:
-            geometry = screen.geometry()
-            width = min(geometry.width() - 100, 1200)  # Максимальна ширина 1200px
-            height = min(geometry.height() - 100, 800)  # Максимальна висота 800px
-            self.resize(width, height)
-        else:
-            # Значения по умолчанию при ошибке доступа к геометрии экрана
-            logger.warning("Primary screen not available, using default window size")
-            self.resize(1200, 800)
-
-        # Инициализация атрибутов
-        self._init_attributes()
-
-        # Подключение сигналов
-        self._log_loaded_signal.connect(self._process_log_content)
-
-        # Инициализация компонентов
-        self.init_components()
-
-        # Настройка UI
-        self.setup_ui()
-        
-        if hasattr(self, 'stylesheet'):
-            self.setStyleSheet(self.stylesheet)
-
-        # Загрузка политик
-        self.load_policies_to_combobox()
-
-        # Инициализация оставшихся компонентов
-        self._finalize_initialization()
-
-        logger.info(f"Opened control panel for user '{self.username}' (ID: {self.user_id})")
-
-    def load_policies_to_combobox(self):
-        """Загрузка политик в выпадающий список"""
-        try:
-            policy_manager = PolicyManager()
-            policies = policy_manager.get_all_policies()
-
-            if hasattr(self, 'policy_combo') and self.policy_combo:
-                self.policy_combo.clear()
-                self.policy_combo.addItem("Выберите политику", None)
-
-                for policy in policies:
-                    self.policy_combo.addItem(policy['name'], policy['id'])
-
-        except Exception as e:
-            logger.error(f"Error loading policies: {e}")
-
-    def load_avatar(self):
-        """Загрузка аватара пользователя"""
-        try:
-            # Проверяем наличие аватара в базе данных
-            conn = db.get_db_connection()
-            cursor = conn.cursor()
-            cursor.execute("SELECT avatar_path FROM users WHERE id = ?", (self.user_id,))
-            result = cursor.fetchone()
-            conn.close()
-
-            if result and result[0]:
-                avatar_path = result[0]
-                if os.path.exists(avatar_path) and hasattr(self, 'avatar_label') and self.avatar_label is not None:
-                    pixmap = QPixmap(avatar_path)
-                    self.avatar_label.setPixmap(pixmap)
-                    self.avatar_path = avatar_path
-                    return
-
-            # Если аватар не найден, используем аватар по умолчанию
-            default_avatar = "assets/default_avatar.png"
-            if os.path.exists(default_avatar) and hasattr(self, 'avatar_label') and self.avatar_label is not None:
-                pixmap = QPixmap(default_avatar)
-                self.avatar_label.setPixmap(pixmap)
-                self.avatar_path = default_avatar
-            elif hasattr(self, 'avatar_label') and self.avatar_label is not None:
-                # Если аватар по умолчанию не найден, используем заглушку
-                self.avatar_label.setText("👤")
-                self.avatar_label.setStyleSheet("font-size: 32px;")
-
-        except Exception as e:
-            logger.error(f"Error loading avatar: {e}")
-            if hasattr(self, 'avatar_label') and self.avatar_label is not None:
-                self.avatar_label.setText("👤")
-                self.avatar_label.setStyleSheet("font-size: 32px;")
-
-    def _process_log_content(self, content: str, log_type: int) -> None:
-        """
-        Обработка загруженного содержимого лога
-        :param content: Содержимое лога
-        :param log_type: Тип лога (1 - системный, 2 - сканирование)
-        """
-        # Вызываем метод из миксина
-        super()._process_log_content(content, log_type)
-
-    def _update_log_display(self) -> None:
-        """Обновление отображения логов"""
-        if hasattr(self, 'detailed_log') and self.detailed_log:
-            self.detailed_log.clear()
-            # Преобразуем словари в строки перед объединением
-            log_lines = []
-            for entry in self._log_entries:
-                # Форматируем каждую запись как [timestamp] [level] message
-                timestamp = entry.get('timestamp', '')
-                level = entry.get('level', 'INFO')
-                message = entry.get('message', '')
-                log_lines.append(f"[{timestamp}] [{level}] {message}")
-            
-            self.detailed_log.append('\n'.join(log_lines))
-
-            # Обновляем статус
-            if hasattr(self, 'log_status_label') and self.log_status_label is not None:
-                self.log_status_label.setText(f"Загружено записей: {len(self._log_entries)}")
-
-    def update_scan_stats(self):
-        """Обновление статистики сканирования"""
-        try:
-            # Получаем статистику из базы данных
-            conn = db.get_db_connection()
-            cursor = conn.cursor()
-
-            # Общее количество сканирований
-            cursor.execute("SELECT COUNT(*) FROM scans WHERE user_id = ?", (self.user_id,))
-            total_scans = cursor.fetchone()[0]
-
-            # Количество сканирований за сегодня
-            today = datetime.now().strftime('%Y-%m-%d')
-            cursor.execute(
-                "SELECT COUNT(*) FROM scans WHERE user_id = ? AND DATE(start_time) = ?",
-                (self.user_id, today)
-            )
-            today_scans = cursor.fetchone()[0]
-
-            # Количество найденных уязвимостей
-            cursor.execute(
-                "SELECT COUNT(*) FROM vulnerabilities WHERE user_id = ?",
-                (self.user_id,)
-            )
-            total_vulnerabilities = cursor.fetchone()[0]
-
-            conn.close()
-
-            # Обновляем статистику на вкладке статистики, если она существует
-            if self.stats_tab:
-                self.stats_tab.update_stats({
-                    'total_scans': total_scans,
-                    'today_scans': today_scans,
-                    'total_vulnerabilities': total_vulnerabilities
-                })
-
-        except Exception as e:
-            logger.error(f"Error updating scan stats: {e}")
-
-
-class PolicyEditDialog(QDialog):
-    """Диалог редактирования политик безопасности"""
-
-    def __init__(self, policy_id=None, parent=None):
         super().__init__(parent)
-        self.policy_id = policy_id
-        self.policy_manager = PolicyManager()
-        self.setup_ui()
-
-        if policy_id:
-            self.load_policy_data()
-
-    def setup_ui(self):
-        """Настройка интерфейса диалога"""
-        self.setWindowTitle("Редактирование политики безопасности")
-        self.setMinimumWidth(500)
-
-        layout = QVBoxLayout()
-        self.setLayout(layout)
-
-        # Форма редактирования
-        form_layout = QFormLayout()
-        layout.addLayout(form_layout)
-
-        # Название политики
-        self.name_edit = QLineEdit()
-        form_layout.addRow("Название:", self.name_edit)
-
-        # Описание политики
-        self.description_edit = QTextEdit()
-        self.description_edit.setMaximumHeight(100)
-        form_layout.addRow("Описание:", self.description_edit)
-
-        # Настройки политики
-        policy_group = QGroupBox("Настройки политики")
-        policy_layout = QFormLayout()
-        policy_group.setLayout(policy_layout)
-        layout.addWidget(policy_group)
-
-        # Максимальная глубина сканирования
-        self.max_depth_spin = QSpinBox()
-        self.max_depth_spin.setRange(1, 10)
-        self.max_depth_spin.setValue(3)
-        policy_layout.addRow("Максимальная глубина:", self.max_depth_spin)
-
-        # Максимальное количество потоков
-        self.max_threads_spin = QSpinBox()
-        self.max_threads_spin.setRange(1, 20)
-        self.max_threads_spin.setValue(5)
-        policy_layout.addRow("Макс. потоков:", self.max_threads_spin)
-
-        # Таймаут
-        self.timeout_spin = QSpinBox()
-        self.timeout_spin.setRange(5, 300)
-        self.timeout_spin.setValue(30)
-        self.timeout_spin.setSuffix(" сек")
-        policy_layout.addRow("Таймаут:", self.timeout_spin)
-
-        # Типы сканирования
-        self.sql_check = QCheckBox("SQL-инъекции")
-        self.sql_check.setChecked(True)
-        self.xss_check = QCheckBox("XSS")
-        self.xss_check.setChecked(True)
-        self.csrf_check = QCheckBox("CSRF")
-        self.csrf_check.setChecked(True)
-
-        scan_types_layout = QHBoxLayout()
-        scan_types_layout.addWidget(self.sql_check)
-        scan_types_layout.addWidget(self.xss_check)
-        scan_types_layout.addWidget(self.csrf_check)
-
-        policy_layout.addRow("Типы сканирования:", scan_types_layout)
-
-        # Кнопки
-        buttons = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
-        buttons.accepted.connect(self.save_policy)
-        buttons.rejected.connect(self.reject)
-        layout.addWidget(buttons)
-
-    def load_policy_data(self):
-        """Загрузка данных политики для редактирования"""
+        
+        self.user_id = user_id
+        self.username = username
+        self.user_model = user_model
+        self.scan_controller: Optional[ScanController] = None
+        self.current_scan_task: Optional[asyncio.Task[None]] = None
+        self.is_scanning = False
+        
+        logger.info(f"Инициализация DashboardWindow для пользователя {username} (ID: {user_id})")
+        
         try:
-            # Проверяем, что policy_id не равен None
-            if self.policy_id is None:
-                return
-                
-            policy = self.policy_manager.get_policy(self.policy_id)
-            if policy:
-                self.name_edit.setText(policy.get('name', ''))
-                self.description_edit.setText(policy.get('description', ''))
-
-                # Загрузка настроек
-                settings = policy.get('settings', {})
-                self.max_depth_spin.setValue(settings.get('max_depth', 3))
-                self.max_threads_spin.setValue(settings.get('max_threads', 5))
-                self.timeout_spin.setValue(settings.get('timeout', 30))
-
-                # Загрузка типов сканирования
-                scan_types = settings.get('scan_types', ['sql', 'xss', 'csrf'])
-                self.sql_check.setChecked('sql' in scan_types)
-                self.xss_check.setChecked('xss' in scan_types)
-                self.csrf_check.setChecked('csrf' in scan_types)
-
-        except Exception as e:
-            logger.error(f"Error loading policy data: {e}")
-            QMessageBox.critical(self, "Ошибка", f"Не удалось загрузить данные политики: {e}")
-
-    def save_policy(self):
-        """Сохранение политики"""
-        try:
-            # Валидация данных
-            name = self.name_edit.text().strip()
-            if not name:
-                QMessageBox.warning(self, "Предупреждение", "Название политики не может быть пустым")
-                return
-
-            # Формирование данных политики
-            policy_data = {
-                'name': name,
-                'description': self.description_edit.toPlainText(),
-                'settings': {
-                    'max_depth': self.max_depth_spin.value(),
-                    'max_threads': self.max_threads_spin.value(),
-                    'timeout': self.timeout_spin.value(),
-                    'scan_types': []
+            # ===== ОСНОВНЫЕ ПАРАМЕТРЫ ОКНА =====
+            self.setWindowTitle(f"Web Scanner - {username}")
+            self.setGeometry(100, 100, 1400, 950)
+            
+            # Центральный виджет
+            central_widget = QWidget()
+            self.setCentralWidget(central_widget)
+            
+            # Главный layout
+            main_layout = QVBoxLayout()
+            main_layout.setSpacing(10)
+            main_layout.setContentsMargins(10, 10, 10, 10)
+            
+            # ===== ПРОФИЛЬ ПОЛЬЗОВАТЕЛЯ =====
+            profile_layout = QHBoxLayout()
+            
+            profile_label = QLabel(f"👤 Пользователь: {username}")
+            profile_font = QFont()
+            profile_font.setPointSize(10)
+            profile_label.setFont(profile_font)
+            profile_layout.addWidget(profile_label)
+            
+            profile_layout.addStretch()
+            
+            logout_btn = QPushButton("🚪 Выход")
+            logout_btn.setMaximumWidth(100)
+            logout_btn.clicked.connect(self.on_logout)
+            profile_layout.addWidget(logout_btn)
+            
+            main_layout.addLayout(profile_layout)
+            
+            # ===== СТРОКА ВВОДА URL И ОПЦИЙ =====
+            scan_options_layout = QHBoxLayout()
+            
+            # URL
+            url_label = QLabel("🔗 URL:")
+            scan_options_layout.addWidget(url_label)
+            
+            self.url_input = QLineEdit()
+            self.url_input.setPlaceholderText("Введите URL (https://example.com)")
+            scan_options_layout.addWidget(self.url_input)
+            
+            # Глубина сканирования
+            depth_label = QLabel("📊 Глубина:")
+            scan_options_layout.addWidget(depth_label)
+            
+            self.max_depth_spinbox = QSpinBox()
+            self.max_depth_spinbox.setMinimum(1)
+            self.max_depth_spinbox.setMaximum(10)
+            self.max_depth_spinbox.setValue(3)
+            self.max_depth_spinbox.setMaximumWidth(60)
+            scan_options_layout.addWidget(self.max_depth_spinbox)
+            
+            # Параллельные запросы
+            concurrent_label = QLabel("⚡ Параллельно:")
+            scan_options_layout.addWidget(concurrent_label)
+            
+            self.max_concurrent_spinbox = QSpinBox()
+            self.max_concurrent_spinbox.setMinimum(1)
+            self.max_concurrent_spinbox.setMaximum(20)
+            self.max_concurrent_spinbox.setValue(5)
+            self.max_concurrent_spinbox.setMaximumWidth(60)
+            scan_options_layout.addWidget(self.max_concurrent_spinbox)
+            
+            main_layout.addLayout(scan_options_layout)
+            
+            # ===== ТИПЫ СКАНИРОВАНИЯ =====
+            scan_types_layout = QHBoxLayout()
+            
+            types_label = QLabel("🔍 Типы сканирования:")
+            types_font = QFont()
+            types_font.setBold(True)
+            types_label.setFont(types_font)
+            scan_types_layout.addWidget(types_label)
+            
+            self.sql_checkbox = QCheckBox("SQL Injection")
+            self.sql_checkbox.setChecked(True)
+            scan_types_layout.addWidget(self.sql_checkbox)
+            
+            self.xss_checkbox = QCheckBox("XSS")
+            self.xss_checkbox.setChecked(True)
+            scan_types_layout.addWidget(self.xss_checkbox)
+            
+            self.csrf_checkbox = QCheckBox("CSRF")
+            self.csrf_checkbox.setChecked(True)
+            scan_types_layout.addWidget(self.csrf_checkbox)
+            
+            scan_types_layout.addStretch()
+            main_layout.addLayout(scan_types_layout)
+            
+            # ===== КНОПКИ УПРАВЛЕНИЯ СКАНИРОВАНИЕМ =====
+            buttons_layout = QHBoxLayout()
+            buttons_layout.setSpacing(5)
+            
+            self.start_scan_btn = QPushButton("▶ Начать сканирование")
+            self.start_scan_btn.setMinimumHeight(35)
+            self.start_scan_btn.setStyleSheet("""
+                QPushButton {
+                    background-color: #4CAF50;
+                    color: white;
+                    border: none;
+                    border-radius: 5px;
+                    font-weight: bold;
+                    padding: 5px;
                 }
-            }
-
-            # Определение выбранных типов сканирования
-            if self.sql_check.isChecked():
-                policy_data['settings']['scan_types'].append('sql')
-            if self.xss_check.isChecked():
-                policy_data['settings']['scan_types'].append('xss')
-            if self.csrf_check.isChecked():
-                policy_data['settings']['scan_types'].append('csrf')
-
-            # Сохранение политики
-            if self.policy_id:
-                self.policy_manager.update_policy(self.policy_id, policy_data)
+                QPushButton:hover {
+                    background-color: #45a049;
+                }
+                QPushButton:pressed {
+                    background-color: #3d8b40;
+                }
+            """)
+            self.start_scan_btn.clicked.connect(self.on_start_scan)
+            buttons_layout.addWidget(self.start_scan_btn)
+            
+            self.pause_scan_btn = QPushButton("⏸ Пауза")
+            self.pause_scan_btn.setMinimumHeight(35)
+            self.pause_scan_btn.clicked.connect(self.on_pause_scan)
+            self.pause_scan_btn.setEnabled(False)
+            buttons_layout.addWidget(self.pause_scan_btn)
+            
+            self.resume_scan_btn = QPushButton("▶ Продолжить")
+            self.resume_scan_btn.setMinimumHeight(35)
+            self.resume_scan_btn.clicked.connect(self.on_resume_scan)
+            self.resume_scan_btn.setEnabled(False)
+            buttons_layout.addWidget(self.resume_scan_btn)
+            
+            self.stop_scan_btn = QPushButton("⏹ Остановить")
+            self.stop_scan_btn.setMinimumHeight(35)
+            self.stop_scan_btn.setStyleSheet("""
+                QPushButton {
+                    background-color: #f44336;
+                    color: white;
+                    border: none;
+                    border-radius: 5px;
+                    font-weight: bold;
+                    padding: 5px;
+                }
+                QPushButton:hover {
+                    background-color: #da190b;
+                }
+                QPushButton:pressed {
+                    background-color: #ba0000;
+                }
+            """)
+            self.stop_scan_btn.clicked.connect(self.on_stop_scan)
+            self.stop_scan_btn.setEnabled(False)
+            buttons_layout.addWidget(self.stop_scan_btn)
+            
+            main_layout.addLayout(buttons_layout)
+            
+            # ===== СОЗДАЁМ ВИДЖЕТ СТАТИСТИКИ =====
+            try:
+                self.statistics_widget = StatisticsWidget()
+                main_layout.addWidget(self.statistics_widget)
+                logger.info("StatisticsWidget успешно создан")
+            except Exception as stats_error:
+                logger.error(f"Ошибка при создании StatisticsWidget: {stats_error}")
+                self.statistics_widget = None
+            
+            # ===== ТАБЛИЦА РЕЗУЛЬТАТОВ =====
+            results_label = QLabel("📋 Найденные уязвимости:")
+            results_font = QFont()
+            results_font.setBold(True)
+            results_font.setPointSize(10)
+            results_label.setFont(results_font)
+            main_layout.addWidget(results_label)
+            
+            self.results_table = QTableWidget()
+            self.results_table.setColumnCount(5)
+            self.results_table.setHorizontalHeaderLabels([
+                "Тип уязвимости",
+                "URL",
+                "Параметр",
+                "Серьёзность",
+                "Время обнаружения"
+            ])
+            header = self.results_table.horizontalHeader()
+            if header is not None:
+                header.setStretchLastSection(True)
             else:
-                self.policy_manager.create_policy(policy_data)
-
-            self.accept()
-
+                logger.warning("Не удалось получить заголовок таблицы результатов")
+            
+            # Настройка таблицы
+            self.results_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+            self.results_table.setMinimumHeight(150)
+            self.results_table.setAlternatingRowColors(True)
+            
+            # Устанавливаем ширину колонок
+            self.results_table.resizeColumnsToContents()
+            main_layout.addWidget(self.results_table)
+            
+            # ===== ЛОГ СОБЫТИЯ =====
+            log_label = QLabel("📝 Лог событий:")
+            log_font = QFont()
+            log_font.setBold(True)
+            log_font.setPointSize(10)
+            log_label.setFont(log_font)
+            main_layout.addWidget(log_label)
+            
+            self.log_text = QTextEdit()
+            self.log_text.setReadOnly(True)
+            self.log_text.setMaximumHeight(120)
+            self.log_text.setStyleSheet("""
+                QTextEdit {
+                    background-color: #f5f5f5;
+                    border: 1px solid #cccccc;
+                    border-radius: 3px;
+                    font-family: Courier;
+                    font-size: 9pt;
+                }
+            """)
+            main_layout.addWidget(self.log_text)
+            
+            # ===== УСТАНАВЛИВАЕМ MAIN LAYOUT =====
+            central_widget.setLayout(main_layout)
+            
+            # ===== ПРИМЕНЯЕМ СТИЛИ =====
+            self.apply_styles()
+            
+            logger.info(f"DashboardWindow инициализирован успешно для пользователя {username}")
+            
         except Exception as e:
-            logger.error(f"Error saving policy: {e}")
-            QMessageBox.critical(self, "Ошибка", f"Не удалось сохранить политику: {e}")
+            error_msg = f"Критическая ошибка при инициализации DashboardWindow: {e}"
+            logger.error(error_msg, exc_info=True)
+            error_handler.show_error_message("Критическая ошибка", error_msg)
+            raise
+    
+    def apply_styles(self):
+        """Применяет стили к окну"""
+        try:
+            self.setStyleSheet("""
+                QMainWindow {
+                    background-color: #ffffff;
+                }
+                QLabel {
+                    color: #333333;
+                }
+                QLineEdit {
+                    border: 1px solid #cccccc;
+                    border-radius: 3px;
+                    padding: 5px;
+                    background-color: #fafafa;
+                }
+                QLineEdit:focus {
+                    border: 2px solid #4CAF50;
+                    background-color: #ffffff;
+                }
+                QSpinBox {
+                    border: 1px solid #cccccc;
+                    border-radius: 3px;
+                    padding: 3px;
+                }
+                QCheckBox {
+                    color: #333333;
+                    spacing: 5px;
+                }
+                QTableWidget {
+                    background-color: #ffffff;
+                    alternate-background-color: #f9f9f9;
+                    border: 1px solid #cccccc;
+                    gridline-color: #e0e0e0;
+                }
+                QTableWidget::item:selected {
+                    background-color: #4CAF50;
+                }
+                QHeaderView::section {
+                    background-color: #f0f0f0;
+                    padding: 5px;
+                    border: 1px solid #cccccc;
+                    font-weight: bold;
+                }
+            """)
+        except Exception as e:
+            logger.error(f"Ошибка при применении стилей: {e}")
+    
+    @pyqtSlot()
+    def on_start_scan(self):
+        """
+        Начинает сканирование сайта.
+        Валидирует входные данные, создает ScanController и запускает асинхронное сканирование.
+        """
+        try:
+            # ===== ВАЛИДАЦИЯ ДАННЫХ =====
+            
+            # Получаем URL и удаляем пробелы
+            url = self.url_input.text().strip()
+            
+            # Проверяем, что URL не пустой
+            if not url:
+                error_handler.show_error_message(
+                    "Ошибка",
+                    "Пожалуйста, введите URL для сканирования"
+                )
+                logger.warning("Попытка начать сканирование без URL")
+                return
+            
+            # Добавляем протокол если его нет
+            if not url.startswith(('http://', 'https://')):
+                url = 'https://' + url
+                self.url_input.setText(url)
+                logger.info(f"Добавлен протокол HTTPS. URL: {url}")
+            
+            # Валидируем длину URL
+            if not validate_input_length(url, 1, 2048):
+                error_handler.show_error_message(
+                    "Ошибка",
+                    "URL слишком длинный (максимум 2048 символов). "
+                    f"Текущая длина: {len(url)}"
+                )
+                logger.warning(f"URL слишком длинный: {len(url)} символов")
+                return
+            
+            # Проверяем безопасность URL
+            if not is_safe_url(url):
+                logger.warning(f"Предупреждение о безопасности URL: {url}")
+                reply = QMessageBox.question(
+                    self,
+                    "⚠️ Предупреждение безопасности",
+                    "URL может быть небезопасным. Продолжить?\n\n"
+                    "Убедитесь, что вы сканируете только свои собственные сайты"
+                    "или сайты, на которые у вас есть разрешение.",
+                    QMessageBoxButton.Yes | QMessageBoxButton.No
+                )
+                if reply == QMessageBoxButton.No:
+                    logger.info("Сканирование отменено пользователем")
+                    return
+                logger.info("Пользователь подтвердил сканирование небезопасного URL")
+            
+            # ===== ПОЛУЧЕНИЕ ПАРАМЕТРОВ СКАНИРОВАНИЯ =====
+            
+            # Собираем типы сканирования
+            scan_types = []
+            
+            if self.sql_checkbox.isChecked():
+                scan_types.append("sql")
+            
+            if self.xss_checkbox.isChecked():
+                scan_types.append("xss")
+            
+            if self.csrf_checkbox.isChecked():
+                scan_types.append("csrf")
+            
+            # Проверяем, что выбран хотя бы один тип
+            if not scan_types:
+                error_handler.show_error_message(
+                    "Ошибка",
+                    "Выберите хотя бы один тип сканирования:\n"
+                    "• SQL Injection\n"
+                    "• XSS\n"
+                    "• CSRF"
+                )
+                logger.warning("Попытка начать сканирование без типов")
+                return
+            
+            logger.info(f"Выбранные типы сканирования: {', '.join(scan_types)}")
+            
+            # Получаем параметры
+            max_depth = self.max_depth_spinbox.value()
+            max_concurrent = self.max_concurrent_spinbox.value()
+            
+            if max_depth < 1 or max_depth > 10:
+                error_handler.show_error_message(
+                    "Ошибка",
+                    "Глубина сканирования должна быть от 1 до 10"
+                )
+                return
+            
+            if max_concurrent < 1 or max_concurrent > 20:
+                error_handler.show_error_message(
+                    "Ошибка",
+                    "Количество параллельных запросов должно быть от 1 до 20"
+                )
+                return
+            
+            logger.info(f"Параметры сканирования: глубина={max_depth}, параллельные={max_concurrent}")
+            
+            # ===== СБРОС ПРЕДЫДУЩИХ ДАННЫХ =====
+            
+            # Очищаем таблицу результатов
+            self.results_table.setRowCount(0)
+            logger.debug("Таблица результатов очищена")
+            
+            # Очищаем лог
+            self.log_text.clear()
+            logger.debug("Лог событий очищен")
+            
+            # Сбрасываем статистику
+            self.reset_scan_stats()
+            logger.info("Статистика сброшена")
+            
+            # ===== СОЗДАНИЕ SCAN CONTROLLER =====
+            
+            try:
+                self.scan_controller = ScanController(
+                    url=url,
+                    scan_types=scan_types,
+                    user_id=self.user_id,
+                    max_depth=max_depth,
+                    max_concurrent=max_concurrent,
+                    timeout=30,
+                    username=self.username
+                )
+                logger.info(f"ScanController создан для URL: {url}")
+            except Exception as controller_error:
+                logger.error(f"Ошибка при создании ScanController: {controller_error}")
+                error_handler.show_error_message(
+                    "Ошибка",
+                    f"Ошибка при инициализации сканера: {str(controller_error)}"
+                )
+                return
+            
+            # ===== ПОДКЛЮЧЕНИЕ СИГНАЛОВ =====
+            
+            try:
+                self.connect_scan_signals()
+                logger.info("Сигналы ScanController подключены успешно")
+            except Exception as signals_error:
+                logger.error(f"Ошибка при подключении сигналов: {signals_error}")
+                error_handler.show_error_message(
+                    "Ошибка",
+                    f"Ошибка при подключении сигналов: {str(signals_error)}"
+                )
+                return
+            
+            # ===== ОБНОВЛЕНИЕ UI =====
+            
+            # Устанавливаем флаг сканирования
+            self.is_scanning = True
+            
+            # Отключаем кнопку "Начать"
+            self.start_scan_btn.setEnabled(False)
+            
+            # Включаем кнопки управления
+            self.pause_scan_btn.setEnabled(True)
+            self.resume_scan_btn.setEnabled(False)
+            self.stop_scan_btn.setEnabled(True)
+            
+            # Отключаем поля ввода (нельзя менять параметры во время сканирования)
+            self.url_input.setEnabled(False)
+            self.max_depth_spinbox.setEnabled(False)
+            self.max_concurrent_spinbox.setEnabled(False)
+            self.sql_checkbox.setEnabled(False)
+            self.xss_checkbox.setEnabled(False)
+            self.csrf_checkbox.setEnabled(False)
+            
+            logger.info("UI обновлен для начала сканирования")
+            
+            # ===== ЛОГИРОВАНИЕ И УВЕДОМЛЕНИЕ =====
+            
+            # Добавляем начальное сообщение в лог
+            self.log_text.append("=" * 70)
+            self.log_text.append(f"🚀 НАЧИНАЕМ СКАНИРОВАНИЕ")
+            self.log_text.append("=" * 70)
+            self.log_text.append(f"📍 URL: {url}")
+            self.log_text.append(f"🔍 Типы сканирования: {', '.join(scan_types)}")
+            self.log_text.append(f"📊 Глубина: {max_depth}")
+            self.log_text.append(f"⚡ Параллельные запросы: {max_concurrent}")
+            self.log_text.append(f"👤 Пользователь: {self.username}")
+            self.log_text.append(f"🕐 Время начала: {self._get_current_time()}")
+            self.log_text.append("=" * 70)
+            self.log_text.append("")
+            
+            # Прокручиваем лог к началу
+            try:
+                scroll_bar = self.log_text.verticalScrollBar()
+                if scroll_bar is not None:
+                    scroll_bar.setValue(0)
+            except AttributeError:
+                logger.warning("verticalScrollBar() не доступен для log_text")
+            
+            # ===== ЗАПУСК АСИНХРОННОГО СКАНИРОВАНИЯ =====
+            
+            try:
+                # Получаем event loop
+                loop = asyncio.get_event_loop()
+                
+                # Создаём асинхронную задачу для сканирования
+                self.current_scan_task = loop.create_task(
+                    self.scan_controller.start_scan(
+                        url=url,
+                        scan_types=scan_types,
+                        max_depth=max_depth,
+                        max_concurrent=max_concurrent,
+                        on_log=self.on_log_event,
+                        on_result=self.on_scan_complete
+                    )
+                )
+                
+                logger.info("Асинхронная задача сканирования создана и запущена")
+                self.log_text.append("✅ Сканирование инициализировано")
+                
+            except Exception as task_error:
+                logger.error(f"Ошибка при создании асинхронной задачи: {task_error}")
+                error_handler.show_error_message(
+                    "Ошибка",
+                    f"Ошибка при запуске сканирования: {str(task_error)}"
+                )
+                
+                # Восстанавливаем UI при ошибке
+                self.is_scanning = False
+                self.start_scan_btn.setEnabled(True)
+                self.pause_scan_btn.setEnabled(False)
+                self.stop_scan_btn.setEnabled(False)
+                self.url_input.setEnabled(True)
+                self.max_depth_spinbox.setEnabled(True)
+                self.max_concurrent_spinbox.setEnabled(True)
+                self.sql_checkbox.setEnabled(True)
+                self.xss_checkbox.setEnabled(True)
+                self.csrf_checkbox.setEnabled(True)
+                
+                self.log_text.append("❌ Ошибка при запуске сканирования")
+                return
+        
+        except Exception as e:
+            # Обработка неожиданных ошибок
+            logger.error(f"Неожиданная ошибка в on_start_scan: {e}", exc_info=True)
+            error_handler.show_error_message(
+                "Критическая ошибка",
+                f"Неожиданная ошибка: {str(e)}\n\n"
+                f"Проверьте логи для деталей"
+            )
+            
+            # Пытаемся восстановить UI
+            try:
+                self.is_scanning = False
+                self.start_scan_btn.setEnabled(True)
+                self.pause_scan_btn.setEnabled(False)
+                self.stop_scan_btn.setEnabled(False)
+                self.url_input.setEnabled(True)
+                self.max_depth_spinbox.setEnabled(True)
+                self.max_concurrent_spinbox.setEnabled(True)
+                self.sql_checkbox.setEnabled(True)
+                self.xss_checkbox.setEnabled(True)
+                self.csrf_checkbox.setEnabled(True)
+            except Exception as recovery_error:
+                logger.error(f"Ошибка при восстановлении UI: {recovery_error}")
+                
+    def _get_current_time(self):
+        from datetime import datetime
+        return datetime.now().strftime("%H:%M:%S")
+    
+    def on_pause_scan(self):
+        """Приостанавливает сканирование"""
+        try:
+            if self.scan_controller:
+                self.scan_controller.pause_scan()
+                self.pause_scan_btn.setEnabled(False)
+                self.resume_scan_btn.setEnabled(True)
+                self.log_text.append("⏸ Сканирование приостановлено")
+                logger.info("Сканирование приостановлено пользователем")
+        except Exception as e:
+            logger.error(f"Ошибка при приостановке сканирования: {e}")
+            error_handler.show_error_message("Ошибка", f"Ошибка при приостановке: {str(e)}")
+    
+    def on_resume_scan(self):
+        """Возобновляет сканирование"""
+        try:
+            if self.scan_controller:
+                self.scan_controller.resume_scan()
+                self.pause_scan_btn.setEnabled(True)
+                self.resume_scan_btn.setEnabled(False)
+                self.log_text.append("▶ Сканирование возобновлено")
+                logger.info("Сканирование возобновлено пользователем")
+        except Exception as e:
+            logger.error(f"Ошибка при возобновлении сканирования: {e}")
+            error_handler.show_error_message("Ошибка", f"Ошибка при возобновлении: {str(e)}")
+    
+    def on_stop_scan(self):
+        """Останавливает сканирование"""
+        try:
+            reply = QMessageBox.question(
+                self,
+                "Подтверждение",
+                "Вы уверены, что хотите остановить сканирование?",
+                QMessageBoxButton.Yes | QMessageBoxButton.No
+            )
+            
+            if reply == QMessageBoxButton.Yes:
+                if self.scan_controller:
+                    self.scan_controller.stop_scan()
+                    self.is_scanning = False
+                    self.start_scan_btn.setEnabled(True)
+                    self.pause_scan_btn.setEnabled(False)
+                    self.resume_scan_btn.setEnabled(False)
+                    self.stop_scan_btn.setEnabled(False)
+                    self.url_input.setEnabled(True)
+                    self.max_depth_spinbox.setEnabled(True)
+                    self.max_concurrent_spinbox.setEnabled(True)
+                    self.log_text.append("⏹ Сканирование остановлено пользователем")
+                    logger.info("Сканирование остановлено пользователем")
+        except Exception as e:
+            logger.error(f"Ошибка при остановке сканирования: {e}")
+            error_handler.show_error_message("Ошибка", f"Ошибка при остановке: {str(e)}")
+    
+    def connect_scan_signals(self):
+        """Подключает сигналы от ScanController к UI"""
+        try:
+            if self.scan_controller is None:
+                logger.warning("ScanController не инициализирован")
+                return
+            
+            if not hasattr(self.scan_controller, 'signals'):
+                logger.warning("ScanController не имеет сигналов")
+                return
+            
+            # Подключаем сигналы статистики
+            if self.statistics_widget is not None:
+                self.scan_controller.signals.stats_updated.connect(
+                    self.on_stats_updated
+                )
+                self.scan_controller.signals.progress_updated.connect(
+                    self.statistics_widget.update_progress
+                )
+                logger.info("Сигналы статистики подключены успешно")
+            else:
+                logger.warning("StatisticsWidget не инициализирован, сигналы не подключены")
+            
+            # Подключаем другие сигналы
+            self.scan_controller.signals.log_event.connect(self.on_log_event)
+            self.scan_controller.signals.vulnerability_found.connect(
+                self.on_vulnerability_found
+            )
+            
+        except Exception as e:
+            logger.error(f"Ошибка при подключении сигналов: {e}")
+    
+    @pyqtSlot(str, object)
+    def on_stats_updated(self, stat_name: str, value: object) -> None:
+        """
+        Обработчик обновления статистики из ScanWorker
+        
+        Args:
+            stat_name: Название счётчика статистики (urls_found, forms_scanned и т.д.)
+            value: Значение счётчика (может быть int или str)
+        """
+        try:
+            # Проверяем что statistics_widget инициализирован
+            if self.statistics_widget is None:
+                logger.debug(f"statistics_widget is None, пропускаем обновление {stat_name}")
+                return
+            
+            # ===== ПРЕОБРАЗОВАНИЕ И ВАЛИДАЦИЯ ЗНАЧЕНИЯ =====
+            
+            # Логируем полученное значение для отладки
+            logger.debug(f"Получено обновление статистики: {stat_name} = {value} (тип: {type(value).__name__})")
+            
+            # Обрабатываем разные типы значений
+            if stat_name == 'scan_time':
+                # Время передаётся как строка (HH:MM:SS)
+                try:
+                    time_str = str(value) if value is not None else "00:00:00"
+                    self.statistics_widget.update_stat_string(stat_name, time_str)
+                    logger.debug(f"Обновлено время сканирования: {time_str}")
+                except Exception as time_error:
+                    logger.error(f"Ошибка при обновлении времени: {time_error}")
+                    self.statistics_widget.update_stat_string(stat_name, "00:00:00")
+            
+            else:
+                # Все остальные счётчики - целые числа
+                try:
+                    # Преобразуем значение в int
+                    if value is None:
+                        value_int = 0
+                    elif isinstance(value, int):
+                        value_int = value
+                    elif isinstance(value, str):
+                        # Пытаемся преобразовать строку в int
+                        value_int = int(value)
+                    elif isinstance(value, float):
+                        # Преобразуем float в int
+                        value_int = int(value)
+                    else:
+                        # Пытаемся преобразовать через str
+                        try:
+                            value_int = int(str(value))
+                        except (ValueError, TypeError):
+                            logger.warning(f"Не удалось преобразовать {stat_name} = {value} в int, используем 0")
+                            value_int = 0
+                    
+                    # Гарантируем что значение в допустимом диапазоне
+                    if value_int < 0:
+                        logger.warning(f"Отрицательное значение для {stat_name}: {value_int}, устанавливаем 0")
+                        value_int = 0
+                    
+                    # Обновляем в UI
+                    self.statistics_widget.update_stat(stat_name, value_int)
+                    logger.debug(f"Обновлена статистика {stat_name}: {value_int}")
+                    
+                except (ValueError, TypeError) as conv_error:
+                    logger.error(f"Ошибка преобразования {stat_name} со значением {value}: {conv_error}")
+                    # Используем 0 при ошибке
+                    try:
+                        self.statistics_widget.update_stat(stat_name, 0)
+                    except Exception as fallback_error:
+                        logger.error(f"Ошибка при установке значения 0: {fallback_error}")
+                
+                except AttributeError as attr_error:
+                    logger.error(f"Метод обновления для {stat_name} недоступен: {attr_error}")
+        
+        except Exception as e:
+            logger.error(f"Критическая ошибка в on_stats_updated для {stat_name}: {e}", exc_info=True)
+    
+    @pyqtSlot(str, str)
+    def on_log_event(self, message: str, level: str = "INFO"):
+        """Обработчик событий логирования"""
+        try:
+            if not hasattr(self, 'log_text') or self.log_text is None:
+                logger.warning("log_text не инициализирован")
+                return
+            
+            # Добавляем сообщение в лог
+            self.log_text.append(message)
+            logger.debug(f"Добавлено в лог: [{level}] {message}")
+            
+            # Прокручиваем к последнему сообщению
+            try:
+                scroll_bar = self.log_text.verticalScrollBar()
+                
+                if scroll_bar is not None:
+                    max_value = scroll_bar.maximum()
+                    scroll_bar.setValue(max_value)
+                else:
+                    logger.warning("verticalScrollBar() вернул None для log_text")
+            except AttributeError as attr_error:
+                logger.warning(f"ScrollBar атрибут не найден: {attr_error}")
+            except Exception as scroll_error:
+                logger.debug(f"Ошибка при прокрутке логов: {scroll_error}")
+        except Exception as e:
+            logger.error(f"Ошибка при логировании события: {e}")
+    
+    @pyqtSlot(str, str, str)
+    def on_vulnerability_found(self, url: str, vulnerability_type: str, details: str):
+        """Обработчик нахождения уязвимости"""
+        try:
+            row = self.results_table.rowCount()
+            self.results_table.insertRow(row)
+            
+            # Определяем цвет по типу уязвимости
+            if vulnerability_type.lower() == 'sql':
+                color = QColor("#ffcccc")
+            elif vulnerability_type.lower() == 'xss':
+                color = QColor("#ffffcc")
+            else:  # CSRF
+                color = QColor("#ccffcc")
+            
+            # Заполняем ячейки
+            type_item = QTableWidgetItem(vulnerability_type)
+            type_item.setBackground(color)
+            self.results_table.setItem(row, 0, type_item)
+            
+            url_item = QTableWidgetItem(url)
+            url_item.setBackground(color)
+            self.results_table.setItem(row, 1, url_item)
+            
+            details_item = QTableWidgetItem(details)
+            details_item.setBackground(color)
+            self.results_table.setItem(row, 2, details_item)
+            
+            severity_item = QTableWidgetItem("Высокая")
+            severity_item.setBackground(color)
+            self.results_table.setItem(row, 3, severity_item)
+            
+            from utils.performance import get_local_timestamp
+            time_item = QTableWidgetItem(get_local_timestamp())
+            time_item.setBackground(color)
+            self.results_table.setItem(row, 4, time_item)
+            
+            logger.info(f"Найдена уязвимость: {vulnerability_type} на {url}")
+            
+        except Exception as e:
+            logger.error(f"Ошибка при добавлении уязвимости в таблицу: {e}")
+    
+    @asyncSlot(dict)
+    def on_scan_complete(self, result: Dict[str, Any]):
+        """Обработчик завершения сканирования"""
+        try:
+            self.is_scanning = False
+            self.start_scan_btn.setEnabled(True)
+            self.pause_scan_btn.setEnabled(False)
+            self.resume_scan_btn.setEnabled(False)
+            self.stop_scan_btn.setEnabled(False)
+            self.url_input.setEnabled(True)
+            self.max_depth_spinbox.setEnabled(True)
+            self.max_concurrent_spinbox.setEnabled(True)
+            
+            # Выводим результаты
+            total_vulns = result.get('total_vulnerabilities', 0)
+            total_urls = result.get('total_urls_scanned', 0)
+            scan_duration = result.get('scan_duration', 0)
+            
+            self.log_text.append(f"\n✅ Сканирование завершено!")
+            self.log_text.append(f"📊 Результаты:")
+            self.log_text.append(f"  • Просканировано URL: {total_urls}")
+            self.log_text.append(f"  • Найдено уязвимостей: {total_vulns}")
+            self.log_text.append(f"  • Время сканирования: {scan_duration:.2f}s")
+            
+            logger.info(f"Сканирование завершено. Найдено уязвимостей: {total_vulns}")
+            
+        except Exception as e:
+            logger.error(f"Ошибка при завершении сканирования: {e}")
+    
+    def reset_scan_stats(self) -> None:
+        """Сбрасывает статистику при новом сканировании"""
+        try:
+            if self.statistics_widget is not None:
+                self.statistics_widget.reset_stats()
+                logger.info("Статистика сброшена")
+        except Exception as e:
+            logger.error(f"Ошибка при сбросе статистики: {e}")
+    
+    def on_logout(self):
+        """
+        Выход пользователя из системы
+        Останавливает активное сканирование и возвращает к окну входа
+        """
+        try:
+            # ===== ПОДТВЕРЖДЕНИЕ ВЫХОДА =====
+            
+            reply = QMessageBox.question(
+                self,
+                "Подтверждение",
+                "Вы уверены, что хотите выйти?",
+                QMessageBoxButton.Yes | QMessageBoxButton.No
+            )
+            
+            if reply != QMessageBox.Yes:
+                logger.info("Выход отменён пользователем")
+                return
+            
+            # ===== ОСТАНОВКА АКТИВНОГО СКАНИРОВАНИЯ =====
+            
+            if self.is_scanning:
+                logger.info("Останавливаем активное сканирование перед выходом...")
+                try:
+                    self.on_stop_scan()
+                except Exception as stop_error:
+                    logger.error(f"Ошибка при остановке сканирования: {stop_error}")
+            
+            # ===== ОЧИСТКА ДАННЫХ =====
+            
+            try:
+                # Очищаем данные пользователя
+                if hasattr(self, 'user_model') and self.user_model is not None:
+                    self.user_model.logout_user()
+                    logger.info("Данные пользователя очищены")
+            except Exception as cleanup_error:
+                logger.error(f"Ошибка при очистке данных: {cleanup_error}")
+            
+            # ===== ВОЗВРАТ К ОКНУ ВХОДА =====
+            
+            try:
+                # Получаем родительский виджет
+                parent = self.parent()
+                
+                # Проверяем что parent существует и имеет метод go_to_login
+                if parent is not None and hasattr(parent, 'go_to_login'):
+                    logger.info("Возвращаемся к окну входа через parent.go_to_login()")
+                    parent.go_to_login()  # type: ignore
+                else:
+                    # Если parent не подходит, пробуем найти MainWindow
+                    logger.warning("Parent не имеет метода go_to_login, ищем MainWindow...")
+                    
+                    # Пытаемся найти MainWindow через цепочку родителей
+                    main_window = self._find_main_window()
+                    
+                    if main_window is not None and hasattr(main_window, 'go_to_login'):
+                        logger.info("Найден MainWindow, вызываем go_to_login()")
+                        main_window.go_to_login()
+                    else:
+                        # Если не нашли MainWindow, просто закрываем текущее окно
+                        logger.warning("MainWindow не найден, просто закрываем DashboardWindow")
+                        self.close()
+            
+            except Exception as navigation_error:
+                logger.error(f"Ошибка при навигации к окну входа: {navigation_error}")
+                # В случае ошибки просто закрываем окно
+                try:
+                    self.close()
+                except Exception as close_error:
+                    logger.error(f"Ошибка при закрытии окна: {close_error}")
+            
+            # ===== ЛОГИРОВАНИЕ =====
+            
+            logger.info(f"Пользователь {self.username} вышел из системы")
+            
+        except Exception as e:
+            logger.error(f"Критическая ошибка при выходе: {e}", exc_info=True)
+            error_handler.show_error_message(
+                "Ошибка",
+                f"Произошла ошибка при выходе: {str(e)}"
+            )
+            # Пытаемся закрыть окно в любом случае
+            try:
+                self.close()
+            except Exception as final_error:
+                logger.error(f"Не удалось закрыть окно: {final_error}")
+
+
+    def _find_main_window(self):
+        """
+        Находит главное окно (MainWindow) через цепочку родителей
+        
+        Returns:
+            MainWindow или None если не найдено
+        """
+        try:
+            # Начинаем с текущего виджета
+            current = self
+            
+            # Проходим по цепочке родителей
+            max_iterations = 10  # Защита от бесконечного цикла
+            iteration = 0
+            
+            while current is not None and iteration < max_iterations:
+                iteration += 1
+                
+                # Проверяем имя класса
+                class_name = current.__class__.__name__
+                
+                if class_name == 'MainWindow':
+                    logger.debug(f"MainWindow найден на итерации {iteration}")
+                    return current
+                
+                # Переходим к родителю
+                parent = current.parent()
+                
+                if parent is None:
+                    logger.debug(f"Достигнут корень иерархии на итерации {iteration}")
+                    break
+                
+                current = parent
+            
+            logger.warning("MainWindow не найден в иерархии виджетов")
+            return None
+            
+        except Exception as e:
+            logger.error(f"Ошибка при поиске MainWindow: {e}")
+            return None
+    
+    def closeEvent(self, a0):
+        """Обработчик закрытия окна"""
+        try:
+            if self.is_scanning:
+                reply = QMessageBox.question(
+                    self,
+                    "Подтверждение",
+                    "Сканирование ещё выполняется. Вы уверены, что хотите закрыть?",
+                    QMessageBoxButton.Yes | QMessageBoxButton.No
+                )
+                
+                if reply == QMessageBoxButton.No:
+                    if a0 is not None:
+                        a0.ignore()
+                    return
+                
+                self.on_stop_scan()
+            
+            logger.info(f"Окно дашборда закрыто для пользователя {self.username}")
+            if a0 is not None:
+                a0.accept()
+        except Exception as e:
+            logger.error(f"Ошибка при закрытии окна: {e}")
+            if a0 is not None:
+                a0.accept()
