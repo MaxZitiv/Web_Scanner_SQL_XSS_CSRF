@@ -1,5 +1,6 @@
 # GUI Framework
 PyQt5>=5.15.0,<6.0.0
+PyQtChart
 qasync>=0.22.0
 
 # Web Scraping and HTTP

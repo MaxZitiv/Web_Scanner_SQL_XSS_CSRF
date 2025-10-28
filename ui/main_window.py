@@ -15,7 +15,7 @@ from utils import error_handler
 from utils.performance import measure_time
 from views.login_window import LoginWindow
 from ui.registration_window import RegistrationWindow
-from views.dashboard_window_optimized import DashboardWindow
+from views.dashboard_window_updated import DashboardWindow
 from views.mode_selection_window import ModeSelectionWindow
 from utils.cache_cleanup import cleanup_on_exit
 from utils.logger import logger, log_and_notify
