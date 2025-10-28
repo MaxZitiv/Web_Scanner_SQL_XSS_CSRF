@@ -1,6 +1,13 @@
 from typing import Optional
-from PyQt5.QtWidgets import QMainWindow, QStackedWidget, QGraphicsOpacityEffect, QWidget, QApplication
-from PyQt5.QtCore import QPropertyAnimation, QEasingCurve, QThread, QCoreApplication
+import os
+import sys
+
+# Добавляем корневую директорию проекта в sys.path
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from PyQt5.QtWidgets import QMainWindow, QStackedWidget, QGraphicsOpacityEffect, QApplication
+from PyQt5.QtWidgets import QWidget
+from PyQt5.QtCore import QPropertyAnimation, QEasingCurve, QThread
 from PyQt5.QtGui import QIcon, QCloseEvent
 
 from models.user_model import UserModel
@@ -9,6 +16,7 @@ from utils.performance import measure_time
 from views.login_window import LoginWindow
 from ui.registration_window import RegistrationWindow
 from views.dashboard_window_optimized import DashboardWindow
+from views.mode_selection_window import ModeSelectionWindow
 from utils.cache_cleanup import cleanup_on_exit
 from utils.logger import logger, log_and_notify
 from utils.database import db
@@ -20,6 +28,7 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Web Scanner")
         self.setWindowIcon(QIcon(db.get_resource_path("default_avatar.ico")))
         self.setGeometry(100, 100, 1200, 800)
+        self.setObjectName("mainWindow")
         self.stack: QStackedWidget = QStackedWidget()
         self.setCentralWidget(self.stack)
 
@@ -27,9 +36,10 @@ class MainWindow(QMainWindow):
         self.login_window = LoginWindow(self.user_model, self)
         self.registration_window = RegistrationWindow(self.login_window)
         self.dashboard_window: Optional[DashboardWindow] = None
+        self.mode_selection_window: Optional[ModeSelectionWindow] = None
 
         # Подключаем сигналы
-        self.login_window.login_successful.connect(self.show_dashboard)
+        self.login_window.login_successful.connect(self.show_mode_selection)
 
         self._current_animation: Optional[QPropertyAnimation] = None
         self.stack.addWidget(self.login_window)
@@ -177,6 +187,82 @@ class MainWindow(QMainWindow):
 
         # Затем переключаемся на окно авторизации
         self.fade_to_widget(self.login_window)
+
+    @measure_time
+    def show_mode_selection(self, user_id: int, username: str):
+        """Показать окно выбора режима работы"""
+        try:
+            # Проверяем наличие экземпляра QApplication
+            app = QApplication.instance()
+            if app is None:
+                logger.error("QApplication instance not found")
+                return
+
+            # Проверяем, что мы в основном потоке
+            if app.thread() is not QThread.currentThread():
+                logger.error("Mode selection window must be created in main thread")
+                return
+
+            # Очищаем старый экземпляр окна выбора режима
+            if hasattr(self, 'mode_selection_window') and self.mode_selection_window is not None:
+                self.mode_selection_window.deleteLater()
+                self.mode_selection_window = None
+
+            # Создаем новый экземпляр окна выбора режима
+            self.mode_selection_window = ModeSelectionWindow(user_id, username, self)
+            self.mode_selection_window.mode_selected.connect(self.on_mode_selected)
+            self.stack.addWidget(self.mode_selection_window)
+            self.stack.setCurrentWidget(self.mode_selection_window)
+
+            # Безопасно изменяем размер окна
+            self.safe_resize_window(self.mode_selection_window)
+            self.center_window()
+
+        except Exception as e:
+            logger.error(f"Error showing mode selection: {e}")
+            error_handler.show_error_message("Ошибка", f"Не удалось показать окно выбора режима: {e}")
+
+    def on_mode_selected(self, mode: str, user_id: int, username: str):
+        """Обработчик выбора режима работы"""
+        if mode == "gui":
+            self.go_to_dashboard(user_id, username)
+        elif mode == "cli":
+            self.switch_to_cli_mode(user_id, username)
+
+    def switch_to_cli_mode(self, user_id: int, username: str):
+        """Переключение в CLI режим"""
+        try:
+            # Закрываем GUI
+            self.close()
+
+            # Запускаем CLI режим
+            logger.info(f"Switching to CLI mode for user: {username}")
+
+            # Запускаем CLI режим в новом процессе с правильным перенаправлением стандартного ввода/вывода
+            import subprocess
+            import os
+            import sys
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            project_dir = os.path.dirname(script_dir)
+            main_script = os.path.join(project_dir, "main.py")
+
+            # Используем CREATE_NEW_CONSOLE для создания нового консольного окна
+            if sys.platform == "win32":
+                subprocess.Popen(
+                    [sys.executable, main_script, "--cli", "--username", username],
+                    creationflags=subprocess.CREATE_NEW_CONSOLE
+                )
+            else:
+                subprocess.Popen(
+                    [sys.executable, main_script, "--cli", "--username", username],
+                    stdout=sys.stdout,
+                    stderr=sys.stderr,
+                    stdin=sys.stdin
+                )
+
+        except Exception as e:
+            logger.error(f"Error switching to CLI mode: {e}")
+            error_handler.show_error_message("Ошибка", f"Не удалось переключиться в CLI режим: {e}")
 
 
     @measure_time

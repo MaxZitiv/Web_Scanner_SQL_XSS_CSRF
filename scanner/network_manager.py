@@ -1,8 +1,10 @@
 import asyncio
-from typing import Dict, Any, Optional, Tuple
+from typing import Any, Optional, Tuple, Type
+from types import TracebackType
 import aiohttp
 from utils.logger import logger, log_and_notify
 from .cache_manager import cache_manager
+
 
 class NetworkManager:
     """Менеджер сетевых запросов"""
@@ -24,7 +26,12 @@ class NetworkManager:
         await self.initialize()
         return self
     
-    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
+    async def __aexit__(
+        self, 
+        exc_type: Optional[Type[BaseException]], 
+        exc_val: Optional[BaseException], 
+        exc_tb: Optional[TracebackType]
+    ) -> None:
         await self.cleanup()
     
     async def initialize(self) -> None:

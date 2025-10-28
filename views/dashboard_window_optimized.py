@@ -4,15 +4,19 @@ views/dashboard_window_optimized.py
 """
 
 import asyncio
-from typing import Optional, Dict, Any, TypeVar
+from typing import Optional, Dict, Any, TypeVar, List
 from PyQt5.QtWidgets import (
-    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLineEdit, QSpinBox,
-    QCheckBox, QPushButton, QTableWidget, QTableWidgetItem, QTextEdit,
-    QLabel, QMessageBox
-)
-from PyQt5.QtWidgets import QMessageBox.StandardButton as QMessageBoxButton
+        QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLineEdit, QSpinBox,
+        QCheckBox, QPushButton, QTableWidget, QTableWidgetItem, QTextEdit,
+        QLabel, QMessageBox
+    )
+from PyQt5.QtWidgets import QMessageBox
+
+# Определяем константы для кнопок
+Yes = QMessageBox.Yes  # type: ignore
+No = QMessageBox.No  # type: ignore
 from PyQt5.QtCore import pyqtSlot # type: ignore
-from PyQt5.QtGui import QFont, QColor
+from PyQt5.QtGui import QFont, QColor, QCloseEvent
 from qasync import asyncSlot # type: ignore
 
 from models.user_model import UserModel
@@ -372,9 +376,9 @@ class DashboardWindow(QMainWindow):
                     "URL может быть небезопасным. Продолжить?\n\n"
                     "Убедитесь, что вы сканируете только свои собственные сайты"
                     "или сайты, на которые у вас есть разрешение.",
-                    QMessageBoxButton.Yes | QMessageBoxButton.No
+                    Yes | No  # type: ignore
                 )
-                if reply == QMessageBoxButton.No:
+                if reply == No:  # type: ignore
                     logger.info("Сканирование отменено пользователем")
                     return
                 logger.info("Пользователь подтвердил сканирование небезопасного URL")
@@ -382,7 +386,7 @@ class DashboardWindow(QMainWindow):
             # ===== ПОЛУЧЕНИЕ ПАРАМЕТРОВ СКАНИРОВАНИЯ =====
             
             # Собираем типы сканирования
-            scan_types = []
+            scan_types: List[str] = []
             
             if self.sql_checkbox.isChecked():
                 scan_types.append("sql")
@@ -625,10 +629,10 @@ class DashboardWindow(QMainWindow):
                 self,
                 "Подтверждение",
                 "Вы уверены, что хотите остановить сканирование?",
-                QMessageBoxButton.Yes | QMessageBoxButton.No
+                Yes | No  # type: ignore
             )
             
-            if reply == QMessageBoxButton.Yes:
+            if reply == Yes:  # type: ignore
                 if self.scan_controller:
                     self.scan_controller.stop_scan()
                     self.is_scanning = False
@@ -753,17 +757,17 @@ class DashboardWindow(QMainWindow):
         except Exception as e:
             logger.error(f"Критическая ошибка в on_stats_updated для {stat_name}: {e}", exc_info=True)
     
-    @pyqtSlot(str, str)
-    def on_log_event(self, message: str, level: str = "INFO"):
+    @pyqtSlot(str)
+    def on_log_event(self, message: str):
         """Обработчик событий логирования"""
         try:
-            if not hasattr(self, 'log_text') or self.log_text is None:
+            if not hasattr(self, 'log_text'):
                 logger.warning("log_text не инициализирован")
                 return
             
             # Добавляем сообщение в лог
             self.log_text.append(message)
-            logger.debug(f"Добавлено в лог: [{level}] {message}")
+            logger.debug(f"Добавлено в лог: {message}")
             
             # Прокручиваем к последнему сообщению
             try:
@@ -823,7 +827,7 @@ class DashboardWindow(QMainWindow):
         except Exception as e:
             logger.error(f"Ошибка при добавлении уязвимости в таблицу: {e}")
     
-    @asyncSlot(dict)
+    @asyncSlot(dict)  # type: ignore
     def on_scan_complete(self, result: Dict[str, Any]):
         """Обработчик завершения сканирования"""
         try:
@@ -873,10 +877,10 @@ class DashboardWindow(QMainWindow):
                 self,
                 "Подтверждение",
                 "Вы уверены, что хотите выйти?",
-                QMessageBoxButton.Yes | QMessageBoxButton.No
+                Yes | No  # type: ignore
             )
             
-            if reply != QMessageBox.Yes:
+            if reply != Yes:  # type: ignore
                 logger.info("Выход отменён пользователем")
                 return
             
@@ -893,7 +897,7 @@ class DashboardWindow(QMainWindow):
             
             try:
                 # Очищаем данные пользователя
-                if hasattr(self, 'user_model') and self.user_model is not None:
+                if hasattr(self, 'user_model'):
                     self.user_model.logout_user()
                     logger.info("Данные пользователя очищены")
             except Exception as cleanup_error:
@@ -918,7 +922,7 @@ class DashboardWindow(QMainWindow):
                     
                     if main_window is not None and hasattr(main_window, 'go_to_login'):
                         logger.info("Найден MainWindow, вызываем go_to_login()")
-                        main_window.go_to_login()
+                        main_window.go_to_login()  # type: ignore
                     else:
                         # Если не нашли MainWindow, просто закрываем текущее окно
                         logger.warning("MainWindow не найден, просто закрываем DashboardWindow")
@@ -964,11 +968,11 @@ class DashboardWindow(QMainWindow):
             max_iterations = 10  # Защита от бесконечного цикла
             iteration = 0
             
-            while current is not None and iteration < max_iterations:
+            while current is not None and iteration < max_iterations:  # type: ignore
                 iteration += 1
                 
                 # Проверяем имя класса
-                class_name = current.__class__.__name__
+                class_name = current.__class__.__name__  # type: ignore
                 
                 if class_name == 'MainWindow':
                     logger.debug(f"MainWindow найден на итерации {iteration}")
@@ -990,18 +994,19 @@ class DashboardWindow(QMainWindow):
             logger.error(f"Ошибка при поиске MainWindow: {e}")
             return None
     
-    def closeEvent(self, a0):
+    def closeEvent(self, a0: Optional[QCloseEvent]) -> None:
         """Обработчик закрытия окна"""
         try:
             if self.is_scanning:
+                # Альтернативное исправление: использование стандартных констант
                 reply = QMessageBox.question(
                     self,
-                    "Подтверждение",
+                    "Подтверждение", 
                     "Сканирование ещё выполняется. Вы уверены, что хотите закрыть?",
-                    QMessageBoxButton.Yes | QMessageBoxButton.No
+                    Yes | No  # type: ignore
                 )
                 
-                if reply == QMessageBoxButton.No:
+                if reply == No:  # type: ignore
                     if a0 is not None:
                         a0.ignore()
                     return

@@ -7,11 +7,15 @@ import faulthandler
 import traceback
 import signal
 import argparse
-from typing import Optional
+from typing import Optional, Type, Any
+import types
 from PyQt5.QtWidgets import QApplication
 from qasync import QEventLoop
 import asyncio
 import logging
+
+# Добавляем корневую директорию проекта в sys.path
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from ui.main_window import MainWindow
 from utils.logger import logger, log_and_notify
@@ -30,7 +34,8 @@ logger.info('FAULTHANDLER ENABLED, MAIN.PY START')
 # Глобальные переменные
 app_instance: Optional[QApplication] = None
 main_window_instance: Optional[MainWindow] = None
-event_loop: Optional[QEventLoop] = None
+# ИСПРАВЛЕНИЕ: Используем более простой подход с Any
+event_loop: Any = None
 
 
 def resource_path(relative_path: str) -> str:
@@ -60,10 +65,12 @@ def parse_arguments() -> argparse.Namespace:
                         default='INFO', help='Set logging level')
     parser.add_argument('--profile', action='store_true', help='Enable performance profiling')
     parser.add_argument('--url', type=str, help='URL to scan (CLI mode)')
+    parser.add_argument('--username', type=str, help='Username for login (CLI mode)')
+    parser.add_argument('--cli', action='store_true', help='Start in CLI mode after login')
     return parser.parse_args()
 
 
-def excepthook(exc_type, exc_value, exc_tb) -> None:
+def excepthook(exc_type: Type[BaseException], exc_value: BaseException, exc_tb: Optional[types.TracebackType]) -> None:
     """Глобальный обработчик необработанных исключений."""
     try:
         with open("fatal_error.log", "a", encoding="utf-8") as f:
@@ -84,11 +91,15 @@ def graceful_shutdown(exit_code: int) -> int:
 
     logger.info("Starting graceful shutdown...")
 
-    # Корректное завершение цикла событий
-    if event_loop is not None and not event_loop.is_closed():
+    # ИСПРАВЛЕНИЕ: Упрощенная проверка без приведения типов
+    if event_loop is not None:
         try:
-            event_loop.stop()
-            logger.info("Event loop stopped gracefully")
+            # Простая проверка на существование методов
+            if (hasattr(event_loop, 'is_closed') and 
+                hasattr(event_loop, 'stop') and 
+                not event_loop.is_closed()):
+                event_loop.stop()
+                logger.info("Event loop stopped gracefully")
         except Exception as e:
             logger.warning(f"Error stopping event loop: {e}")
 
@@ -111,7 +122,8 @@ def graceful_shutdown(exit_code: int) -> int:
     logger.info(f"Shutdown complete with exit code: {exit_code}")
     return exit_code
 
-def signal_handler(signum: int, _) -> None:
+
+def signal_handler(signum: int, _: Any) -> None:
     """Обработчик сигналов для корректного завершения приложения"""
     logger.info(f"Received signal {signum}")
     graceful_shutdown(0)
@@ -142,10 +154,15 @@ def setup_performance_monitoring(enable_profiling: bool = False) -> None:
         log_and_notify('error', f"Failed to enable profiling: {e}")
 
 
-def run_cli_mode(url: str) -> int:
-    logger.info(f"Running CLI mode scan for URL: {url}")
-    print(f"CLI scan for URL: {url} — not yet implemented.")
-    return 0
+def run_cli_mode(url: Optional[str] = None, username: Optional[str] = None) -> int:
+    """Запуск CLI режима"""
+    try:
+        from cli.cli_mode import run_cli_mode as cli_run
+        return cli_run(url, username)
+    except ImportError as e:
+        logger.error(f"Failed to import CLI mode: {e}")
+        print(f"Ошибка импорта CLI режима: {e}")
+        return 1
 
 
 def main() -> int:
@@ -160,7 +177,11 @@ def main() -> int:
     setup_performance_monitoring(args.profile)
 
     if args.url:
-        return run_cli_mode(args.url)
+        return run_cli_mode(args.url, args.username)
+
+    # Если указан флаг --cli, запускаем CLI режим после авторизации
+    if args.cli:
+        return run_cli_mode(None, args.username)
 
     exit_code = 0
     try:
@@ -189,20 +210,20 @@ def main() -> int:
             try:
                 loop.run_forever()
             except Exception as e:
-                logger.error('error', f"Exception in event loop: {e}")
+                logger.error(f"Exception in event loop: {e}")
                 if not loop.is_closed():
                     try:
                         loop.stop()
                         logger.info("Event loop stopped gracefully")
-                    except RuntimeError as e:
-                        logger.warning(f"Event loop already stopped or closed: {e}")
+                    except RuntimeError as runtime_error:
+                        logger.warning(f"Event loop already stopped or closed: {runtime_error}")
             finally:
                 if not loop.is_closed():
                     try:
                         loop.stop()
                         logger.info("Event loop stopped gracefully")
-                    except RuntimeError as e:
-                        logger.warning(f"Event loop already stopped or closed: {e}")
+                    except RuntimeError as runtime_error:
+                        logger.warning(f"Event loop already stopped or closed: {runtime_error}")
 
     except SystemExit as e:
         logger.info(f"SystemExit with code: {getattr(e, 'code', None)}")

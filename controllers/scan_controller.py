@@ -20,7 +20,7 @@ class ScanControllerSignals(QObject):
     progress_updated = pyqtSignal(int)
     
     # Сигналы событий
-    log_event = pyqtSignal(str, str)
+    log_event = pyqtSignal(str)
     vulnerability_found = pyqtSignal(str, str, str)
     
     # Сигналы статуса
@@ -152,7 +152,7 @@ class ScanController(QObject):
         max_concurrent: int = 5,
         timeout: int = 30,
         on_progress: Optional[Callable[[float], None]] = None,
-        on_log: Optional[Callable[[str, str], None]] = None,
+        on_log: Optional[Callable[[str], None]] = None,
         on_vulnerability: Optional[Callable[[str, int], None]] = None,
         on_result: Optional[Callable[[Dict[str, Any]], None]] = None,
         on_status: Optional[Callable[[str], None]] = None,
@@ -199,10 +199,7 @@ class ScanController(QObject):
             
             if not is_safe_url(url):
                 logger.warning(f"URL может быть небезопасным: {url}")
-                self.signals.log_event.emit(
-                    "⚠️ URL может быть небезопасным. Убедитесь, что вы сканируете только свои сайты.",
-                    "WARNING"
-                )
+                self.signals.log_event.emit("⚠️ URL может быть небезопасным. Убедитесь, что вы сканируете только свои сайты.")
             
             # Начинаем мониторинг производительности
             scan_start_time = performance_monitor.start_timer()
@@ -210,7 +207,7 @@ class ScanController(QObject):
             # Логируем начало сканирования
             logger.info(f"Starting scan for URL: {url} with types: {scan_types}")
             if on_log:
-                on_log(f"🚀 Начинаем сканирование: {url}", "INFO")
+                on_log(f"🚀 Начинаем сканирование: {url}")
             
             self.signals.scan_started.emit()
             
@@ -255,12 +252,12 @@ class ScanController(QObject):
             log_and_notify('error', f"Error in start_scan: {e}")
             self.signals.scan_error.emit(str(e))
             if on_log:
-                on_log(f"❌ Ошибка сканирования: {str(e)}", "ERROR")
+                on_log(f"❌ Ошибка сканирования: {str(e)}")
 
     async def _perform_scan(self, url: str, scan_types: List[str], max_depth: int, 
                            max_concurrent: int, timeout: int,
                            on_progress: Optional[Callable[[float], None]] = None,
-                           on_log: Optional[Callable[[str, str], None]] = None,
+                           on_log: Optional[Callable[[str], None]] = None,
                            on_vulnerability: Optional[Callable[[str, int], None]] = None,
                            on_status: Optional[Callable[[str], None]] = None,
                            max_coverage_mode: bool = False) -> Dict[str, Any]:
@@ -283,7 +280,7 @@ class ScanController(QObject):
                 scan_types_lower = ['sql', 'xss', 'csrf']
             
             if on_log:
-                on_log(f"🔍 Начинаем сканирование: {', '.join(scan_types_lower)}", "INFO")
+                on_log(f"🔍 Начинаем сканирование: {', '.join(scan_types_lower)}")
             
             # Создаём ScanWorker
             worker = ScanWorker(

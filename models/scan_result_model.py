@@ -46,6 +46,10 @@ class Vulnerability:
             response=data.get("response")
         )
 
+def default_vulnerabilities() -> List[Vulnerability]:
+    """Фабрика для создания пустого списка уязвимостей с правильным типом."""
+    return []
+
 @dataclass
 class ScanResult:
     """
@@ -57,7 +61,7 @@ class ScanResult:
     scan_type: str = "general"
     scan_duration: float = 0.0
     timestamp: Optional[datetime] = None
-    vulnerabilities: List[Vulnerability] = field(default_factory=list)
+    vulnerabilities: List[Vulnerability] = field(default_factory=default_vulnerabilities)
     status: str = "completed"  # completed, failed, in_progress
 
     def __post_init__(self):
@@ -81,9 +85,10 @@ class ScanResult:
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'ScanResult':
         """Создание датакласса из словаря."""
-        vulnerabilities = []
+        vulnerabilities: List[Vulnerability] = []
         for vuln_data in data.get("vulnerabilities", []):
-            vulnerabilities.append(Vulnerability.from_dict(vuln_data))
+            vuln = Vulnerability.from_dict(vuln_data)
+            vulnerabilities.append(vuln)
 
         timestamp = None
         if data.get("timestamp"):

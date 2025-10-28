@@ -2,8 +2,9 @@ from utils.database import db
 from utils.logger import logger, log_and_notify
 from typing import List, Dict, Optional, Any
 import sqlite3
+import datetime
 from utils.security import validate_input_length, is_safe_url
-from models.scan_result_model import ScanResult, Vulnerability
+from models.scan_result_model import ScanResult
 
 
 class ScanModel:
@@ -104,45 +105,6 @@ class ScanModel:
         except (sqlite3.Error, ValueError, KeyError, AttributeError) as e:
             log_and_notify('error', f'Error saving scan result: {e}')
             return False
-        """
-        Args:
-            user_id: ID пользователя
-            url: URL сканируемого сайта
-            results: Результаты сканирования
-            scan_type: Тип сканирования (по умолчанию "general")
-            scan_duration: Длительность сканирования в секундах
-        
-        Returns:
-            bool: True если сохранение прошло успешно
-        """
-        try:
-            # Валидация входных параметров
-            if user_id <= 0:
-                log_and_notify('error', f"Invalid user_id: {user_id}")
-                return False
-            
-            if not validate_input_length(url, 1, 2048):
-                log_and_notify('error', f"Invalid URL length: {len(url) if url else 0}")
-                return False
-            
-            if not is_safe_url(url):
-                logger.warning(f"Potentially unsafe URL: {url}")
-            
-
-            
-            # Сохраняем результат
-            success = db.save_scan_async(user_id, url, results, scan_type, scan_duration)
-            
-            if success:
-                logger.info(f'Scan result saved for user {user_id} and url {url}')
-            else:
-                log_and_notify('error', f'Failed to save scan result for user {user_id}')
-            
-            return success
-            
-        except (sqlite3.Error, ValueError, KeyError, AttributeError) as e:
-            log_and_notify('error', f'Error saving scan result: {e}')
-            return False
 
     @staticmethod
     def get_user_scans(user_id: int, limit: int = 50) -> List[Dict[str, Any]]:
@@ -197,10 +159,11 @@ class ScanModel:
             scans = db.get_scans_by_user(user_id)
             logger.info(f'Retrieved {len(scans)} scans for user {user_id}')
             
-            # Преобразуем словари в объекты ScanResult
-            scan_objects = []
+            # Преобразуем словари в объекты ScanResult с явным указанием типа
+            scan_objects: List[ScanResult] = []
             for scan_data in scans[:limit]:
-                scan_objects.append(ScanResult.from_dict(scan_data))
+                scan_object = ScanResult.from_dict(scan_data)
+                scan_objects.append(scan_object)
                 
             return scan_objects
 
@@ -311,8 +274,6 @@ class ScanModel:
             Optional[Dict]: Данные сканирования или None
         """
         try:
-            from utils.database import db
-            
             # Валидация входных параметров
             if scan_id <= 0:
                 log_and_notify('error', f"Invalid scan_id: {scan_id}")
@@ -358,7 +319,6 @@ class ScanModel:
             # Получаем все сканирования и фильтруем по дате
             all_scans = self.get_user_scans(user_id, limit=1000)
             
-            import datetime
             cutoff_date = datetime.datetime.now() - datetime.timedelta(days=days)
             
             recent_scans: List[Dict[str, Any]] = []
@@ -376,4 +336,3 @@ class ScanModel:
         except Exception as e:
             log_and_notify('error', f'Error getting recent scans: {e}')
             return []
-

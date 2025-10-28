@@ -2,6 +2,8 @@ from dataclasses import dataclass, field
 from typing import Dict, Any, Optional
 from datetime import datetime
 
+PreferencesDict = Dict[str, Any]
+
 @dataclass
 class User:
     """
@@ -15,7 +17,7 @@ class User:
     created_at: Optional[datetime] = None
     last_login: Optional[datetime] = None
     avatar_path: Optional[str] = None
-    preferences: Dict[str, Any] = field(default_factory=dict)
+    preferences: PreferencesDict = field(default_factory=lambda: {})
 
     def __post_init__(self):
         """Инициализация значений по умолчанию после создания."""

@@ -429,7 +429,7 @@ class Database:
         except Exception:
             return False
 
-    def save_scan_async(self, user_id: int, url: str, results: List[Dict[str, Any]], scan_type: str = "general", scan_duration: float = 0.0) -> bool:
+    def save_scan_async(self, user_id: int, url: str, results: Optional[List[Dict[str, Any]]], scan_type: str = "general", scan_duration: float = 0.0) -> bool:
         """Сохраняет результаты сканирования в базу данных."""
         if user_id <= 0:
             log_and_notify('error', "Invalid user_id provided")
@@ -437,7 +437,8 @@ class Database:
         if not url.strip():
             log_and_notify('error', "Invalid URL provided")
             return False
-        if not results:
+        # results может быть пустым списком, если уязвимостей не найдено
+        if results is None:
             log_and_notify('error', "Invalid results format")
             return False
 

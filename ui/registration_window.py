@@ -1,7 +1,8 @@
 from typing import Optional
 from PyQt5.QtWidgets import (
-    QWidget, QLabel, QLineEdit, QPushButton, QVBoxLayout, QMessageBox, QHBoxLayout, QToolButton
+    QLabel, QLineEdit, QPushButton, QVBoxLayout, QMessageBox, QHBoxLayout, QToolButton
 )
+from PyQt5.QtWidgets import QWidget
 from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui import QIcon
 from utils.database import db
@@ -20,6 +21,7 @@ class RegistrationWindow(QWidget):
         self.user_model = UserModel()
 
         self.setWindowTitle('Регистрация')
+        self.setObjectName("registrationWindow")
         
         # Убираем фиксированный размер
         self.setMinimumSize(400, 350)
@@ -33,6 +35,7 @@ class RegistrationWindow(QWidget):
         # Заголовок
         title_label = QLabel('Регистрация нового пользователя')
         title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        title_label.setObjectName("titleLabel")
         layout.addWidget(title_label)
 
         layout.addWidget(QLabel('Имя пользователя:'))
@@ -73,6 +76,7 @@ class RegistrationWindow(QWidget):
         
         # Кнопка "Зарегистрироваться"
         self.btn_register = QPushButton('Зарегистрироваться')
+        self.btn_register.setObjectName("primaryButton")
         self.btn_register.clicked.connect(self.on_register)
         button_layout.addWidget(self.btn_register)
         

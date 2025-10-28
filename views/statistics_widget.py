@@ -6,7 +6,7 @@
 from PyQt5.QtWidgets import (
     QWidget, QGridLayout, QVBoxLayout, QLabel, QProgressBar
 )
-from PyQt5.QtCore import Qt, pyqtSignal, pyqtSlot
+from PyQt5.QtCore import pyqtSlot
 from PyQt5.QtGui import QFont
 from typing import Optional, Dict, Any
 

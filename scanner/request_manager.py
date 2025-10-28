@@ -1,6 +1,7 @@
+from types import TracebackType
 import aiohttp
 import asyncio
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Type
 from utils.logger import logger
 
 class RequestManager:
@@ -10,7 +11,7 @@ class RequestManager:
         self.timeout = timeout
         self.max_retries = max_retries
         self.max_concurrent = max_concurrent
-        self.semaphore: Optional[asyncio.Semaphore] = None
+        self.semaphore: asyncio.Semaphore = asyncio.Semaphore(max_concurrent)
         self._session: Optional[aiohttp.ClientSession] = None
         self._headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
@@ -23,13 +24,12 @@ class RequestManager:
         await self.initialize()
         return self
     
-    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
+    async def __aexit__(self, exc_type: Optional[Type[BaseException]], exc_val: Optional[BaseException], exc_tb: Optional[TracebackType]) -> None:
+        """Асинхронный выход из контекстного менеджера"""
         await self.cleanup()
     
     async def initialize(self) -> None:
-        """Инициализация сессии и семафора"""
-        if not self.semaphore:
-            self.semaphore = asyncio.Semaphore(self.max_concurrent)
+        """Инициализация сессии"""
         if not self._session:
             self._session = aiohttp.ClientSession(
                 timeout=aiohttp.ClientTimeout(total=self.timeout),
@@ -41,17 +41,20 @@ class RequestManager:
         if self._session and not self._session.closed:
             await self._session.close()
         self._session = None
-        self.semaphore = None
     
-    async def get(self, url: str, **kwargs) -> Optional[aiohttp.ClientResponse]:
+    async def get(self, url: str, **kwargs: Any) -> Optional[aiohttp.ClientResponse]:
         """Выполнение GET-запроса с поддержкой повторных попыток"""
         if not self._session:
             await self.initialize()
         
+        if self._session is None:  # Добавляем дополнительную проверку
+            logger.error("Failed to initialize session")
+            return None
+            
         for attempt in range(self.max_retries):
             try:
-                async with self.semaphore:  # type: ignore
-                    async with self._session.get(url, **kwargs) as response:  # type: ignore
+                async with self.semaphore:
+                    async with self._session.get(url, **kwargs) as response:
                         response.raise_for_status()
                         return response
             except Exception as e:
@@ -61,16 +64,21 @@ class RequestManager:
                     return None
                 await asyncio.sleep(1 * (attempt + 1))  # Exponential backoff
         return None
+
     
-    async def post(self, url: str, data: Dict[str, Any], **kwargs) -> Optional[aiohttp.ClientResponse]:
+    async def post(self, url: str, data: Dict[str, Any], **kwargs: Any) -> Optional[aiohttp.ClientResponse]:
         """Выполнение POST-запроса с поддержкой повторных попыток"""
         if not self._session:
             await self.initialize()
+            
+        if self._session is None:  # Добавляем дополнительную проверку
+            logger.error("Failed to initialize session")
+            return None
         
         for attempt in range(self.max_retries):
             try:
-                async with self.semaphore:  # type: ignore
-                    async with self._session.post(url, data=data, **kwargs) as response:  # type: ignore
+                async with self.semaphore:
+                    async with self._session.post(url, data=data, **kwargs) as response:
                         response.raise_for_status()
                         return response
             except Exception as e:

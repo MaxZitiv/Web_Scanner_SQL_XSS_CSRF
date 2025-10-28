@@ -1,7 +1,18 @@
-from PyQt5.QtWidgets import QWidget, QPushButton, QLineEdit, QVBoxLayout, QLabel, QMessageBox, QHBoxLayout, QApplication
-from controllers.auth_controller import AuthController
-from utils.logger import logger, log_and_notify
 import os
+import sys
+
+# Добавляем корневую директорию проекта в sys.path
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from PyQt5.QtWidgets import (QPushButton, QVBoxLayout, QLabel,
+                             QMessageBox, QHBoxLayout, QApplication, QLineEdit)
+from PyQt5.QtWidgets import QWidget
+from PyQt5.QtWidgets import QLineEdit
+from PyQt5.QtGui import QKeyEvent
+from typing import Optional
+from controllers.auth_controller import AuthController
+from models.user_model import UserModel
+from utils.logger import logger, log_and_notify
 import sqlite3
 from PyQt5.QtCore import pyqtSignal
 from typing import Optional, Any
@@ -10,8 +21,8 @@ from typing import Optional, Any
 class LoginWindow(QWidget):
     login_successful = pyqtSignal(int, str)
 
-    def __init__(self, user_model, parent: Optional[Any] = None):
-        super().__init__(parent)
+    def __init__(self, user_model: UserModel, parent: Optional[Any] = None):
+        super().__init__()
         self.user_model = user_model
         self.controller = AuthController(self.user_model)
         self.parent_window = parent
@@ -35,6 +46,7 @@ class LoginWindow(QWidget):
 
     def init_ui(self):
         self.setWindowTitle("Вход в систему")
+        self.setObjectName("loginWindow")
 
         # Поля
         self.username_label = QLabel("Имя пользователя или Email")
@@ -43,7 +55,7 @@ class LoginWindow(QWidget):
 
         self.password_label = QLabel("Пароль")
         self.password_input = QLineEdit()
-        self.password_input.setEchoMode(QLineEdit.Password)
+        self.password_input.setEchoMode(QLineEdit.EchoMode.Password)
         self.password_input.setPlaceholderText("Введите пароль")
 
         # Кнопка показа/скрытия пароля
@@ -51,13 +63,14 @@ class LoginWindow(QWidget):
         self.show_password_button.setToolTip("Показать/скрыть пароль")
         self.show_password_button.setMaximumWidth(40)
         self.show_password_button.clicked.connect(self.toggle_password_visibility)
-        
+
         # Контейнер для пароля и кнопки
         password_container = QHBoxLayout()
         password_container.addWidget(self.password_input)
         password_container.addWidget(self.show_password_button)
 
         self.login_button = QPushButton("Войти")
+        self.login_button.setObjectName("primaryButton")
         self.login_button.clicked.connect(self.login)
 
         self.register_button = QPushButton("Регистрация")
@@ -65,7 +78,7 @@ class LoginWindow(QWidget):
 
         # Вертикальный компоновщик
         layout = QVBoxLayout()
-        
+
         # Добавляем отступы для лучшего внешнего вида
         layout.setContentsMargins(20, 20, 20, 20)
         layout.setSpacing(15)
@@ -78,10 +91,10 @@ class LoginWindow(QWidget):
         layout.addWidget(self.register_button)
 
         self.setLayout(layout)
-        
+
         # Устанавливаем минимальный размер для предотвращения слишком маленького окна
         self.setMinimumSize(300, 200)
-        
+
         # Вычисляем оптимальный размер на основе содержимого
         self.adjustSize()
 
@@ -117,11 +130,11 @@ class LoginWindow(QWidget):
                 logger.info(f"User {username} logged in successfully.")
                 user_id = self.user_model.get_user_id()
                 username = self.user_model.get_username()
-                
+
                 # Проверяем состояние приложения перед переходом
                 if self.parent_window and user_id is not None:
                     QApplication.processEvents()
-                    self.parent_window.go_to_dashboard(user_id, username)
+                    self.login_successful.emit(user_id, username)
                 else:
                     log_and_notify('error', "Parent window or user_id is not set")
                     QMessageBox.critical(self, "Ошибка", "Внутренняя ошибка приложения. Попробуйте перезапустить.")
@@ -143,19 +156,18 @@ class LoginWindow(QWidget):
             log_and_notify('error', f"Error opening registration window: {e}")
             QMessageBox.critical(self, "Ошибка", "Не удалось открыть окно регистрации. Попробуйте позже.")
 
-    def keyPressEvent(self, a0):
+    def keyPressEvent(self, a0: Optional[QKeyEvent]) -> None:
         # Удаляем дублирующий обработчик Enter, так как он уже обрабатывается
         # через returnPressed сигналы полей ввода
         super().keyPressEvent(a0)
 
-    def toggle_password_visibility(self):
+    def toggle_password_visibility(self) -> None:
         """Переключает видимость пароля"""
-        if self.password_input.echoMode() == QLineEdit.Password:
-            self.password_input.setEchoMode(QLineEdit.Normal)
+        if self.password_input.echoMode() == QLineEdit.EchoMode.Password:
+            self.password_input.setEchoMode(QLineEdit.EchoMode.Normal)
             self.show_password_button.setText("🙈")
             self.show_password_button.setToolTip("Скрыть пароль")
         else:
-            self.password_input.setEchoMode(QLineEdit.Password)
+            self.password_input.setEchoMode(QLineEdit.EchoMode.Password)
             self.show_password_button.setText("👁")
             self.show_password_button.setToolTip("Показать пароль")
-

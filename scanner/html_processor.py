@@ -1,11 +1,10 @@
 import hashlib
 import time
-from typing import List, Dict, Any, Set, Tuple, Optional
+from typing import List, Set, Tuple
 from bs4 import BeautifulSoup, Tag
 from urllib.parse import urljoin, urlparse
 
 from utils.logger import logger, log_and_notify
-from .cache_manager import cache_manager
 
 class HTMLProcessor:
     """Класс для обработки HTML-контента"""
@@ -29,11 +28,10 @@ class HTMLProcessor:
             inputs: List[str] = []
             if form_tag:
                 for inp in form_tag.find_all(['input', 'textarea', 'select', 'button']):
-                    if isinstance(inp, Tag):
-                        inp_name = inp.get('name', '')
-                        inp_type = inp.get('type', 'text')
-                        if inp_name and isinstance(inp_name, str):
-                            inputs.append(f"{inp.name}-{inp_type}-{inp_name}")
+                    inp_name = inp.get('name', '')
+                    inp_type = inp.get('type', 'text')
+                    if inp_name and isinstance(inp_name, str):
+                        inputs.append(f"{inp.name}-{inp_type}-{inp_name}")
             
             inputs.sort()
             form_representation = f"action:{action}|method:{method}|inputs:{','.join(inputs)}"
@@ -55,8 +53,7 @@ class HTMLProcessor:
             # Извлекаем ссылки
             for link in soup.find_all(['a', 'link', 'script', 'img']):
                 href = None
-                if isinstance(link, Tag):
-                    href = link.get('href', '') or link.get('src', '')
+                href = link.get('href', '') or link.get('src', '')
                 if href:
                     try:
                         absolute_url = urljoin(base_url, str(href))
@@ -67,8 +64,7 @@ class HTMLProcessor:
             # Извлекаем формы
             forms = soup.find_all('form')
             for form in forms:
-                if isinstance(form, Tag):
-                    found_forms.append(form)
+                found_forms.append(form)
             
         except Exception as e:
             log_and_notify('error', f"Error extracting links from {base_url}: {e}")
