@@ -10,9 +10,9 @@ import sqlite3
 import json
 import os
 import sys
-from typing import List, Dict, Optional
+from typing import Any, List
 from utils.logger import logger, log_and_notify
-from utils.encryption import get_encryption, encrypt_sensitive_data
+from utils.encryption import encrypt_sensitive_data
 from utils.database import db
 
 def get_db_path() -> str:
@@ -79,7 +79,7 @@ def migrate_scan_data() -> bool:
                 if not is_already_encrypted(result):
                     # Парсим JSON для проверки
                     try:
-                        result_data = json.loads(result) if result else []
+                        result_data: List[Any] = json.loads(result) if result else []
                         new_result = encrypt_sensitive_data(result_data)
                         needs_migration = True
                         logger.debug(f"Encrypting results for scan {scan_id}")

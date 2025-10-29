@@ -21,7 +21,7 @@ class StatsManager(QObject):
             'requests_sent': 0,
             'errors': 0
         }
-        self._site_structure = {
+        self._site_structure: Dict[str, List[Any]] = {
             'urls': [],
             'status': []
         }

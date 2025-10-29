@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Optional
 from utils.logger import logger
 
-def _generate_json_report(scan_details: dict) -> Optional[str]:
+def _generate_json_report(scan_details: dict) -> Optional[str]:  # noqa: D401  # Экспортируется для будущего использования
     """Генерация JSON отчета"""
     try:
         # Создание имени файла

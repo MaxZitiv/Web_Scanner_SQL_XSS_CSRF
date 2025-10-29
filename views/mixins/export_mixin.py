@@ -1,7 +1,7 @@
 """
 Миксин для функциональности экспорта данных
 """
-from typing import Optional, Any
+from typing import Optional
 from PyQt5.QtWidgets import QWidget
 from utils import error_handler
 from utils.database import db

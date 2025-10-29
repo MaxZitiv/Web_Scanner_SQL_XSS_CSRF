@@ -1,5 +1,5 @@
 import json
-from typing import List, Dict, Optional
+from typing import List, TypedDict, Optional
 from PyQt5.QtWidgets import QTextEdit, QLabel, QTableWidget
 from PyQt5.QtCore import pyqtSignal
 
@@ -21,11 +21,11 @@ class LogProcessorMixin:
         # Таблица последних сканирований
         self.recent_scans_table: Optional[QTableWidget] = None
         # Список записей лога
-        self._log_entries: List[Dict] = []
+        self._log_entries: List[dict] = []
         # Фильтрованные записи лога
-        self._filtered_log_entries: List[Dict] = []
+        self._filtered_log_entries: List[dict] = []
 
-    def _process_log_content(self, content: str, log_type: int):
+    def _process_log_content(self, content: str, log_type: int) -> None:
         """Обработка загруженного содержимого лога"""
         try:
             if log_type == 1:  # Системный лог

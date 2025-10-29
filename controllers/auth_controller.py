@@ -47,7 +47,7 @@ class AuthController(QObject):
             str: Хешированный пароль
         """
         salt = bcrypt.gensalt(rounds=12)
-        hashed = bcrypt.hashpw(password.encode('utf-8'), salt).decode('utf-8')
+        hashed: str = bcrypt.hashpw(password.encode('utf-8'), salt).decode('utf-8')
         return hashed
 
     @staticmethod

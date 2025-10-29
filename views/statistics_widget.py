@@ -6,7 +6,7 @@
 from PyQt5.QtWidgets import (
     QWidget, QGridLayout, QVBoxLayout, QLabel, QProgressBar
 )
-from PyQt5.QtCore import pyqtSlot
+from PyQt5.QtCore import pyqtSlot  # type: ignore
 from PyQt5.QtGui import QFont
 from typing import Optional, Dict, Any
 
@@ -80,7 +80,9 @@ class StatisticsWidget(QWidget):
             from PyQt5.QtCore import Qt
             value_label.setAlignment(
                 Qt.Alignment(
-                    Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+                    Qt.AlignmentFlag.AlignRight
+                ) | Qt.Alignment(
+                    Qt.AlignmentFlag.AlignVCenter
                 )
             )
             

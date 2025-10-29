@@ -8,7 +8,7 @@ from typing import Optional, Dict, Any, TypeVar, List
 from PyQt5.QtWidgets import (
         QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLineEdit, QSpinBox,
         QCheckBox, QPushButton, QTableWidget, QTableWidgetItem, QTextEdit,
-        QLabel, QMessageBox
+        QLabel, QMessageBox, QScrollBar
     )
 from PyQt5.QtWidgets import QMessageBox
 
@@ -184,7 +184,7 @@ class DashboardWindow(QMainWindow):
                     background-color: #3d8b40;
                 }
             """)
-            self.start_scan_btn.clicked.connect(self.on_start_scan)
+            self.start_scan_btn.clicked.connect(lambda: self._start_scan_wrapper())
             buttons_layout.addWidget(self.start_scan_btn)
 
             self.pause_scan_btn = QPushButton("⏸ Пауза")
@@ -353,7 +353,7 @@ class DashboardWindow(QMainWindow):
         try:
             from views.edit_profile_window import EditProfileWindow
             profile_window = EditProfileWindow(self.user_id, self.username, self)
-            profile_window.exec_()
+            profile_window.exec_() # type: ignore
         except Exception as e:
             logger.error(f"Ошибка при открытии окна профиля: {e}")
             error_handler.show_error_message("Ошибка", f"Не удалось открыть окно профиля: {str(e)}")
@@ -375,16 +375,25 @@ class DashboardWindow(QMainWindow):
         """Открывает окно отчетов"""
         try:
             # Получаем данные из таблицы результатов
-            reports_data = []
+            reports_data: List[Dict[str, str]] = []
             for row in range(self.results_table.rowCount()):
-                report_item = {
-                    "Тип уязвимости": self.results_table.item(row, 0).text(),
-                    "URL": self.results_table.item(row, 1).text(),
-                    "Параметр": self.results_table.item(row, 2).text(),
-                    "Серьёзность": self.results_table.item(row, 3).text(),
-                    "Время обнаружения": self.results_table.item(row, 4).text()
-                }
-                reports_data.append(report_item)
+                # Проверяем каждый item на None
+                type_item = self.results_table.item(row, 0)
+                url_item = self.results_table.item(row, 1)
+                param_item = self.results_table.item(row, 2)
+                severity_item = self.results_table.item(row, 3)
+                time_item = self.results_table.item(row, 4)
+
+                # Создаем отчет только если все ячейки существуют
+                if all([type_item, url_item, param_item, severity_item, time_item]):
+                    report_item = {
+                        "Тип уязвимости": type_item.text() if type_item else "",
+                        "URL": url_item.text() if url_item else "",
+                        "Параметр": param_item.text() if param_item else "",
+                        "Серьёзность": severity_item.text() if severity_item else "",
+                        "Время обнаружения": time_item.text() if time_item else ""
+                    }
+                    reports_data.append(report_item)
 
             if not reports_data:
                 error_handler.show_info_message("Информация", "Нет данных для отчета. Сначала выполните сканирование.")
@@ -392,7 +401,6 @@ class DashboardWindow(QMainWindow):
 
             # Создаем окно отчетов
             from utils.export_utils import ExportUtils
-            from PyQt5.QtWidgets import QFileDialog, QMessageBox
 
             # Экспортируем в JSON
             success = ExportUtils.export_data(
@@ -409,21 +417,36 @@ class DashboardWindow(QMainWindow):
             logger.error(f"Ошибка при создании отчета: {e}")
             error_handler.show_error_message("Ошибка", f"Не удалось создать отчет: {str(e)}")
 
-    def scroll_to_widget(self, widget):
+    def scroll_to_widget(self, widget: QWidget) -> None:
         """Прокручивает к указанному виджету"""
         try:
-            # Получаем вертикальную полосу прокрутки
-            scroll_bar = self.centralWidget().verticalScrollBar()
-            if scroll_bar:
-                # Вычисляем позицию виджета
-                widget_pos = widget.y()
-                # Устанавливаем позицию прокрутки
-                scroll_bar.setValue(widget_pos)
+            # Ищем родительский виджет с прокруткой
+            parent_obj = widget.parent()
+            while parent_obj is not None:
+                # Проверяем, что parent_obj является QWidget
+                if isinstance(parent_obj, QWidget) and hasattr(parent_obj, "verticalScrollBar"):
+                    parent_widget = parent_obj
+                    try:
+                        # Явно указываем тип возвращаемого значения
+                        scroll_bar: Optional[QScrollBar] = parent_widget.verticalScrollBar()
+                        if scroll_bar is not None:
+                            widget_pos = widget.mapTo(parent_widget, widget.rect().topLeft()).y()
+                            scroll_bar.setValue(int(widget_pos))
+                            return
+                    except Exception as e:
+                        logger.error(f"Ошибка при установке позиции прокрутки: {e}")
+                parent_obj = parent_obj.parent()
         except Exception as e:
             logger.error(f"Ошибка при прокрутке к виджету: {e}")
 
+
     # Остальные методы остаются без изменений...
-    def on_start_scan(self):
+    def _start_scan_wrapper(self):
+        """Обертка для вызова асинхронного метода on_start_scan"""
+        asyncio.create_task(self.on_start_scan())
+    
+    @asyncSlot()  # type: ignore
+    async def on_start_scan(self):
         """
         Начинает сканирование сайта.
         Валидирует входные данные, создает ScanController и запускает асинхронное сканирование.
@@ -465,12 +488,10 @@ class DashboardWindow(QMainWindow):
                 reply = QMessageBox.question(
                     self,
                     "⚠️ Предупреждение безопасности",
-                    "URL может быть небезопасным. Продолжить?",
-                    "Убедитесь, что вы сканируете только свои собственные сайты",
-                    "или сайты, на которые у вас есть разрешение.",
-                    Yes | No  # type: ignore
+                    "URL может быть небезопасным. Продолжить?\n\nУбедитесь, что вы сканируете только свои собственные сайты\nили сайты, на которые у вас есть разрешение.",
+                    QMessageBox.Yes | QMessageBox.No  # type: ignore
                 )
-                if reply == No:  # type: ignore
+                if reply == QMessageBox.No:  # type: ignore
                     logger.info("Сканирование отменено пользователем")
                     return
                 logger.info("Пользователь подтвердил сканирование небезопасного URL")
@@ -493,10 +514,7 @@ class DashboardWindow(QMainWindow):
             if not scan_types:
                 error_handler.show_error_message(
                     "Ошибка",
-                    "Выберите хотя бы один тип сканирования",
-                    "• SQL Injection",
-                    "• XSS",
-                    "• CSRF"
+                    "Выберите хотя бы один тип сканирования:\n• SQL Injection\n• XSS\n• CSRF"
                 )
                 logger.warning("Попытка начать сканирование без типов")
                 return
@@ -624,8 +642,9 @@ class DashboardWindow(QMainWindow):
                 loop = asyncio.get_event_loop()
 
                 # Создаём асинхронную задачу для сканирования
-                self.current_scan_task = loop.create_task(
-                    self.scan_controller.start_scan(
+                async def scan_task():
+                    assert self.scan_controller is not None, "ScanController должен быть инициализирован"
+                    await self.scan_controller.start_scan(
                         url=url,
                         scan_types=scan_types,
                         max_depth=max_depth,
@@ -633,7 +652,8 @@ class DashboardWindow(QMainWindow):
                         on_log=self.on_log_event,
                         on_result=self.on_scan_complete
                     )
-                )
+                
+                self.current_scan_task = loop.create_task(scan_task())
 
                 logger.info("Асинхронная задача сканирования создана и запущена")
                 self.log_text.append("✅ Сканирование инициализировано")
@@ -665,9 +685,7 @@ class DashboardWindow(QMainWindow):
             logger.error(f"Неожиданная ошибка в on_start_scan: {e}", exc_info=True)
             error_handler.show_error_message(
                 "Критическая ошибка",
-                f"Неожиданная ошибка: {str(e)}
-
-"
+                f"Неожиданная ошибка: {str(e)}"
                 f"Проверьте логи для деталей"
             )
 
@@ -759,8 +777,9 @@ class DashboardWindow(QMainWindow):
                 self.scan_controller.signals.stats_updated.connect(
                     self.on_stats_updated
                 )
+                # Используем лямбда-функцию для обновления прогресса в главном потоке
                 self.scan_controller.signals.progress_updated.connect(
-                    self.statistics_widget.update_progress
+                    lambda progress: self.update_progress_in_main_thread(progress)
                 )
                 logger.info("Сигналы статистики подключены успешно")
             else:
@@ -776,6 +795,17 @@ class DashboardWindow(QMainWindow):
             logger.error(f"Ошибка при подключении сигналов: {e}")
 
     @pyqtSlot(str, object)
+    def update_progress_in_main_thread(self, progress: int) -> None:
+        """Обновляет прогресс-бар в главном потоке GUI"""
+        try:
+            if self.statistics_widget is not None:
+                from PyQt5.QtCore import QMetaObject, Qt, Q_ARG
+                QMetaObject.invokeMethod(self.statistics_widget, "update_progress",
+                                       Qt.QueuedConnection,  # type: ignore
+                                       Q_ARG(int, progress))
+        except Exception as e:
+            logger.error(f"Ошибка при обновлении прогресса: {e}")
+
     def on_stats_updated(self, stat_name: str, value: object) -> None:
         """
         Обработчик обновления статистики из ScanWorker
@@ -789,6 +819,13 @@ class DashboardWindow(QMainWindow):
             if self.statistics_widget is None:
                 logger.debug(f"statistics_widget is None, пропускаем обновление {stat_name}")
                 return
+            
+            # Обеспечиваем обновление в главном потоке GUI
+            from PyQt5.QtCore import QMetaObject, Qt, Q_ARG
+            QMetaObject.invokeMethod(self.statistics_widget, "update_stat", 
+                                   Qt.QueuedConnection,
+                                   Q_ARG(str, stat_name),
+                                   Q_ARG(object, value))
 
             # ===== ПРЕОБРАЗОВАНИЕ И ВАЛИДАЦИЯ ЗНАЧЕНИЯ =====
 
@@ -1097,10 +1134,10 @@ class DashboardWindow(QMainWindow):
                     self,
                     "Подтверждение",
                     "Сканирование ещё выполняется. Вы уверены, что хотите закрыть?",
-                    Yes | No  # type: ignore
+                    QMessageBox.Yes | QMessageBox.No  # type: ignore
                 )
 
-                if reply == No:  # type: ignore
+                if reply == QMessageBox.No:  # type: ignore
                     if a0 is not None:
                         a0.ignore()
                     return

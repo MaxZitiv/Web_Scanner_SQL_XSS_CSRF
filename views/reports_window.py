@@ -5,15 +5,13 @@ views/reports_window.py
 
 from PyQt5.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
                             QLabel, QTableWidget, QTableWidgetItem, QPushButton, 
-                            QComboBox, QFileDialog, QMessageBox, QDateEdit)
+                            QComboBox, QMessageBox, QDateEdit)
 from PyQt5.QtCore import Qt, QDate
 from PyQt5.QtGui import QFont
-from typing import Optional, Dict, Any, List
-import sqlite3
+from typing import Dict, List, Optional
 from utils.database import db
 from utils.logger import logger
 from utils.export_utils import ExportUtils
-from utils.performance import get_local_timestamp
 
 class ReportsWindow(QMainWindow):
     """Окно для просмотра и экспорта отчетов"""
@@ -40,7 +38,7 @@ class ReportsWindow(QMainWindow):
         title_font.setPointSize(14)
         title_font.setBold(True)
         title_label.setFont(title_font)
-        title_label.setAlignment(Qt.AlignCenter)
+        title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         main_layout.addWidget(title_label)
 
         # Панель фильтров
@@ -90,7 +88,7 @@ class ReportsWindow(QMainWindow):
             "ID сканирования", "URL", "Дата", "Тип уязвимости", 
             "Параметр", "Серьезность", "Подробности"
         ])
-        self.reports_table.setSelectionBehavior(QTableWidget.SelectRows)
+        self.reports_table.setSelectionBehavior(QTableWidget.SelectRows)  # type: ignore
         main_layout.addWidget(self.reports_table)
 
         # Панель экспорта
@@ -109,10 +107,14 @@ class ReportsWindow(QMainWindow):
 
         # Кнопка закрытия
         close_btn = QPushButton("Закрыть")
-        close_btn.clicked.connect(self.close)
+        close_btn.clicked.connect(self.close_window)
         main_layout.addWidget(close_btn)
 
         central_widget.setLayout(main_layout)
+        
+    def close_window(self) -> None:
+        """Закрытие окна"""
+        self.close()
 
     def load_reports(self):
         """Загрузка отчетов из базы данных"""
@@ -184,17 +186,22 @@ class ReportsWindow(QMainWindow):
             file_extension = format_name.lower()
 
             # Собираем данные для экспорта
-            reports_data = []
+            reports_data: List[Dict[str, str]] = []
 
             for row in range(self.reports_table.rowCount()):
+                # Безопасно получаем значения из ячеек
+                def get_item_text(col: int) -> str:
+                    item = self.reports_table.item(row, col)
+                    return item.text() if item else "N/A"
+                
                 report_data = {
-                    'scan_id': self.reports_table.item(row, 0).text(),
-                    'url': self.reports_table.item(row, 1).text(),
-                    'timestamp': self.reports_table.item(row, 2).text(),
-                    'vulnerability_type': self.reports_table.item(row, 3).text(),
-                    'parameter': self.reports_table.item(row, 4).text(),
-                    'severity': self.reports_table.item(row, 5).text(),
-                    'details': self.reports_table.item(row, 6).text()
+                    'scan_id': get_item_text(0),
+                    'url': get_item_text(1),
+                    'timestamp': get_item_text(2),
+                    'vulnerability_type': get_item_text(3),
+                    'parameter': get_item_text(4),
+                    'severity': get_item_text(5),
+                    'details': get_item_text(6)
                 }
                 reports_data.append(report_data)
 
@@ -225,3 +232,4 @@ class ReportsWindow(QMainWindow):
                 "Ошибка", 
                 f"Не удалось экспортировать отчет: {str(e)}"
             )
+

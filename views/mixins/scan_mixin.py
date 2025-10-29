@@ -1,7 +1,7 @@
 """
 Миксин для функциональности сканирования
 """
-from typing import Dict, Any, Optional, cast, List
+from typing import Dict, Any, Optional, List
 from types import CoroutineType
 from PyQt5.QtWidgets import QLabel, QPushButton, QLineEdit, QCheckBox, QSpinBox, QProgressBar, QTreeWidget, QDateTimeEdit
 from utils.security import is_safe_url
@@ -193,7 +193,7 @@ class ScanMixin:
                     return
                     
                 # Определяем типы сканирования
-                scan_types = []
+                scan_types: List[str] = []
                 if hasattr(self, 'sql_checkbox') and self.sql_checkbox.isChecked():
                     scan_types.append("sql")
                 if hasattr(self, 'xss_checkbox') and self.xss_checkbox.isChecked():
@@ -242,7 +242,7 @@ class ScanMixin:
         
         # Возвращаем корутину для запуска сканирования
         coroutine = _start_scan_impl()
-        return cast(CoroutineType[Any, Any, None], coroutine)
+        return coroutine
 
     def _handle_error(self, error_msg: str) -> None:
         """

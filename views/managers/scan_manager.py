@@ -1,7 +1,6 @@
 from typing import Dict, Any, List, cast
 from PyQt5.QtCore import QObject
 from utils.logger import logger
-from typing import Tuple
 
 class ScanManagerStatsMixin:
     """Миксин класс для оптимизации работы со статистикой в ScanManager"""
