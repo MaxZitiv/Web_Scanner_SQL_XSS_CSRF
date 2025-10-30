@@ -7,10 +7,9 @@
 import re
 import asyncio
 import time
-from typing import Dict, List, Optional, Any, Tuple
+from typing import Dict, List, Optional
 from urllib.parse import urlparse, urljoin, parse_qs, urlencode
 import aiohttp
-from bs4 import BeautifulSoup
 from bs4.element import Tag
 
 from utils.logger import logger
@@ -128,7 +127,7 @@ class AdvancedScanner:
             "; ls -la",
             "; dir",
             "; cat /etc/passwd",
-            "; type c:\\windows\\system32\\drivers\\etc\\hosts",
+            "; type c:\windows\system32\drivers\etc\hosts", # type: ignore
             "; ping -c 5 127.0.0.1",
             "; ping -n 5 127.0.0.1",
         ]
@@ -159,10 +158,11 @@ class AdvancedScanner:
                             start_time = time.time()
 
                             result = await session.get(test_url)
-                            elapsed_time = time.time() - start_time
+                            if result.status == 200:
+                                elapsed_time = time.time() - start_time
 
-                            if elapsed_time >= 4:  # Если ответ занял >= 4 секунды
-                                return f"Time-based SQL injection vulnerability detected with payload: {payload}"
+                                if elapsed_time >= 4:  # Если ответ занял >= 4 секунды
+                                    return f"Time-based SQL injection vulnerability detected with payload: {payload}"
 
             # Проверяем формы
             for form in forms:
@@ -360,7 +360,7 @@ class AdvancedScanner:
                         method = str(form.get('method', 'get')).upper()
 
                         # Ищем поля, которые могут принимать XML
-                        xml_fields = []
+                        xml_fields: List[str] = []
                         input_elements = form.find_all(['input', 'textarea'])
 
                         for input_elem in input_elements:
@@ -441,7 +441,7 @@ class AdvancedScanner:
                         method = str(form.get('method', 'get')).upper()
 
                         # Ищем поля, которые могут выполнять команды
-                        cmd_fields = []
+                        cmd_fields: List[str] = []
                         input_elements = form.find_all(['input', 'textarea'])
 
                         for input_elem in input_elements:
@@ -456,7 +456,8 @@ class AdvancedScanner:
                                 'search' in input_name.lower() or
                                 input_elem.get('type') in ['text', 'textarea']
                             ):
-                                cmd_fields.append(input_name)
+                                if isinstance(input_elem, str):
+                                    cmd_fields.append(input_name)
 
                         if cmd_fields:
                             # Создаем тестовые данные для формы
@@ -513,7 +514,11 @@ class AdvancedScanner:
         Returns:
             List[str]: Список найденных уязвимостей
         """
-        vulnerabilities = []
+        if not is_safe_url(url):
+            logger.warning(f"URL {url} is not safe for scanning.")
+            return []
+        
+        vulnerabilities: List[str] = []
 
         # Запускаем все проверки параллельно
         tasks = [
