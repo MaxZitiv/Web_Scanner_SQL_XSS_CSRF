@@ -89,6 +89,18 @@ class ErrorHandler:
         elif "disk full" in err_str:
             self.show_error_message("Ошибка базы данных", "Недостаточно места на диске.")
             return True
+        elif "unique constraint" in err_str:
+            self.show_error_message("Ошибка базы данных", "Запись с такими данными уже существует.")
+            return True
+        elif "foreign key constraint" in err_str:
+            self.show_error_message("Ошибка базы данных", "Нарушение целостности данных. Проверьте связанные записи.")
+            return True
+        elif "database corrupted" in err_str or "malformed" in err_str:
+            self.show_error_message("Ошибка базы данных", "База данных повреждена. Требуется восстановление.")
+            return True
+        elif "permission denied" in err_str:
+            self.show_error_message("Ошибка базы данных", "Недостаточно прав для выполнения операции.")
+            return True
 
         self.show_error_message("Ошибка базы данных", "Произошла ошибка при работе с базой данных.")
         return False
@@ -107,6 +119,15 @@ class ErrorHandler:
             return True
         elif "dns" in err_str:
             self.show_error_message("Ошибка сети", "Не удалось разрешить имя сервера.")
+            return True
+        elif "ssl" in err_str or "certificate" in err_str:
+            self.show_error_message("Ошибка сети", "Проблема с SSL-сертификатом сервера.")
+            return True
+        elif "too many redirects" in err_str:
+            self.show_error_message("Ошибка сети", "Слишком много перенаправлений.")
+            return True
+        elif "connection reset" in err_str:
+            self.show_error_message("Ошибка сети", "Соединение было сброшено.")
             return True
 
         self.show_error_message("Ошибка сети", "Произошла ошибка при подключении к сети.")

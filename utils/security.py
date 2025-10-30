@@ -287,6 +287,35 @@ def is_safe_url(url: str) -> bool:
             logger.warning(f"Non-standard port detected: {parsed.port}")
             # Не блокируем URL, но выводим предупреждение
 
+        # Проверяем на наличие потенциально опасных заголовков в параметрах
+        for param, values in query_params.items():
+            for value in values:
+                # Проверяем на наличие заголовков в параметрах
+                if any(header in value.lower() for header in ["location:", "refresh:", "set-cookie:"]):
+                    logger.warning(f"Potential header injection detected in parameter {param}")
+                    _cache_result(cache_key, False)
+                    return False
+
+                # Проверяем на наличие XSS в параметрах
+                if any(xss_pattern in value.lower() for xss_pattern in ["<script", "javascript:", "onerror=", "onload="]):
+                    logger.warning(f"Potential XSS detected in parameter {param}")
+                    _cache_result(cache_key, False)
+                    return False
+
+        # Проверяем на потенциальные атаки через перенаправление
+        redirect_params = ["redirect", "redirect_url", "return", "return_url", "goto", "url", "link", "next"]
+        for param in query_params:
+            if any(redir in param.lower() for redir in redirect_params):
+                logger.warning(f"Potential redirect parameter detected: {param}")
+                # Проверяем значение параметра перенаправления
+                for value in query_params[param]:
+                    if value.startswith(("http://", "https://")):
+                        # Проверяем, что перенаправление не на опасный домен
+                        redirect_domain = urlparse(value).netloc.lower()
+                        if redirect_domain in DANGEROUS_DOMAINS:
+                            _cache_result(cache_key, False)
+                            return False
+
         result = True
         _cache_result(cache_key, result)
         return result

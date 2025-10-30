@@ -27,9 +27,9 @@ from utils.logger import logger
 from utils.database import db
 from utils.unified_error_handler import log_and_notify
 from utils.performance import get_local_timestamp
-from urllib.parse import urlparse, urljoin, parse_qs, urlencode
+from utils.security import is_safe_url, validate_input_length
 
-__all__ = ['cache_manager', 'TTLCache', 'Scanner', 'ScanWorker']
+__all__ = ['cache_manager', 'TTLCache', 'Scanner', 'ScanWorker', 'SQL_ERROR_PATTERNS', 'XSS_REFLECTED_PATTERNS', 'SAFE_SQL_PAYLOADS', 'SAFE_XSS_PAYLOADS']
 
 # Очистка кэша при импорте модуля
 cache_manager.cleanup_all()
@@ -374,6 +374,31 @@ class ScanWorker:
         """
         Инициализирует ScanWorker с указанными параметрами.
         """
+        # Проверяем безопасность входных параметров
+        if not is_safe_url(url):
+            raise ValueError(f"Небезопасный URL: {url}")
+        
+        if not validate_input_length(url, 1, 2048):
+            raise ValueError(f"URL имеет недопустимую длину: {len(url)}")
+        
+        if not scan_types:
+            raise ValueError("Типы сканирования должны быть непустым списком")
+        
+        if user_id <= 0:
+            raise ValueError("ID пользователя должен быть положительным числом")
+        
+        if username and not validate_input_length(username, 1, 50):
+            raise ValueError("Имя пользователя имеет недопустимую длину")
+        
+        if max_depth < 1 or max_depth > 10:
+            raise ValueError("Глубина сканирования должна быть в диапазоне от 1 до 10")
+        
+        if max_concurrent < 1 or max_concurrent > 20:
+            raise ValueError("Количество одновременных запросов должно быть в диапазоне от 1 до 20")
+        
+        if timeout < 5 or timeout > 120:
+            raise ValueError("Таймаут должен быть в диапазоне от 5 до 120 секунд")
+        
         # Режимы и флаги сканирования
         self._max_coverage_mode = False
         self._should_stop = False
@@ -1004,6 +1029,10 @@ class ScanWorker:
                     logger.info(f"SKIP_FILE: {link}")
                     skipped_file += 1
                     continue
+                # Проверяем безопасность URL перед добавлением в очередь
+                if not is_safe_url(link):
+                    logger.warning(f"SKIP_UNSAFE_URL: {link}")
+                    continue
                 new_depth = current_depth + 1
                 await to_visit.put((link, new_depth))
                 self.total_links_count += 1
@@ -1195,6 +1224,10 @@ class ScanWorker:
                         if link not in self.visited_urls:
                             if is_file_url(link):
                                 logger.info(f"SKIP_FILE: {link}")
+                                continue
+                            # Проверяем безопасность URL перед добавлением в очередь
+                            if not is_safe_url(link):
+                                logger.warning(f"SKIP_UNSAFE_URL: {link}")
                                 continue
                             new_depth = current_depth + 1
                             await to_visit.put((link, new_depth))

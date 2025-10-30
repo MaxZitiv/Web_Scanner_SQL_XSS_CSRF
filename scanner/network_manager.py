@@ -13,7 +13,7 @@ class NetworkManager:
         self.timeout = timeout
         self.max_retries = max_retries
         self.max_concurrent = max_concurrent
-        self.semaphore: Optional[asyncio.Semaphore] = None
+        self.semaphore = asyncio.Semaphore(max_concurrent)
         self._session: Optional[aiohttp.ClientSession] = None
         self._headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
@@ -36,8 +36,8 @@ class NetworkManager:
     
     async def initialize(self) -> None:
         """Инициализация сессии и семафора"""
-        if not self.semaphore:
-            self.semaphore = asyncio.Semaphore(self.max_concurrent)
+        # Создаем новый семафор с актуальным значением max_concurrent
+        self.semaphore = asyncio.Semaphore(self.max_concurrent)
         if not self._session:
             self._session = aiohttp.ClientSession(
                 timeout=aiohttp.ClientTimeout(total=self.timeout),
@@ -49,7 +49,7 @@ class NetworkManager:
         if self._session and not self._session.closed:
             await self._session.close()
         self._session = None
-        self.semaphore = None
+        # Семафор не требует очистки
     
     async def request(self, method: str, url: str, **kwargs: Any) -> Optional[Tuple[aiohttp.ClientResponse, str]]:
         """Выполнение HTTP запроса с поддержкой кэширования и повторных попыток"""
@@ -60,11 +60,13 @@ class NetworkManager:
 
         if not self._session:
             await self.initialize()
+            
+        assert self._session
 
         for attempt in range(self.max_retries):
             try:
-                async with self.semaphore:  # type: ignore
-                    async with self._session.request(method, url, **kwargs) as response:  # type: ignore
+                async with self.semaphore:
+                    async with self._session.request(method, url, **kwargs) as response:
                         response.raise_for_status()
                         
                         content_type = response.headers.get('Content-Type', '').lower()

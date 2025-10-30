@@ -154,6 +154,48 @@ class Database:
             log_and_notify('error', f"Error setting up database: {e}")
             raise
 
+    def safe_execute(self, query: str, params: Optional[Tuple[Any, ...]] = None) -> List[Dict[str, Any]]:
+        """
+        Безопасное выполнение SQL-запроса с параметрами.
+        
+        Args:
+            query: SQL-запрос с плейсхолдерами ?
+            params: Параметры для подстановки в запрос
+            
+        Returns:
+            List[Dict]: Результаты запроса в виде списка словарей
+            
+        Raises:
+            ValueError: Если в запросе обнаружены потенциально опасные конструкции
+            sqlite3.Error: При ошибке выполнения запроса
+        """
+        # Проверяем на потенциально опасные конструкции в SQL
+        dangerous_keywords = ['drop', 'delete', 'truncate', 'alter', 'exec', 'execute', 
+                            'insert', 'update', 'create', 'replace']
+        
+        # Проверяем только для SELECT запросов
+        if query.strip().lower().startswith('select'):
+            query_lower = query.lower()
+            for keyword in dangerous_keywords:
+                if keyword in query_lower:
+                    raise ValueError(f"Potentially dangerous keyword '{keyword}' detected in SELECT query")
+        
+        # Выполняем запрос безопасно
+        with self.get_db_connection_cm() as conn:
+            cursor = conn.cursor()
+            if params:
+                cursor.execute(query, params)
+            else:
+                cursor.execute(query)
+            
+            # Получаем результаты
+            if query.strip().lower().startswith('select'):
+                columns = [column[0] for column in cursor.description]
+                return [dict(zip(columns, row)) for row in cursor.fetchall()]
+            
+            # Для других запросов возвращаем пустой список
+            return []
+
     def close_connection(self):
         """Закрывает соединение с базой данных."""
         if self._connection:

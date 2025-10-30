@@ -20,7 +20,7 @@ class HTMLProcessor:
         try:
             if not form_tag:
                 logger.warning("Invalid or empty form tag passed for hashing")
-                return hashlib.sha256(b"invalid_form", usedforsecurity=False).hexdigest()
+                return hashlib.sha256(b"invalid_form").hexdigest()
 
             action = str(form_tag.get('action', '')) if form_tag else ''
             method = str(form_tag.get('method', 'get')).lower() if form_tag else 'get'
@@ -36,10 +36,10 @@ class HTMLProcessor:
             inputs.sort()
             form_representation = f"action:{action}|method:{method}|inputs:{','.join(inputs)}"
             return hashlib.sha256(form_representation.encode('utf-8', errors='replace'), 
-                                usedforsecurity=False).hexdigest()
+                                ).hexdigest()
         except Exception as e:
             log_and_notify('error', f"Critical error creating form hash: {e}")
-            return hashlib.sha256(str(time.time()).encode(), usedforsecurity=False).hexdigest()
+            return hashlib.sha256(str(time.time()).encode()).hexdigest()
     
     @staticmethod
     def extract_links_and_forms(html: str, base_url: str) -> Tuple[Set[str], List[Tag]]:
