@@ -18,6 +18,7 @@ class ScanControllerSignals(QObject):
     # Сигналы обновления статистики
     stats_updated = pyqtSignal(str, object)
     progress_updated = pyqtSignal(int)
+    site_structure_updated = pyqtSignal(dict)
     
     # Сигналы событий
     log_event = pyqtSignal(str)
@@ -28,6 +29,9 @@ class ScanControllerSignals(QObject):
     scan_started = pyqtSignal()
     scan_completed = pyqtSignal(dict)  # (results: Dict)
     scan_error = pyqtSignal(str)  # (error: str)
+    
+    def update_site_structure(self, structure: Dict[str, Any]) -> None:
+        self.site_structure_updated.emit(structure)
 
 
 class ScanController(QObject):
@@ -63,6 +67,8 @@ class ScanController(QObject):
         self.signals = ScanControllerSignals()
         
         logger.info(f'Инициализирован ScanController для пользователя {self.user_id} с URL {url}')
+        
+
     
     async def scan(self) -> Dict[str, Any]:
         """Запуск сканирования и получение результатов"""
@@ -308,7 +314,7 @@ class ScanController(QObject):
             self.active_scans[url] = worker
             
             # Запускаем сканирование
-            scan_results = await worker.scan()
+            scan_results = await worker.run_scan()
             
             # Удаляем из активных сканирований
             if url in self.active_scans:

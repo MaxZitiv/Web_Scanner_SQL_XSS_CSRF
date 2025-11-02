@@ -1,6 +1,6 @@
 import bcrypt
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QLabel, QLineEdit, 
-                             QPushButton, QMessageBox)
+                             QPushButton, QMessageBox, QDialog)
 from typing import Union, List
 import sqlite3
 
@@ -8,7 +8,7 @@ from utils.database import db
 from utils.logger import logger, log_and_notify
 
 
-class EditProfileWindow(QWidget):
+class EditProfileWindow(QDialog):
     def __init__(self, user_id: int, username: str, parent_dashboard: QWidget) -> None:
         super().__init__()
         self.user_id = user_id

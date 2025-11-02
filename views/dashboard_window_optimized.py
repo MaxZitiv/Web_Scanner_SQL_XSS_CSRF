@@ -13,8 +13,8 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtWidgets import QMessageBox
 
 # Определяем константы для кнопок
-Yes = QMessageBox.Yes  # type: ignore
-No = QMessageBox.No  # type: ignore
+Yes = QMessageBox.StandardButton.Yes
+No = QMessageBox.StandardButton.No
 from PyQt5.QtCore import pyqtSlot # type: ignore
 from PyQt5.QtGui import QFont, QColor, QCloseEvent
 from qasync import asyncSlot # type: ignore
@@ -166,7 +166,7 @@ class DashboardWindow(QMainWindow):
                     background-color: #3d8b40;
                 }
             """)
-            self.start_scan_btn.clicked.connect(self.on_start_scan)
+            self.start_scan_btn.clicked.connect(lambda: self.on_start_scan())
             buttons_layout.addWidget(self.start_scan_btn)
             
             self.pause_scan_btn = QPushButton("⏸ Пауза")

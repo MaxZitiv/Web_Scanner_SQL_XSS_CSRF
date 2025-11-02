@@ -109,9 +109,8 @@ class ScanTabWidget(ScanTabStatsMixin, QWidget):
             self.site_tree.setHeaderLabels(["URL", "Status", "Type"])
 
             # Подключаем сигналы и слоты
-            if hasattr(self.scan_controller, 'site_structure_updated') and hasattr(self.scan_controller, 'stats_updated'):
-                self.scan_controller.site_structure_updated.connect(self.update_site_tree)
-                self.scan_controller.stats_updated.connect(self.update_stats)
+            if hasattr(self.scan_controller, 'signals') and hasattr(self.scan_controller, 'stats_updated'):
+                self.scan_controller.signals.stats_updated.connect(self.update_stats)
 
             for component in required_components:
                 if not hasattr(self, component):
@@ -120,8 +119,7 @@ class ScanTabWidget(ScanTabStatsMixin, QWidget):
         except Exception as e:
             logger.error(f"Failed to initialize scan tab components: {e}")
             raise
-
-    @asyncSlot()
+        
     async def on_scan_button_clicked(self):
         """Обработчик нажатия кнопки сканирования"""
         try:
@@ -552,6 +550,7 @@ class ScanTabWidget(ScanTabStatsMixin, QWidget):
         except Exception as e:
             logger.error(f"Error resetting stats: {e}")
 
+    @asyncSlot() # type: ignore
     async def scan_website_sync(self):
         """Синхронная обертка для асинхронного сканирования"""
         try:
@@ -595,18 +594,21 @@ class ScanTabWidget(ScanTabStatsMixin, QWidget):
             # Запускаем сканирование
             self._scan_start_time = get_local_timestamp()
             self.scan_status.setText("Сканирование...")
-                
-            await self.scan_controller.start_scan(
-                url=url,
-                scan_types=vuln_types,
-                max_depth=depth,
-                max_concurrent=concurrent,
-                timeout=timeout,
-                on_progress=self.update_scan_progress,
-                on_log=self.add_log_entry,
-                on_vulnerability=self.update_stats,
-                on_status=lambda status: self.scan_status.setText(status)
-            )
+            try:  
+                await self.scan_controller.start_scan(
+                    url=url,
+                    scan_types=vuln_types,
+                    max_depth=depth,
+                    max_concurrent=concurrent,
+                    timeout=timeout,
+                    on_progress=self.update_scan_progress,
+                    on_log=self.add_log_entry,
+                    on_vulnerability=self.update_stats,
+                    on_status=lambda status: self.scan_status.setText(status)
+                )
+            except Exception as e:
+                logger.error(f"Error during website scan: {e}")
+                self.scan_status.setText(f"Ошибка: {str(e)}")
 
             # Обновляем UI после завершения
             self.scan_button.setEnabled(True)

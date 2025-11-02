@@ -30,7 +30,7 @@ class StatsManager(QObject):
         self._pending_stats_updates: Dict[str, int] = {}
 
         # Таймер для пакетного обновления UI
-        self._stats_update_timer = QTimer(self)
+        self._stats_update_timer = QTimer()
         self._stats_update_timer.setSingleShot(True)
         self._stats_update_timer.timeout.connect(self._flush_stats_updates)
 

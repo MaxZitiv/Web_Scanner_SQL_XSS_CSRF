@@ -69,16 +69,15 @@ class ScanManagerStatsMixin:
         if hasattr(self, 'stats_manager'):
             self.stats_manager.reset_stats()
 
-    def start_scan(self, url: str):
+    async def start_scan(self, url: str):
         """Запускает сканирование указанного URL"""
         logger.info(f"Starting scan for URL: {url}")
-
         # Получаем доступ к dashboard через атрибуты
         dashboard = getattr(self, 'dashboard', None)
         if dashboard is None:
             logger.error("Dashboard is not accessible, cannot start scan")
             return
-
+        
         # Получаем типы сканирования из UI
         scan_types: List[str] = []
         if hasattr(dashboard, 'sql_checkbox') and dashboard.sql_checkbox.isChecked():
@@ -87,65 +86,51 @@ class ScanManagerStatsMixin:
             scan_types.append('xss')
         if hasattr(dashboard, 'csrf_checkbox') and dashboard.csrf_checkbox.isChecked():
             scan_types.append('csrf')
-
+        
         # Получаем параметры сканирования из UI
         max_depth = 3
         max_concurrent = 5
         timeout = 30
-
         if hasattr(dashboard, 'depth_spinbox'):
             max_depth = dashboard.depth_spinbox.value()
         if hasattr(dashboard, 'concurrent_spinbox'):
             max_concurrent = dashboard.concurrent_spinbox.value()
         if hasattr(dashboard, 'timeout_spinbox'):
             timeout = dashboard.timeout_spinbox.value()
-
+        
         # Запускаем сканирование через контроллер
         if hasattr(dashboard, 'scan_controller') and dashboard.scan_controller is not None:
-            # Создаем асинхронную задачу для сканирования
-            import asyncio
+            try:
+                # Определяем колбэки для обновления UI
+                def on_progress(percent: int):
+                    if hasattr(dashboard, 'scan_progress') and dashboard.scan_progress is not None:
+                        dashboard.scan_progress.setValue(percent)
+                    if hasattr(dashboard, 'progress_label') and dashboard.progress_label is not None:
+                        dashboard.progress_label.setText(f"{percent}%")
 
-            # Определяем колбэки для обновления UI
-            def on_progress(percent: int):
-                if hasattr(dashboard, 'scan_progress') and dashboard.scan_progress is not None:
-                    dashboard.scan_progress.setValue(percent)
-                if hasattr(dashboard, 'progress_label') and dashboard.progress_label is not None:
-                    dashboard.progress_label.setText(f"{percent}%")
+                def on_log(message: str):
+                    if hasattr(dashboard, 'detailed_log') and dashboard.detailed_log is not None:
+                        dashboard.detailed_log.append(message)
 
-            def on_log(message: str):
-                if hasattr(dashboard, 'detailed_log') and dashboard.detailed_log is not None:
-                    dashboard.detailed_log.append(message)
+                def on_vulnerability(vuln: str):
+                    # Обработка найденной уязвимости
+                    logger.info(f"Vulnerability found: {vuln}")
 
-            def on_vulnerability(vuln: str):
-                # Обработка найденной уязвимости
-                logger.info(f"Vulnerability found: {vuln}")
-
-            # Запускаем сканирование в асинхронном режиме
-            async def run_scan():
-                try:
-                    await dashboard.scan_controller.start_scan(
-                        url=url,
-                        scan_types=scan_types,
-                        max_depth=max_depth,
-                        max_concurrent=max_concurrent,
-                        timeout=timeout,
-                        on_progress=on_progress,
-                        on_log=on_log,
-                        on_vulnerability=on_vulnerability
-                    )
-                except Exception as e:
-                    logger.error(f"Error during scan: {e}")
-                    if hasattr(dashboard, 'scan_status') and dashboard.scan_status is not None:
-                        dashboard.scan_status.setText(f"Ошибка: {str(e)}")
-                    if hasattr(dashboard, 'scan_button') and dashboard.scan_button is not None:
-                        dashboard.scan_button.setEnabled(True)
-                    if hasattr(dashboard, 'pause_button') and dashboard.pause_button is not None:
-                        dashboard.pause_button.setEnabled(False)
-
-            # Запускаем асинхронную задачу
-            asyncio.create_task(run_scan())
-        else:
-            logger.error("Scan controller is not available")
+                # Запускаем сканирование напрямую
+                await dashboard.scan_controller.start_scan(
+                    url=url,
+                    scan_types=scan_types,
+                    max_depth=max_depth,
+                    max_concurrent=max_concurrent,
+                    timeout=timeout,
+                    on_progress=on_progress,
+                    on_log=on_log,
+                    on_vulnerability=on_vulnerability
+                )
+            except Exception as e:
+                logger.error(f"Ошибка во время сканирования: {e}")
+                if hasattr(dashboard, 'scan_status'):
+                    dashboard.scan_status.setText(f"Ошибка: {str(e)}")
 
     def clear_scan_log(self):
         """Очищает лог сканирования"""

@@ -34,7 +34,6 @@ logger.info('FAULTHANDLER ENABLED, MAIN.PY START')
 # Глобальные переменные
 app_instance: Optional[QApplication] = None
 main_window_instance: Optional[MainWindow] = None
-# ИСПРАВЛЕНИЕ: Используем более простой подход с Any
 event_loop: Any = None
 
 
@@ -90,8 +89,7 @@ def graceful_shutdown(exit_code: int) -> int:
     global event_loop, app_instance
 
     logger.info("Starting graceful shutdown...")
-
-    # ИСПРАВЛЕНИЕ: Упрощенная проверка без приведения типов
+    
     if event_loop is not None:
         try:
             # Простая проверка на существование методов

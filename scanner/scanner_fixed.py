@@ -212,29 +212,6 @@ class Scanner(QObject):
         """Проверяет, находится ли сканирование на паузе."""
         return self._is_paused
 
-    async def start_scan(self, url: str, options: Dict[str, Any]) -> None:
-        """Запускает сканирование."""
-        if self._scan_in_progress:
-            raise Exception("Scan is already in progress")
-        
-        self._scan_in_progress = True
-        self._scan_results = []
-        self._current_url = url
-        self._scan_options.update(options)
-        self._scan_id = self._generate_scan_id()
-        self._scan_start_time = datetime.now()
-        
-        self.scan_started.emit(f"Scan started for {url}")
-        
-        try:
-            await self._perform_scan()
-        except Exception as e:
-            self.error_occurred.emit(f"Error during scan: {str(e)}")
-        finally:
-            self._scan_in_progress = False
-            self._scan_end_time = datetime.now()
-            self.scan_finished.emit(f"Scan finished for {url}")
-
     async def _perform_scan(self) -> None:
         """Выполняет основное сканирование."""
         if not db.is_valid_url(self._current_url):
@@ -610,6 +587,16 @@ class ScanWorker:
                 len(self.vulnerabilities.get('csrf', []))
             )
             
+            self.signals.stats_updated.emit('urls_found', urls_found)
+            self.signals.stats_updated.emit('urls_scanned', urls_scanned)
+            self.signals.stats_updated.emit('forms_found', forms_found)
+            self.signals.stats_updated.emit('forms_scanned', forms_scanned)
+            self.signals.stats_updated.emit('vulnerabilities', total_vulns)
+            
+            # Обновляем прогресс
+            progress = self.calculate_progress()
+            self.signals.progress_updated.emit(progress)
+            
             # Подсчитываем ошибки
             errors = self.scan_completion_metrics.get('errors_encountered', 0)
             
@@ -739,11 +726,15 @@ class ScanWorker:
         """Проверяет, находится ли сканирование на паузе."""
         return self._is_paused
 
-    def calculate_progress(self, queue_size: int = 0) -> int:
+    def calculate_progress(self) -> int:
         """Вычисляет прогресс сканирования."""
-        processed = self.total_scanned_count
-        total = processed + queue_size
-        return int((processed / total) * 100) if total > 0 else 0
+        try:
+            total = self.total_links_count
+            processed = len(self.all_scanned_urls)
+            return int((processed / total) * 100) if total > 0 else 0
+        except Exception as e:
+            logger.error(f"Error calculating progress: {e}")
+            return 0
 
     def update_progress(self, current_url: str = "", current_depth: Optional[int] = None, queue_size: Optional[int] = None):
         """Обновляет прогресс сканирования."""
@@ -751,7 +742,7 @@ class ScanWorker:
             if queue_size is None:
                 queue_size = self.to_visit.qsize() if self.to_visit else 0
             
-            progress = self.calculate_progress(queue_size)
+            progress = self.calculate_progress()
             
             # Отправляем сигналы о прогрессе
             self.signals.progress.emit(progress, current_url)

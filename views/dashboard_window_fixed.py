@@ -4,18 +4,15 @@ views/dashboard_window_optimized.py
 """
 
 import asyncio
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, TypeVar, List
 from PyQt5.QtWidgets import (
         QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLineEdit, QSpinBox,
         QCheckBox, QPushButton, QTableWidget, QTableWidgetItem, QTextEdit,
         QLabel, QMessageBox, QScrollBar
     )
-
-# Определяем константы для кнопок
-Yes = QMessageBox.StandardButton.Yes
-No = QMessageBox.StandardButton.No
-from PyQt5.QtCore import QMetaObject, Qt, Q_ARG, pyqtSlot # type: ignore
-from PyQt5.QtGui import QFont, QColor, QCloseEvent
+from PyQt5.QtWidgets import QMessageBox
+from PyQt5.QtCore import pyqtSlot # type: ignore
+from PyQt5.QtGui import QFont, QColor
 from qasync import asyncSlot # type: ignore
 
 from models.user_model import UserModel
@@ -24,6 +21,12 @@ from views.statistics_widget import StatisticsWidget
 from utils.logger import logger
 from utils.security import is_safe_url, validate_input_length
 from utils.error_handler import error_handler
+
+T = TypeVar('T')
+
+# Определяем константы для кнопок
+Yes = QMessageBox.StandardButton.Yes
+No = QMessageBox.StandardButton.No
 
 class DashboardWindow(QMainWindow):
     """Главное окно дашборда для пользователя"""
@@ -181,7 +184,7 @@ class DashboardWindow(QMainWindow):
                     background-color: #3d8b40;
                 }
             """)
-            self.start_scan_btn.clicked.connect(self.on_start_scan)
+            self.start_scan_btn.clicked.connect(lambda: self._start_scan_wrapper())
             buttons_layout.addWidget(self.start_scan_btn)
 
             self.pause_scan_btn = QPushButton("⏸ Пауза")
@@ -435,7 +438,12 @@ class DashboardWindow(QMainWindow):
                 parent_obj = parent_obj.parent()
         except Exception as e:
             logger.error(f"Ошибка при прокрутке к виджету: {e}")
-    
+
+    # Остальные методы остаются без изменений...
+    def _start_scan_wrapper(self):
+        """Обертка для вызова асинхронного метода on_start_scan"""
+        asyncio.create_task(self.on_start_scan())
+
     @asyncSlot()  # type: ignore
     async def on_start_scan(self):
         """
@@ -476,12 +484,16 @@ class DashboardWindow(QMainWindow):
             # Проверяем безопасность URL
             if not is_safe_url(url):
                 logger.warning(f"Предупреждение о безопасности URL: {url}")
-                reply = QMessageBox.question(
+                reply: QMessageBox.StandardButton = QMessageBox.question(
                     self,
                     "⚠️ Предупреждение безопасности",
-                    "URL может быть небезопасным. Продолжить?\n\nУбедитесь, что вы сканируете только свои собственные сайты\nили сайты, на которые у вас есть разрешение.",
-                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No # type: ignore
+                    "URL может быть небезопасным. Продолжить?\n\n"
+                    "Убедитесь, что вы сканируете только свои собственные сайты,\n"
+                    "или сайты, на которые у вас есть разрешение.",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, # type: ignore
+                    QMessageBox.StandardButton.No
                 )
+
                 if reply == QMessageBox.StandardButton.No:
                     logger.info("Сканирование отменено пользователем")
                     return
@@ -505,7 +517,10 @@ class DashboardWindow(QMainWindow):
             if not scan_types:
                 error_handler.show_error_message(
                     "Ошибка",
-                    "Выберите хотя бы один тип сканирования:\n• SQL Injection\n• XSS\n• CSRF"
+                    "Выберите хотя бы один тип сканирования:"
+                    "• SQL Injection\n"
+                    "• XSS\n"
+                    "• CSRF"
                 )
                 logger.warning("Попытка начать сканирование без типов")
                 return
@@ -587,7 +602,6 @@ class DashboardWindow(QMainWindow):
 
             # Отключаем кнопку "Начать"
             self.start_scan_btn.setEnabled(False)
-
             # Включаем кнопки управления
             self.pause_scan_btn.setEnabled(True)
             self.resume_scan_btn.setEnabled(False)
@@ -620,7 +634,7 @@ class DashboardWindow(QMainWindow):
 
             # Прокручиваем лог к началу
             try:
-                scroll_bar = self.log_text.verticalScrollBar()
+                scroll_bar: Optional[QScrollBar] = self.log_text.verticalScrollBar()
                 if scroll_bar is not None:
                     scroll_bar.setValue(0)
             except AttributeError:
@@ -630,26 +644,19 @@ class DashboardWindow(QMainWindow):
 
             try:
                 # Получаем event loop
-                try:
-                    loop = asyncio.get_running_loop()
-                except RuntimeError:
-                    # Если нет запущенного цикла, создаем новый
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
+                loop = asyncio.get_event_loop()
 
-                # Создаём асинхронную задачу для сканирования
-                async def scan_task():
-                    assert self.scan_controller is not None, "ScanController должен быть инициализирован"
-                    await self.scan_controller.start_scan(
-                        url=url,
-                        scan_types=scan_types,
-                        max_depth=max_depth,
-                        max_concurrent=max_concurrent,
-                        on_log=self.on_log_event,
-                        on_result=self.on_scan_complete
-                    )
-                
-                self.current_scan_task = loop.create_task(scan_task())
+                assert self.scan_controller is not None, "ScanController должен быть инициализирован"
+                self.current_scan_task = loop.create_task(
+                    self.scan_controller.start_scan(
+                    url=url,
+                    scan_types=scan_types,
+                    max_depth=max_depth,
+                    max_concurrent=max_concurrent,
+                    on_log=self.on_log_event,
+                    on_result=self.on_scan_complete
+                )
+            )
 
                 logger.info("Асинхронная задача сканирования создана и запущена")
                 self.log_text.append("✅ Сканирование инициализировано")
@@ -737,10 +744,11 @@ class DashboardWindow(QMainWindow):
                 self,
                 "Подтверждение",
                 "Вы уверены, что хотите остановить сканирование?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No  # type: ignore
+                QMessageBox.StandardButton(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No),
+                QMessageBox.StandardButton.No
             )
 
-            if reply == Yes:  # type: ignore
+            if reply == QMessageBox.StandardButton.Yes:  # type: ignore
                 if self.scan_controller:
                     self.scan_controller.stop_scan()
                     self.is_scanning = False
@@ -775,7 +783,7 @@ class DashboardWindow(QMainWindow):
                 )
                 # Используем лямбда-функцию для обновления прогресса в главном потоке
                 self.scan_controller.signals.progress_updated.connect(
-                    self._handle_progress_update
+                    lambda progress: self.update_progress_in_main_thread(progress) # type: ignore
                 )
                 logger.info("Сигналы статистики подключены успешно")
             else:
@@ -789,12 +797,8 @@ class DashboardWindow(QMainWindow):
 
         except Exception as e:
             logger.error(f"Ошибка при подключении сигналов: {e}")
-            
-    def _handle_progress_update(self, progress: int) -> None:
-        """Обработка обновления прогресса сканирования"""
-        self.update_progress_in_main_thread(progress)
 
-    @pyqtSlot(str, object)
+    @pyqtSlot(int)
     def update_progress_in_main_thread(self, progress: int) -> None:
         """Обновляет прогресс-бар в главном потоке GUI"""
         try:
@@ -817,14 +821,6 @@ class DashboardWindow(QMainWindow):
             if self.statistics_widget is None:
                 logger.debug(f"statistics_widget is None, пропускаем обновление {stat_name}")
                 return
-            
-            # Обеспечиваем обновление в главном потоке GUI
-            QMetaObject.invokeMethod(self.statistics_widget, "update_stat", 
-                                   Qt.QueuedConnection,
-                                   Q_ARG(str, stat_name),
-                                   Q_ARG(object, value))
-
-            # ===== ПРЕОБРАЗОВАНИЕ И ВАЛИДАЦИЯ ЗНАЧЕНИЯ =====
 
             # Логируем полученное значение для отладки
             logger.debug(f"Получено обновление статистики: {stat_name} = {value} (тип: {type(value).__name__})")
@@ -867,7 +863,7 @@ class DashboardWindow(QMainWindow):
                         logger.warning(f"Отрицательное значение для {stat_name}: {value_int}, устанавливаем 0")
                         value_int = 0
 
-                    # Обновляем в UI
+                    # Обновляем в UI напрямую, без использования QMetaObject.invokeMethod
                     self.statistics_widget.update_stat(stat_name, value_int)
                     logger.debug(f"Обновлена статистика {stat_name}: {value_int}")
 
@@ -901,7 +897,7 @@ class DashboardWindow(QMainWindow):
             try:
                 scroll_bar: Optional[QScrollBar] = self.log_text.verticalScrollBar()
 
-                if isinstance(scroll_bar, QScrollBar):
+                if scroll_bar is not None:
                     max_value = scroll_bar.maximum()
                     scroll_bar.setValue(max_value)
                 else:
@@ -994,157 +990,22 @@ class DashboardWindow(QMainWindow):
             logger.error(f"Ошибка при сбросе статистики: {e}")
 
     def on_logout(self):
-        """
-        Выход пользователя из системы
-        Останавливает активное сканирование и возвращает к окну входа
-        """
         try:
-            # ===== ПОДТВЕРЖДЕНИЕ ВЫХОДА =====
-
             reply = QMessageBox.question(
                 self,
                 "Подтверждение",
-                "Вы уверены, что хотите выйти?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No  # type: ignore
+                "Вы уверены, что хотите выйти из системы?",
+                QMessageBox.StandardButton(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No),
+                QMessageBox.StandardButton.No
             )
-
-            if reply != Yes:  # type: ignore
-                logger.info("Выход отменён пользователем")
-                return
-
-            # ===== ОСТАНОВКА АКТИВНОГО СКАНИРОВАНИЯ =====
-
-            if self.is_scanning:
-                logger.info("Останавливаем активное сканирование перед выходом...")
-                try:
-                    self.on_stop_scan()
-                except Exception as stop_error:
-                    logger.error(f"Ошибка при остановке сканирования: {stop_error}")
-
-            # ===== ОЧИСТКА ДАННЫХ =====
-
-            try:
-                # Очищаем данные пользователя
-                if hasattr(self, 'user_model'):
-                    self.user_model.logout_user()
-                    logger.info("Данные пользователя очищены")
-            except Exception as cleanup_error:
-                logger.error(f"Ошибка при очистке данных: {cleanup_error}")
-
-            # ===== ВОЗВРАТ К ОКНУ ВХОДА =====
-
-            try:
-                # Получаем родительский виджет
+            
+            if reply == QMessageBox.StandardButton.Yes:
                 parent = self.parent()
-
-                # Проверяем что parent существует и имеет метод go_to_login
-                if parent is not None and hasattr(parent, 'go_to_login'):
-                    logger.info("Возвращаемся к окну входа через parent.go_to_login()")
-                    parent.go_to_login()  # type: ignore
+                if parent is not None and isinstance(parent, QMainWindow):
+                    parent.close()
                 else:
-                    # Если parent не подходит, пробуем найти MainWindow
-                    logger.warning("Parent не имеет метода go_to_login, ищем MainWindow...")
-
-                    # Пытаемся найти MainWindow через цепочку родителей
-                    main_window = self._find_main_window()
-
-                    if main_window is not None and hasattr(main_window, 'go_to_login'):
-                        logger.info("Найден MainWindow, вызываем go_to_login()")
-                        main_window.go_to_login()  # type: ignore
-                    else:
-                        # Если не нашли MainWindow, просто закрываем текущее окно
-                        logger.warning("MainWindow не найден, просто закрываем DashboardWindow")
-                        self.close()
-
-            except Exception as navigation_error:
-                logger.error(f"Ошибка при навигации к окну входа: {navigation_error}")
-                # В случае ошибки просто закрываем окно
-                try:
                     self.close()
-                except Exception as close_error:
-                    logger.error(f"Ошибка при закрытии окна: {close_error}")
-
-            # ===== ЛОГИРОВАНИЕ =====
-
-            logger.info(f"Пользователь {self.username} вышел из системы")
-
         except Exception as e:
-            logger.error(f"Критическая ошибка при выходе: {e}", exc_info=True)
-            error_handler.show_error_message(
-                "Ошибка",
-                f"Произошла ошибка при выходе: {str(e)}"
-            )
-            # Пытаемся закрыть окно в любом случае
-            try:
-                self.close()
-            except Exception as final_error:
-                logger.error(f"Не удалось закрыть окно: {final_error}")
+            logger.error(f"Ошибка при выходе из системы: {e}")
+            error_handler.show_error_message("Ошибка", f"Ошибка при выходе: {str(e)}")
 
-
-    def _find_main_window(self):
-        """
-        Находит главное окно (MainWindow) через цепочку родителей
-
-        Returns:
-            MainWindow или None если не найдено
-        """
-        try:
-            # Начинаем с текущего виджета
-            current = self
-
-            # Проходим по цепочке родителей
-            max_iterations = 10  # Защита от бесконечного цикла
-            iteration = 0
-
-            while current is not None and iteration < max_iterations:  # type: ignore
-                iteration += 1
-
-                # Проверяем имя класса
-                class_name = current.__class__.__name__  # type: ignore
-
-                if class_name == 'MainWindow':
-                    logger.debug(f"MainWindow найден на итерации {iteration}")
-                    return current
-
-                # Переходим к родителю
-                parent = current.parent()
-
-                if parent is None:
-                    logger.debug(f"Достигнут корень иерархии на итерации {iteration}")
-                    break
-
-                current = parent
-
-            logger.warning("MainWindow не найден в иерархии виджетов")
-            return None
-
-        except Exception as e:
-            logger.error(f"Ошибка при поиске MainWindow: {e}")
-            return None
-
-    def closeEvent(self, a0: Optional[QCloseEvent]) -> None:
-        """Обработчик закрытия окна"""
-        try:
-            if self.is_scanning:
-                # Альтернативное исправление: использование стандартных констант
-                reply = QMessageBox.question(
-                    self,
-                    "Подтверждение",
-                    "Сканирование ещё выполняется. Вы уверены, что хотите закрыть?",
-                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No # type: ignore
-                )
-
-                if reply == QMessageBox.StandardButton.No:
-                    if a0 is not None:
-                        a0.ignore()
-                    return
-
-                self.on_stop_scan()
-
-            logger.info(f"Окно дашборда закрыто для пользователя {self.username}")
-            if a0 is not None:
-                a0.accept()
-        except Exception as e:
-            logger.error(f"Ошибка при закрытии окна: {e}")
-            if a0 is not None:
-                a0.accept()
