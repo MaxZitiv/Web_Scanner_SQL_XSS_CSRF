@@ -1,0 +1,54 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "web-scanner-sql-xss-csrf"
+version = "1.0.0"
+description = "Веб-сканер для поиска SQL Injection, XSS и CSRF уязвимостей"
+authors = [{ name = "Web Scanner Team" }]
+requires-python = ">=3.14"
+dependencies = [
+    "PyQt6>=6.9.0,<7.0.0",
+    "PyQt6-Charts>=6.9.0",
+    "qasync>=0.26.0",
+    "numpy>=2.1.0",
+    "aiohttp>=3.10.0,<4.0.0",
+    "requests>=2.32.0,<3.0.0",
+    "beautifulsoup4>=4.12.0,<5.0.0",
+    "bcrypt>=4.1.0,<5.0.0",
+    "cryptography>=41.0.0",
+    "pyotp>=2.9.0,<3.0.0",
+    "reportlab>=4.0.0,<5.0.0",
+    "fpdf>=1.7.2,<2.0.0",
+    "matplotlib>=3.10.0,<4.0.0",
+    "psutil>=6.0.0,<7.0.0",
+    "pytz>=2024.1",
+    "PyInstaller>=6.15.0",
+    "typing-extensions>=4.9.0",
+    "python-dotenv>=1.0.0",
+    "cachetools>=5.3.0",
+    "bandit>=1.7.5",
+    "attrs>=23.2.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "black>=24.0.0",
+    "flake8>=7.0.0",
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+]
+
+[tool.pyright]
+venvPath = "."
+venv = ".venv"
+typeCheckingMode = "strict"
+pythonVersion = "3.14"
+exclude = [
+    "**/node_modules",
+    "**/__pycache__",
+    "**/.git",
+    "**/build",
+    "**/dist",
+]

@@ -641,8 +641,13 @@ class DashboardWindow(QMainWindow):
             # ===== ЗАПУСК АСИНХРОННОГО СКАНИРОВАНИЯ =====
 
             try:
-                # Получаем event loop
-                loop = asyncio.get_event_loop()
+                # Получаем event loop. Python 3.14 предпочитает get_running_loop().
+                try:
+                    loop = asyncio.get_running_loop()
+                except RuntimeError:
+                    # Если нет запущенного цикла, создаем новый
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
 
                 self.current_scan_task = loop.create_task(
                     self.scan_controller.start_scan(
