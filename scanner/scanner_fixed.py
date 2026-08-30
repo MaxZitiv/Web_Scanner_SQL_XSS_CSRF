@@ -386,18 +386,18 @@ class ScanWorker:
         self.in_progress: Set[str] = set()
         
         # Счетчики и статистика
-        self.total_scanned_count = 0
-        self.total_forms_count = 0
-        self.total_vuln_count = 0
-        self.scanned_forms_count = 0
-        self.current_form_index = 0
-        self.total_links_count = 0
+        self.total_scanned_count: int = 0
+        self.total_forms_count: int = 0
+        self.total_vuln_count: int = 0
+        self.scanned_forms_count: int = 0
+        self.current_form_index: int = 0
+        self.total_links_count: int = 0
         
         # Флаги состояния сканирования
-        self.max_depth_reached = False
-        self.scan_complete = False
-        self.scan_started = False
-        self.reported_progress = 0
+        self.max_depth_reached: bool = False
+        self.scan_complete: bool = False
+        self.scan_started: bool = False
+        self.reported_progress: int = 0
         
         # Параметры сканирования
         self.url = url
@@ -602,7 +602,7 @@ class ScanWorker:
         """Обновляет статистику сканирования."""
         try:
             # Получаем текущие значения
-            urls_found = len(self.visited_urls)
+            urls_found = self.total_links_count
             urls_scanned = len(self.all_scanned_urls)
             forms_found = len(self.all_found_forms)
             forms_scanned = self.scanned_forms_count
@@ -620,8 +620,14 @@ class ScanWorker:
             self.signals.stats_updated.emit('forms_scanned', forms_scanned)
             self.signals.stats_updated.emit('vulnerabilities', total_vulns)
             
-            # Обновляем прогресс
-            progress = self.calculate_progress()
+            # Обновляем прогресс. Прогресс монотонный: после финального 100%
+            # update_stats() не должен перезаписывать его рассчитанным значением,
+            # которое может быть маленьким из-за найденных, но несканированных ссылок.
+            progress = max(self.calculate_progress(), self.reported_progress)
+            if progress < self.reported_progress:
+                progress = self.reported_progress
+            else:
+                self.reported_progress = progress
             self.signals.progress_updated.emit(progress)
             
             # Подсчитываем ошибки
@@ -1070,6 +1076,11 @@ class ScanWorker:
                     logger.warning(f"SKIP_UNSAFE_URL: {link}")
                     continue
                 new_depth = current_depth + 1
+                if new_depth > self.max_depth:
+                    logger.debug(
+                        f"SKIP_OUT_OF_SCOPE: {link} (depth {new_depth} > max {self.max_depth})"
+                    )
+                    continue
                 await to_visit.put((link, new_depth))
                 self.total_links_count += 1
                 new_links_added += 1
@@ -1268,6 +1279,12 @@ class ScanWorker:
                                 logger.warning(f"SKIP_UNSAFE_URL: {link}")
                                 continue
                             new_depth = current_depth + 1
+                            if new_depth > self.max_depth:
+                                logger.debug(
+                                    f"SKIP_OUT_OF_SCOPE: {link} "
+                                    f"(depth {new_depth} > max {self.max_depth})"
+                                )
+                                continue
                             await to_visit.put((link, new_depth))
                             self.total_links_count += 1
                             new_links_added += 1

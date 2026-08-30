@@ -361,12 +361,16 @@ class DashboardWindow(QMainWindow):
     def on_statistics(self):
         """Открывает окно статистики"""
         try:
-            if self.statistics_widget:
-                self.statistics_widget.set_stats_visible(True)
-                # Прокручиваем к виджету статистики
-                self.scroll_to_widget(self.statistics_widget)
-            else:
-                error_handler.show_error_message("Ошибка", "Виджет статистики недоступен")
+            from views.statistics_window import StatisticsWindow
+
+            statistics_window = getattr(self, 'statistics_window', None)
+            if statistics_window is None:
+                statistics_window = StatisticsWindow(self.user_id, self)
+                self.statistics_window = statistics_window
+
+            statistics_window.show()
+            statistics_window.raise_()
+            statistics_window.activateWindow()
         except Exception as e:
             logger.error(f"Ошибка при открытии статистики: {e}")
             error_handler.show_error_message("Ошибка", f"Не удалось открыть статистику: {str(e)}")
@@ -402,12 +406,17 @@ class DashboardWindow(QMainWindow):
             # Создаем окно отчетов
             from utils.export_utils import ExportUtils
 
-            # Экспортируем в JSON
+            # Пользователь выбирает формат отчёта: JSON, CSV, PDF, HTML или TXT
+            selected_format = self._select_report_format()
+            if selected_format is None:
+                return
+
+            format_name, file_extension = selected_format
             success = ExportUtils.export_data(
                 self,
                 reports_data,
-                "JSON",
-                "json",
+                format_name,
+                file_extension,
                 self.user_id
             )
 
@@ -416,6 +425,46 @@ class DashboardWindow(QMainWindow):
         except Exception as e:
             logger.error(f"Ошибка при создании отчета: {e}")
             error_handler.show_error_message("Ошибка", f"Не удалось создать отчет: {str(e)}")
+
+    def _select_report_format(self) -> Optional[tuple[str, str]]:
+        """Показывает диалог выбора формата отчёта.
+
+        Returns:
+            Кортеж (название формата, расширение файла) или None при отмене.
+        """
+        try:
+            formats = ["JSON", "CSV", "PDF", "HTML", "TXT"]
+            extensions = {
+                "JSON": "json",
+                "CSV": "csv",
+                "PDF": "pdf",
+                "HTML": "html",
+                "TXT": "txt",
+            }
+
+            dialog = QMessageBox(self)
+            dialog.setWindowTitle("Формат отчёта")
+            dialog.setText("Выберите формат сохранения:")
+            dialog.setIcon(QMessageBox.Icon.Question)
+            for option in formats:
+                cast(Any, dialog.addButton)(
+                    option, QMessageBox.ButtonRole.AcceptRole
+                )
+            cast(Any, dialog.addButton)(
+                "Отмена", QMessageBox.ButtonRole.RejectRole
+            )
+            dialog.exec()
+
+            clicked = dialog.clickedButton()
+            if clicked is None:
+                return None
+            selected = clicked.text() if hasattr(clicked, "text") else ""
+            if selected not in extensions:
+                return None
+            return selected, extensions[selected]
+        except Exception as e:
+            logger.error(f"Ошибка при выборе формата отчёта: {e}")
+            return None
 
     def scroll_to_widget(self, widget: QWidget) -> None:
         """Прокручивает к указанному виджету"""

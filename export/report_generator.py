@@ -4,6 +4,7 @@ from typing import Dict, Any, Optional
 
 from fpdf import FPDF
 
+from .export import find_unicode_font
 from utils.database import db
 from utils.logger import logger, log_and_notify
 from utils.performance import format_duration
@@ -158,10 +159,15 @@ class PDF(FPDF):
     def __init__(self):
         super().__init__()
 
-        # Добавляем поддержку кириллицы
-        self.add_font(family='times', style='', fname='timesnewromanpsmt.ttf.ttf', uni=True)
-        self.add_font(family='times', style='B', fname='timesnewromanpsmt.ttf.ttf', uni=True)
-        self.add_font(family='times', style='I', fname='timesnewromanpsmt.ttf.ttf', uni=True)
+        font_path = find_unicode_font()
+        if font_path:
+            # Добавляем поддержку кириллицы через взодный TTF-шрифт
+            self.add_font(family='times', style='', fname=font_path, uni=True)
+            self.add_font(family='times', style='B', fname=font_path, uni=True)
+            self.add_font(family='times', style='I', fname=font_path, uni=True)
+        else:
+            logger.warning("No Unicode TTF font found, using latin-1 helvetica")
+            self.set_font('helvetica', '', 12)
 
         # Настройка для поддержки UTF-8
         self.set_auto_page_break(auto=True, margin=15)
@@ -231,16 +237,9 @@ def generate_pdf_report(scan_id: int, filename: str):
 
         pdf = PDF()
 
-        # Настройка шрифтов с поддержкой UTF-8
-        try:
-            # Пытаемся использовать шрифт с поддержкой кириллицы
-            pdf.add_font('times', '', 'timesnewromanpsmt.ttf', uni=True)
-            pdf.add_font('times', 'B', 'timesnewromanpsmt.ttf', uni=True)
-            pdf.add_font('times', 'I', 'timesnewromanpsmt.ttf', uni=True)
-        except (RuntimeError, FileNotFoundError) as e:
-            logger.warning(f"Font 'timesnewromanpsmt.ttf' not found: {e}. Using default font.")
-            # Используем стандартные шрифты FPDF
-            pdf.set_font('helvetica', '', 12)
+        # Шрифт уже настроен в PDF.__init__: ищем Unicode TTF и, если он
+        # недоступен, переходим на стандартный шрифт. Дополнительная попытка
+        # загрузить 'timesnewromanpsmt.ttf' здесь только ломала кириллицу.
 
         # Обрабатываем текст для PDF
         report_text = pdf.clean_text(report_text)

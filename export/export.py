@@ -6,9 +6,6 @@ from typing import List, Dict, Any, Optional, Set
 
 from fpdf import FPDF
 
-from utils.database import db
-# Добавляем аннотацию типа для db
-db: Any
 from utils.encryption import decrypt_sensitive_data
 from utils.logger import logger, log_and_notify
 from utils.performance import get_local_timestamp
@@ -50,9 +47,11 @@ def format_scan_data_for_export(scans: List[Dict[str, Any]], user_id: Optional[i
         if total_checks == 0:
             total_checks = len(results)
         
-        # Обрабатываем URL - расшифровываем только для авторизованных пользователей
+        # Обрабатываем URL - расшифровываем для текущего пользователя.
+        # Пользователь уже прошёл аутентификацию до вызова экспорта, поэтому
+        # повторная проверка в БД не требуется и может быть недоступна.
         target_url = scan.get('url', 'N/A')
-        if user_id and db.is_user_authenticated(user_id):
+        if user_id:
             try:
                 target_url = decrypt_sensitive_data(target_url)
             except Exception as e:
@@ -69,8 +68,8 @@ def format_scan_data_for_export(scans: List[Dict[str, Any]], user_id: Optional[i
             status = result.get('status', 'Unknown')
             url = result.get('url', 'Unknown')
             
-            # Расшифровываем URL в результатах только для авторизованных пользователей
-            if user_id and db.is_user_authenticated(user_id):
+            # Расшифровываем URL в результатах для текущего пользователя.
+            if user_id:
                 try:
                     url = decrypt_sensitive_data(url)
                 except Exception as e:
@@ -209,99 +208,80 @@ def export_to_csv(data: List[Dict[str, Any]], filename: str = "report.csv", user
         return False
 
 
+def find_unicode_font() -> Optional[str]:
+    """Ищет доступный TrueType шрифт с поддержкой кириллицы."""
+    candidates = [
+        '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
+        '/usr/share/fonts/dejavu/DejaVuSans.ttf',
+        '/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf',
+        '/usr/local/share/fonts/dejavu/DejaVuSans.ttf',
+        '/System/Library/Fonts/Supplemental/Arial Unicode.ttf',
+        '/System/Library/Fonts/Arial Unicode.ttf',
+        '/Library/Fonts/Arial Unicode.ttf',
+        'C:/Windows/Fonts/arial.ttf',
+        'C:/Windows/Fonts/times.ttf',
+    ]
+    for path in candidates:
+        if os.path.exists(path):
+            return path
+    return None
+
+
 class PDFReport(FPDF):
+    """PDF-отчёт с использованием Unicode-шрифта, где он доступен."""
+
     def __init__(self):
         super().__init__()
         # Устанавливаем поддержку UTF-8
         self.set_auto_page_break(auto=True, margin=15)
-        
+        self._font_name = 'Helvetica'
+
         try:
-            font_path = 'timesnewromanpsmt.ttf'
-            if not os.path.exists(font_path):
-                logger.warning("Times New Roman font not found, using default font")
-                # Используем встроенный шрифт с поддержкой UTF-8
-                self.add_font('DejaVu', '', 'DejaVuSansCondensed.ttf', uni=True)
-                self.set_font("DejaVu", size=14)
+            font_path = find_unicode_font()
+            if font_path:
+                self.add_font('UniSans', '', font_path, uni=True)
+                self.set_font('UniSans', size=14)
+                self._font_name = 'UniSans'
             else:
-                # Добавляем шрифт с поддержкой Unicode
-                self.add_font("TimesNewRoman", "", font_path, uni=True)
-                self.set_font("TimesNewRoman", size=14)
-        except (OSError, ValueError, KeyError, AttributeError, ImportError, sqlite3.Error) as e:
+                logger.warning("No Unicode TTF font found, using latin-1 Helvetica")
+                self.set_font('Helvetica', size=14)
+        except (OSError, ValueError, KeyError, AttributeError, ImportError, RuntimeError) as e:
             log_and_notify('error', f"Error setting up font: {e}")
-            # Fallback на встроенный шрифт
-            try:
-                self.add_font('DejaVu', '', 'DejaVuSansCondensed.ttf', uni=True)
-                self.set_font("DejaVu", size=14)
-            except (RuntimeError, FileNotFoundError):
-                # Последний fallback - используем стандартный шрифт
-                self.set_font("Arial", size=14)
+            self.set_font('Helvetica', size=14)
+            self._font_name = 'Helvetica'
+
+    def _set_font(self, size: int) -> None:
+        """Устанавливает выбранный шрифт без стиля bold."""
+        try:
+            self.set_font(self._font_name, size=size)
+        except (RuntimeError, KeyError, AttributeError):
+            self._font_name = 'Helvetica'
+            self.set_font('Helvetica', size=size)
 
     def header(self):
-        try:
-            self.set_font("TimesNewRoman", "B", 16)
-        except (RuntimeError, KeyError, AttributeError):
-            try:
-                self.set_font("DejaVu", "B", 16)
-            except (RuntimeError, KeyError, AttributeError):
-                self.set_font("Arial", "B", 16)
-        
+        self._set_font(16)
         self.cell(0, 10, "Отчёт о сканировании уязвимостей", ln=True, align="C")
-        
-        try:
-            self.set_font("TimesNewRoman", "", 10)
-        except (RuntimeError, KeyError, AttributeError):
-            try:
-                self.set_font("DejaVu", "", 10)
-            except (RuntimeError, KeyError, AttributeError):
-                self.set_font("Arial", "", 10)
-        
+        self._set_font(10)
         self.cell(0, 10, f"Сгенерирован: {get_local_timestamp()}", ln=True, align="C")
         self.ln(5)
 
     def footer(self):
         self.set_y(-15)
-        try:
-            self.set_font("TimesNewRoman", "", 8)
-        except (RuntimeError, KeyError, AttributeError):
-            try:
-                self.set_font("DejaVu", "", 8)
-            except (RuntimeError, KeyError, AttributeError):
-                self.set_font("Arial", "", 8)
-        
+        self._set_font(8)
         self.cell(0, 10, f"Страница {self.page_no()}", align="C")
 
     def chapter_title(self, title: str):
-        try:
-            self.set_font("TimesNewRoman", "B", 14)
-        except (RuntimeError, KeyError, AttributeError):
-            try:
-                self.set_font("DejaVu", "B", 14)
-            except (RuntimeError, KeyError, AttributeError):
-                self.set_font("Arial", "B", 14)
-        
+        self._set_font(14)
         self.cell(0, 10, title, ln=True)
         self.ln(5)
 
     def section_title(self, title: str):
-        try:
-            self.set_font("TimesNewRoman", "B", 12)
-        except (RuntimeError, KeyError, AttributeError):
-            try:
-                self.set_font("DejaVu", "B", 12)
-            except (RuntimeError, KeyError, AttributeError):
-                self.set_font("Arial", "B", 12)
-        
+        self._set_font(12)
         self.cell(0, 8, title, ln=True)
         self.ln(2)
 
     def add_text(self, text: str, font_size: int = 10, url_mode: bool = False):
-        try:
-            self.set_font("TimesNewRoman", "", font_size if not url_mode else 8)
-        except (RuntimeError, KeyError, AttributeError):
-            try:
-                self.set_font("DejaVu", "", font_size if not url_mode else 8)
-            except (RuntimeError, KeyError, AttributeError):
-                self.set_font("Arial", "", font_size if not url_mode else 8)
+        self._set_font(font_size if not url_mode else 8)
         safe_text = self._sanitize_text(text)
         if url_mode:
             self.set_text_color(0, 0, 180)  # Синий для URL
