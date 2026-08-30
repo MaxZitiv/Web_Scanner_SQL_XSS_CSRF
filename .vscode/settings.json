@@ -3,6 +3,7 @@
   "python.analysis.autoImportCompletions": true,
   "python.analysis.typeCheckingMode": "strict",
   "python.analysis.diagnosticMode": "workspace",
+  "python.analysis.stubPath": "${workspaceFolder}/.pylance_stubs",
   "python.analysis.inlayHints.variableTypes": true,
   "python.analysis.inlayHints.functionReturnTypes": true,
   "python.analysis.indexing": false,
@@ -16,7 +17,8 @@
     "**/__pycache__/**",
     "**/node_modules/**",
     "**/.git/**",
-    "**/typings/**"
+    "**/typings/**",
+    "**/.pylance_stubs/**"
   ],
   "git.ignoreLimitWarning": true,
   "cursorpyright.analysis.autoImportCompletions": true,
