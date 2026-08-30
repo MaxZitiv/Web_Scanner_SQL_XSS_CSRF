@@ -690,16 +690,21 @@ class DashboardWindow(QMainWindow):
 
                 # Создаём асинхронную задачу для сканирования
                 async def scan_task():
-                    if self.scan_controller is None:
-                        raise RuntimeError("ScanController должен быть инициализирован")
-                    await self.scan_controller.start_scan(
-                        url=url,
-                        scan_types=scan_types,
-                        max_depth=max_depth,
-                        max_concurrent=max_concurrent,
-                        on_log=self.on_log_event,
-                        on_result=self.on_scan_complete
-                    )
+                    try:
+                        if self.scan_controller is None:
+                            raise RuntimeError("ScanController должен быть инициализирован")
+                        await self.scan_controller.start_scan(
+                            url=url,
+                            scan_types=scan_types,
+                            max_depth=max_depth,
+                            max_concurrent=max_concurrent,
+                            on_log=self.on_log_event,
+                            on_result=self.on_scan_complete
+                        )
+                    finally:
+                        # Гарантируем, что UI всегда возвращается в исходное
+                        # состояние, даже если callback/сохранение упали.
+                        self._restore_scan_controls()
                 
                 self.current_scan_task = loop.create_task(scan_task())
 
@@ -998,6 +1003,23 @@ class DashboardWindow(QMainWindow):
 
         except Exception as e:
             logger.error(f"Ошибка при добавлении уязвимости в таблицу: {e}")
+    def _restore_scan_controls(self) -> None:
+        """Возвращает элементы управления сканированием в исходное состояние."""
+        try:
+            self.is_scanning = False
+            self.start_scan_btn.setEnabled(True)
+            self.pause_scan_btn.setEnabled(False)
+            self.resume_scan_btn.setEnabled(False)
+            self.stop_scan_btn.setEnabled(False)
+            self.url_input.setEnabled(True)
+            self.max_depth_spinbox.setEnabled(True)
+            self.max_concurrent_spinbox.setEnabled(True)
+            self.sql_checkbox.setEnabled(True)
+            self.xss_checkbox.setEnabled(True)
+            self.csrf_checkbox.setEnabled(True)
+        except Exception as e:
+            logger.error(f"Ошибка при восстановлении элементов управления: {e}")
+
     def on_scan_complete(self, result: Dict[str, Any]):
         """Обработчик завершения сканирования"""
         try:

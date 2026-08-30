@@ -14,6 +14,7 @@ from PyQt6.QtCore import (
 from PyQt6.QtGui import QFont
 from typing import Any, Dict, List, Optional, cast
 from utils.database import db
+from utils.encryption import decrypt_sensitive_data
 from utils.logger import logger
 from utils.export_utils import ExportUtils
 
@@ -130,11 +131,13 @@ class ReportsWindow(QMainWindow):
             end_date_str = self.end_date.date().toString("yyyy-MM-dd")
 
             cursor.execute("""
-                SELECT scan_id, url, timestamp, vulnerability_type, 
-                       parameter, severity, details
-                FROM scan_results 
-                WHERE user_id = ? AND DATE(timestamp) BETWEEN ? AND ?
-                ORDER BY timestamp DESC
+                SELECT s.id, s.url, s.timestamp, v.type,
+                       v.request_params, v.severity,
+                       COALESCE(v.details, v.description, '')
+                FROM vulnerabilities v
+                JOIN scans s ON v.scan_id = s.id
+                WHERE s.user_id = ? AND DATE(s.timestamp) BETWEEN ? AND ?
+                ORDER BY s.timestamp DESC
                 LIMIT 500
             """, (self.user_id, start_date_str, end_date_str))
 
@@ -145,7 +148,10 @@ class ReportsWindow(QMainWindow):
 
             for i, row in enumerate(rows):
                 scan_id = str(row[0])
-                url = row[1] if row[1] else "N/A"
+                try:
+                    url = str(decrypt_sensitive_data(row[1])) if row[1] else "N/A"
+                except Exception:
+                    url = str(row[1]) if row[1] else "N/A"
                 timestamp = row[2] if row[2] else "N/A"
                 vuln_type = row[3] if row[3] else "N/A"
                 parameter = row[4] if row[4] else "N/A"

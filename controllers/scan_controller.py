@@ -244,6 +244,12 @@ class ScanController(QObject):
                 }
             }
             
+            # Сохраняем результат в БД, чтобы он появился в статистике и отчётах
+            try:
+                await self.save_scan_result(scan_result)
+            except Exception as e:
+                log_and_notify('error', f"Error saving scan result in start_scan: {e}")
+
             # Вызываем callback с результатом
             if on_result:
                 on_result(scan_result)
@@ -409,10 +415,18 @@ class ScanController(QObject):
                 if isinstance(vuln_data, list):
                     for vuln in cast(List[Dict[str, Any]], vuln_data):
                         vuln['type'] = vuln_type
+                        # Database.save_scan_async ожидает поле details;
+                        # сканер хранит описание в description.
+                        vuln['details'] = vuln.get(
+                            'details', vuln.get('description', '')
+                        )
                         results_list.append(vuln)
                 elif isinstance(vuln_data, dict):
                     vuln_data = cast(Dict[str, Any], vuln_data)
                     vuln_data['type'] = vuln_type
+                    vuln_data['details'] = vuln_data.get(
+                        'details', vuln_data.get('description', '')
+                    )
                     results_list.append(vuln_data)
             
             if len(scan_types) > 1:

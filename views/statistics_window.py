@@ -18,6 +18,7 @@ from PyQt6.QtGui import (
 from typing import Any, List, Optional, cast
 from utils import logger
 from utils.database import db
+from utils.encryption import decrypt_sensitive_data
 from PyQt6.QtCharts import (
     QChart, QChartView, QPieSeries, QHorizontalBarSeries, QBarSet
 )
@@ -105,11 +106,14 @@ class StatisticsWindow(QMainWindow):
             cursor = conn.cursor()
 
             cursor.execute("""
-                SELECT scan_id, url, start_time, vulnerabilities_found, 
-                       scan_duration, status 
-                FROM scans 
-                WHERE user_id = ? 
-                ORDER BY start_time DESC
+                SELECT s.id, s.url, s.timestamp,
+                       COUNT(v.id) as vulnerabilities_found,
+                       s.scan_duration, s.status
+                FROM scans s
+                LEFT JOIN vulnerabilities v ON v.scan_id = s.id
+                WHERE s.user_id = ?
+                GROUP BY s.id
+                ORDER BY s.timestamp DESC
                 LIMIT 100
             """, (self.user_id,))
 
@@ -120,7 +124,10 @@ class StatisticsWindow(QMainWindow):
 
             for i, row in enumerate(rows):
                 scan_id = str(row[0])
-                url = row[1] if row[1] else "N/A"
+                try:
+                    url = str(decrypt_sensitive_data(row[1])) if row[1] else "N/A"
+                except Exception:
+                    url = str(row[1]) if row[1] else "N/A"
                 start_time = row[2] if row[2] else "N/A"
                 vulns_found = str(row[3]) if row[3] is not None else "0"
                 duration = f"{row[4]}с" if row[4] else "N/A"
@@ -165,10 +172,11 @@ class StatisticsWindow(QMainWindow):
             cursor = conn.cursor()
 
             cursor.execute("""
-                SELECT vulnerability_type, COUNT(*) as count
-                FROM scan_results 
-                WHERE user_id = ?
-                GROUP BY vulnerability_type
+                SELECT v.type, COUNT(*) as count
+                FROM vulnerabilities v
+                JOIN scans s ON v.scan_id = s.id
+                WHERE s.user_id = ?
+                GROUP BY v.type
             """, (self.user_id,))
 
             rows = cursor.fetchall()
@@ -215,10 +223,11 @@ class StatisticsWindow(QMainWindow):
             cursor = conn.cursor()
 
             cursor.execute("""
-                SELECT DATE(timestamp) as date, vulnerability_type, COUNT(*) as count
-                FROM scan_results 
-                WHERE user_id = ?
-                GROUP BY date, vulnerability_type
+                SELECT DATE(s.timestamp) as date, v.type, COUNT(*) as count
+                FROM vulnerabilities v
+                JOIN scans s ON v.scan_id = s.id
+                WHERE s.user_id = ?
+                GROUP BY date, v.type
                 ORDER BY date
                 LIMIT 30
             """, (self.user_id,))
@@ -295,21 +304,23 @@ class StatisticsWindow(QMainWindow):
             # Общая статистика
             cursor.execute("""
                 SELECT 
-                    COUNT(DISTINCT scan_id) as total_scans,
-                    COUNT(*) as total_vulnerabilities,
-                    COUNT(DISTINCT url) as unique_urls
-                FROM scan_results 
-                WHERE user_id = ?
+                    COUNT(DISTINCT s.id) as total_scans,
+                    COUNT(v.id) as total_vulnerabilities,
+                    COUNT(DISTINCT s.url) as unique_urls
+                FROM scans s
+                LEFT JOIN vulnerabilities v ON v.scan_id = s.id
+                WHERE s.user_id = ?
             """, (self.user_id,))
 
             general_stats = cursor.fetchone()
 
             # Статистика по типам уязвимостей
             cursor.execute("""
-                SELECT vulnerability_type, COUNT(*) as count
-                FROM scan_results 
-                WHERE user_id = ?
-                GROUP BY vulnerability_type
+                SELECT v.type, COUNT(*) as count
+                FROM vulnerabilities v
+                JOIN scans s ON v.scan_id = s.id
+                WHERE s.user_id = ?
+                GROUP BY v.type
             """, (self.user_id,))
 
             vuln_stats = cursor.fetchall()
