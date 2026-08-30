@@ -59,10 +59,16 @@ venvPath = "."
 venv = ".venv"
 typeCheckingMode = "strict"
 pythonVersion = "3.14"
+include = ["."]
 exclude = [
     "**/node_modules",
     "**/__pycache__",
     "**/.git",
-    "**/build",
-    "**/dist",
+    "**/.venv/**",
+    "**/build/**",
+    "**/dist/**",
+    "**/data/**",
+    "**/logs/**",
+    "**/plugins/**",
+    "**/typings/**",
 ]

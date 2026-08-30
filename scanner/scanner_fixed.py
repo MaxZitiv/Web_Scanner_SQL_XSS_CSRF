@@ -10,7 +10,7 @@ import os
 import time
 import asyncio
 import hashlib
-from typing import Dict, List, Optional, Any, Set, Tuple, TypedDict
+from typing import Dict, List, Optional, Any, Set, Tuple, TypedDict, cast
 from datetime import datetime
 from functools import lru_cache
 from urllib.parse import urlparse, urljoin, parse_qs, urlencode
@@ -534,12 +534,18 @@ class ScanWorker:
         try:
             raw_result = await self.scan()
 
-            vulnerabilities = raw_result.get('vulnerabilities', {})
-            if not isinstance(vulnerabilities, dict):
-                vulnerabilities = {'sql': [], 'xss': [], 'csrf': []}
+            vulnerabilities: Dict[str, List[Dict[str, Any]]] = {
+                'sql': [], 'xss': [], 'csrf': []
+            }
+            raw_vulnerabilities = raw_result.get('vulnerabilities')
+            if isinstance(raw_vulnerabilities, dict):
+                for key, value in cast(
+                    Dict[str, List[Dict[str, Any]]], raw_vulnerabilities
+                ).items():
+                    vulnerabilities[key] = value
 
             total_vulnerabilities = sum(
-                len(items) for items in vulnerabilities.values() if isinstance(items, list)
+                len(items) for items in vulnerabilities.values()
             )
             total_urls_scanned = int(
                 raw_result.get('total_urls_scanned', len(self.all_scanned_urls))

@@ -20,7 +20,10 @@ from PyQt6 import QtWidgets
 from PyQt6.QtCore import pyqtSlot as Slot
 from ._common import with_logger
 from ._unix import _SelectorEventLoop
-from ._windows import _ProactorEventLoop
+if os.name == "nt":
+    from ._windows import _ProactorEventLoop
+else:
+    _ProactorEventLoop = ...
 
 """
 Implementation of the PEP 3156 Event-Loop with Qt.

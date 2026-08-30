@@ -3,5 +3,17 @@
   "venv": ".venv",
   "typeCheckingMode": "strict",
   "pythonVersion": "3.14",
-  "exclude": ["**/node_modules", "**/__pycache__", "**/.git", "**/build", "**/dist"]
+  "include": ["."],
+  "exclude": [
+    "**/node_modules",
+    "**/__pycache__",
+    "**/.git",
+    "**/.venv/**",
+    "**/build/**",
+    "**/dist/**",
+    "**/data/**",
+    "**/logs/**",
+    "**/plugins/**",
+    "**/typings/**"
+  ]
 }
