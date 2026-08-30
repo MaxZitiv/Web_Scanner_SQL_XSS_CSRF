@@ -7,10 +7,10 @@
 """
 
 import os
-import sys
 from utils.logger import logger
 from utils.encryption import get_encryption
 from utils.database import db
+from utils.sys_utils import exit_process
 
 def is_already_encrypted(data: str) -> bool:
     """
@@ -215,4 +215,4 @@ def main():
 
 if __name__ == "__main__":
     success = main()
-    sys.exit(0 if success else 1) 
+    exit_process(0 if success else 1) 

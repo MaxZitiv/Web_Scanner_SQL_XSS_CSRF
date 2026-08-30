@@ -4,15 +4,15 @@
 Добавляет новые поля безопасности в существующую базу данных
 """
 
-import sys
 import os
 import sqlite3
 from pathlib import Path
 from utils.logger import logger, log_and_notify
 from utils.init_db import check_database_integrity, create_base_tables
+from utils.sys_utils import add_to_path, exit_process
 
 # Добавляем текущую директорию в путь для импорта
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+add_to_path(0, os.path.dirname(os.path.abspath(__file__)))
 
 def migrate_scanner_db():
     """Миграция базы данных для добавления новых полей"""
@@ -116,10 +116,10 @@ if __name__ == "__main__":
     try:
         success = main()
         if not success:
-            sys.exit(1)
+            exit_process(1)
     except KeyboardInterrupt:
         print("\nМиграция прервана пользователем")
-        sys.exit(1)
+        exit_process(1)
     except Exception as e:
         print(f"\nКритическая ошибка: {e}")
-        sys.exit(1) 
+        exit_process(1) 

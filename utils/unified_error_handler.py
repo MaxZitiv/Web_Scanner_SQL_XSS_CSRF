@@ -5,14 +5,15 @@
 Универсальный обработчик ошибок и исключений для веб-сканера
 """
 
-import sys
 import time
+from types import TracebackType
 from typing import Optional, Callable, Any, Dict, Tuple, Type
 from functools import wraps
 from contextlib import contextmanager
 from collections import deque
 from PyQt6.QtWidgets import QApplication, QMessageBox
 from utils.logger import logger, log_and_notify
+from utils.sys_utils import get_original_excepthook, set_excepthook
 
 
 class UnifiedErrorHandler:
@@ -181,12 +182,12 @@ class UnifiedErrorHandler:
     
     # -------------------- Глобальный обработчик -------------------- #
     def setup_global_exception_handler(self):
-        def global_handler(exctype: type, value: BaseException, tb: Any):
+        def global_handler(exctype: type[BaseException], value: BaseException, tb: TracebackType | None):
             # Проверяем, что value является экземпляром Exception, а не BaseException
             if isinstance(value, Exception):
                 self.handle_exception(value, "global_handler")
-            sys.__excepthook__(exctype, value, tb)
-        sys.excepthook = global_handler
+            get_original_excepthook()(exctype, value, tb)
+        set_excepthook(global_handler)
         logger.info("Global exception handler configured")
 
     def handle_validation_error(self, error: Exception, context: str = "") -> bool:

@@ -1,9 +1,17 @@
 from typing import Any, Optional, cast
 import os
-import sys
+
+from utils.sys_utils import (
+    add_to_path,
+    get_executable,
+    get_platform,
+    get_stderr,
+    get_stdin,
+    get_stdout,
+)
 
 # Добавляем корневую директорию проекта в sys.path
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+add_to_path(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from PyQt6.QtWidgets import (
     QMainWindow, QStackedWidget, QGraphicsOpacityEffect, QApplication, QCheckBox
@@ -247,8 +255,6 @@ class MainWindow(QMainWindow):
 
             # Запускаем CLI режим в новом процессе с правильным перенаправлением стандартного ввода/вывода
             import subprocess  # nosec B404  # subprocess нужен для запуска headless CLI
-            import os
-            import sys
             script_dir = os.path.dirname(os.path.abspath(__file__))
             project_dir = os.path.dirname(script_dir)
             main_script = os.path.join(project_dir, "main.py")
@@ -256,17 +262,18 @@ class MainWindow(QMainWindow):
             # Используем CREATE_NEW_CONSOLE для создания нового консольного окна
             # Аргументы передаются списком без shell=True, поэтому команда не
             # интерпретируется оболочкой и инъекция команд невозможна.
-            if sys.platform == "win32":
+            if get_platform() == "win32":
+                create_new_console: Any = getattr(subprocess, "CREATE_NEW_CONSOLE")
                 subprocess.Popen(  # nosec B603  # list argv, no shell
-                    [sys.executable, main_script, "--cli", "--username", username],
-                    creationflags=subprocess.CREATE_NEW_CONSOLE
+                    [get_executable(), main_script, "--cli", "--username", username],
+                    creationflags=create_new_console
                 )
             else:
                 subprocess.Popen(  # nosec B603  # list argv, no shell
-                    [sys.executable, main_script, "--cli", "--username", username],
-                    stdout=sys.stdout,
-                    stderr=sys.stderr,
-                    stdin=sys.stdin
+                    [get_executable(), main_script, "--cli", "--username", username],
+                    stdout=get_stdout(),
+                    stderr=get_stderr(),
+                    stdin=get_stdin()
                 )
 
         except Exception as e:

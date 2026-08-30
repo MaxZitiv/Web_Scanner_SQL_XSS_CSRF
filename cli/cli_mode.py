@@ -2,14 +2,32 @@
 Интерфейс командной строки для сканера веб-уязвимостей
 """
 import os
-import sys
 import argparse
 import asyncio
+import importlib.util
 from typing import List, Dict, Any, Optional
 import getpass
 
+# Загружаем sys_utils по абсолютному пути, чтобы не обращаться к sys.path
+# до добавления корня проекта в пути поиска модулей.
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_SYS_UTILS_PATH = os.path.join(_PROJECT_ROOT, "utils", "sys_utils.py")
+
+
+def _load_sys_utils() -> Any:
+    """Загружает utilities/sys_utils.py как отдельный модуль."""
+    spec = importlib.util.spec_from_file_location("_sys_utils", _SYS_UTILS_PATH)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"Не удалось загрузить {_SYS_UTILS_PATH}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+_sys_utils = _load_sys_utils()
+
 # Добавляем корневую директорию проекта в sys.path
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+_sys_utils.add_to_path(0, _PROJECT_ROOT)
 
 from models.user_model import UserModel
 from controllers.auth_controller import AuthController
@@ -477,4 +495,4 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
     exit_code = run_cli_mode(args.url, args.username, args.type, args.depth, args.concurrent, args.timeout)
-    sys.exit(exit_code)
+    _sys_utils.exit_process(exit_code)

@@ -11,8 +11,8 @@ encrypt_sensitive_data: Callable[[Union[str, Dict[str, Any], List[Any]]], str] =
 decrypt_sensitive_data: Callable[[str], Union[str, Dict[str, Any], List[Any]]] = decrypt_sensitive_data
 # from utils.validators import validator
 from contextlib import contextmanager
-import sys
 from concurrent.futures import ThreadPoolExecutor
+from utils.sys_utils import get_bundle_root
 
 # Глобальная переменная для пути к базе данных
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', "scanner.db")
@@ -66,7 +66,7 @@ class Database:
     def get_resource_path(relative_path: str) -> str:
         """Получает полный путь к ресурсу, учитывая возможность запуска из .exe."""
         try:
-            base_path = getattr(sys, '_MEIPASS', os.path.abspath("."))
+            base_path = get_bundle_root()
             return os.path.join(base_path, relative_path)
         except Exception as e:
             log_and_notify('error', f"Error getting resource path: {e}")

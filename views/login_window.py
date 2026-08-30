@@ -1,8 +1,9 @@
 import os
-import sys
+
+from utils.sys_utils import add_to_path
 
 # Добавляем корневую директорию проекта в sys.path
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+add_to_path(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from PyQt6.QtWidgets import (
     QPushButton, QVBoxLayout, QLabel,

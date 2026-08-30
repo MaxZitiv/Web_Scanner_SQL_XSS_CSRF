@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-import sys
 import traceback
+from types import TracebackType
 from typing import Optional, Callable, Any, Dict, TypedDict
 from collections import deque
 import time
 from utils.logger import logger, log_and_notify
+from utils.sys_utils import get_original_excepthook, set_excepthook
 
 
 class ErrorEntry(TypedDict):
@@ -28,13 +29,13 @@ class ErrorHandler:
 
     def setup_global_exception_handler(self):
         """Устанавливает глобальный обработчик исключений"""
-        def global_exception_handler(exctype: type, value: BaseException, tb: Any):
+        def global_exception_handler(exctype: type[BaseException], value: BaseException, tb: TracebackType | None):
             error_msg = ''.join(traceback.format_exception(exctype, value, tb))
             log_and_notify('error', f"Unhandled exception: {error_msg}")
             self.show_error_message("Критическая ошибка", str(value))
-            sys.__excepthook__(exctype, value, tb)
+            get_original_excepthook()(exctype, value, tb)
 
-        sys.excepthook = global_exception_handler
+        set_excepthook(global_exception_handler)
 
     def register_error_callback(self, error_type: str, callback: Callable[..., Any]):
         """Регистрирует callback для определенного типа ошибки"""

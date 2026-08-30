@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-import sys
 import os
 import faulthandler
 import traceback
@@ -15,7 +14,18 @@ import asyncio
 import logging
 
 # Добавляем корневую директорию проекта в sys.path
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from utils.sys_utils import (
+    add_to_path,
+    exit_process,
+    get_argv,
+    get_bundle_root,
+    get_original_excepthook,
+    get_stderr,
+    get_stdout,
+    set_excepthook,
+    set_stream,
+)
+add_to_path(0, os.path.dirname(os.path.abspath(__file__)))
 
 from ui.main_window import MainWindow
 from utils.logger import logger, log_and_notify
@@ -24,9 +34,9 @@ from utils.error_handler import error_handler
 from models.user_model import UserModel
 
 # Перенаправление stdout/stderr если они None
-for stream_name, stream in [('stdout', sys.stdout), ('stderr', sys.stderr)]:
+for stream_name, stream in [('stdout', get_stdout()), ('stderr', get_stderr())]:
     if stream is None:
-        setattr(sys, stream_name, open(os.devnull, 'w', encoding='utf-8'))
+        set_stream(stream_name, open(os.devnull, 'w', encoding='utf-8'))
 
 faulthandler.enable()
 logger.info('FAULTHANDLER ENABLED, MAIN.PY START')
@@ -39,7 +49,7 @@ event_loop: Optional[asyncio.AbstractEventLoop] = None
 
 def resource_path(relative_path: str) -> str:
     """Получить абсолютный путь к ресурсу (для PyInstaller и обычного запуска)."""
-    base_path = getattr(sys, '_MEIPASS', os.path.abspath("."))
+    base_path = get_bundle_root()
     return os.path.join(base_path, relative_path)
 
 
@@ -91,10 +101,10 @@ def excepthook(exc_type: Type[BaseException], exc_value: BaseException, exc_tb: 
         log_and_notify('error', f"Failed to write fatal_error.log: {e}")
 
     logger.critical(f"Unhandled exception: {exc_type.__name__}: {exc_value}", exc_info=True)
-    sys.__excepthook__(exc_type, exc_value, exc_tb)
+    get_original_excepthook()(exc_type, exc_value, exc_tb)
 
 
-sys.excepthook = excepthook
+set_excepthook(excepthook)
 
 
 def graceful_shutdown(exit_code: int) -> int:
@@ -203,7 +213,7 @@ def main() -> int:
 
         app_candidate = QApplication.instance()
         if not isinstance(app_candidate, QApplication):
-            app_candidate = QApplication(sys.argv)
+            app_candidate = QApplication(get_argv())
         app_instance = app_candidate
         load_styles(app_instance)
 
@@ -260,4 +270,4 @@ def main() -> int:
 
 if __name__ == "__main__":
     code = main()
-    sys.exit(code)
+    exit_process(code)

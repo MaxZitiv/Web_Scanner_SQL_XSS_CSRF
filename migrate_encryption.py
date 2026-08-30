@@ -9,11 +9,11 @@
 import sqlite3
 import json
 import os
-import sys
 from typing import Any, List
 from utils.logger import logger, log_and_notify
 from utils.encryption import encrypt_sensitive_data
 from utils.database import db
+from utils.sys_utils import exit_process
 
 def get_db_path() -> str:
     """Получает путь к базе данных"""
@@ -185,7 +185,7 @@ def main():
             print("⚠ Verification failed. Some data may not be encrypted.")
     else:
         print("✗ Migration failed!")
-        sys.exit(1)
+        exit_process(1)
 
 if __name__ == "__main__":
     main() 
