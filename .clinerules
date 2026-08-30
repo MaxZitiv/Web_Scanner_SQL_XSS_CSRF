@@ -1,0 +1,4 @@
+CRITICAL TOOL CALL RULES:
+1. You MUST use XML tags for tool calls (e.g. <read_file>, <execute_command>, <list_files>).
+2. DO NOT output raw JSON objects like {"name": "read_files", "arguments": ...}.
+3. Every tool call must be formatted as proper XML as expected by Cline.

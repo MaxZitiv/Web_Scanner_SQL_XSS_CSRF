@@ -9,13 +9,13 @@ import signal
 import argparse
 from typing import Optional, Type, Any
 import types
-from PyQt5.QtWidgets import QApplication
-from qasync import QEventLoop
+from PyQt5.QtWidgets import QApplication  # type: ignore[reportUnknownVariableType]
+from qasync import QEventLoop  # type: ignore
 import asyncio
 import logging
 
 # Добавляем корневую директорию проекта в sys.path
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # type: ignore[reportAttributeAccessIssue]
 
 from ui.main_window import MainWindow
 from utils.logger import logger, log_and_notify
@@ -24,7 +24,7 @@ from utils.error_handler import error_handler
 from models.user_model import UserModel
 
 # Перенаправление stdout/stderr если они None
-for stream_name, stream in [('stdout', sys.stdout), ('stderr', sys.stderr)]:
+for stream_name, stream in [('stdout', sys.stdout), ('stderr', sys.stderr)]:  # type: ignore[reportAttributeAccessIssue]
     if stream is None:
         setattr(sys, stream_name, open(os.devnull, 'w', encoding='utf-8'))
 
@@ -79,10 +79,10 @@ def excepthook(exc_type: Type[BaseException], exc_value: BaseException, exc_tb: 
         log_and_notify('error', f"Failed to write fatal_error.log: {e}")
 
     logger.critical(f"Unhandled exception: {exc_type.__name__}: {exc_value}", exc_info=True)
-    sys.__excepthook__(exc_type, exc_value, exc_tb)
+    sys.__excepthook__(exc_type, exc_value, exc_tb)  # type: ignore[reportAttributeAccessIssue]
 
 
-sys.excepthook = excepthook
+sys.excepthook = excepthook  # type: ignore[reportAttributeAccessIssue]
 
 
 def graceful_shutdown(exit_code: int) -> int:
@@ -131,8 +131,12 @@ def setup_signal_handlers() -> None:
     try:
         signal.signal(signal.SIGINT, signal_handler)
         signal.signal(signal.SIGTERM, signal_handler)
-        if hasattr(signal, 'SIGBREAK'):
-            signal.signal(signal.SIGBREAK, signal_handler)
+        
+        # Безопасное получение SIGBREAK (Windows-only)
+        sigbreak = getattr(signal, 'SIGBREAK', None)
+        if sigbreak is not None:
+            signal.signal(sigbreak, signal_handler)
+            
         logger.info("Signal handlers set up")
     except Exception as e:
         log_and_notify('error', f"Failed to set up signal handlers: {e}")
@@ -188,11 +192,12 @@ def main() -> int:
 
         app_candidate = QApplication.instance()
         if not isinstance(app_candidate, QApplication):
-            app_candidate = QApplication(sys.argv)
+            app_candidate = QApplication(sys.argv)  # type: ignore[reportAttributeAccessIssue]
         app_instance = app_candidate
         load_styles(app_instance)
 
-        loop = QEventLoop(app_instance)
+        # Явно указываем тип Any для loop, чтобы избежать ошибок статического анализа
+        loop: Any = QEventLoop(app_instance)
         asyncio.set_event_loop(loop)
         event_loop = loop
 
@@ -242,4 +247,4 @@ def main() -> int:
 
 if __name__ == "__main__":
     code = main()
-    sys.exit(code)
+    sys.exit(code)  # type: ignore[reportAttributeAccessIssue]
