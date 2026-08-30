@@ -310,6 +310,15 @@ class ScanController(QObject):
                 cast(Any, worker.signals.log_event).connect(on_log)
             if on_vulnerability:
                 cast(Any, worker.signals.vulnerability_found).connect(on_vulnerability)
+
+            # Пробрасываем сигналы воркера в сигналы контроллера, чтобы UI
+            # получал статистику/прогресс даже без явных callbacks.
+            cast(Any, worker.signals.progress_updated).connect(self.signals.progress_updated.emit)
+            cast(Any, worker.signals.stats_updated).connect(self.signals.stats_updated.emit)
+            if on_log is None:
+                cast(Any, worker.signals.log_event).connect(self.signals.log_event.emit)
+            if on_vulnerability is None:
+                cast(Any, worker.signals.vulnerability_found).connect(self.signals.vulnerability_found.emit)
             
             # Добавляем в активные сканирования
             self.active_scans[url] = worker

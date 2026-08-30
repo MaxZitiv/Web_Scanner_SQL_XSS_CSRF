@@ -336,7 +336,7 @@ class ScanWorkerSignals(QObject):
     result = pyqtSignal(dict)
     progress = pyqtSignal(int, str)
     progress_updated = pyqtSignal(int)
-    vulnerability_found = pyqtSignal(str, str, str, str)
+    vulnerability_found = pyqtSignal(str, str, str)
     log_event = pyqtSignal(str)
     stats_updated = pyqtSignal(str, int)
     site_structure_updated = pyqtSignal(list, list)
@@ -476,7 +476,7 @@ class ScanWorker:
                 
                 self.vulnerabilities['sql'].append(vulnerability)
                 self.scan_completion_metrics['vulnerabilities_found'] += 1
-                self.signals.vulnerability_found.emit(url, 'SQL Injection', vulnerability['description'], 'high')
+                self.signals.vulnerability_found.emit(url, 'sql', vulnerability['description'])
                 
         except Exception as e:
             logger.error(f"Error during SQL injection scan: {e}")
@@ -497,7 +497,7 @@ class ScanWorker:
                 
                 self.vulnerabilities['xss'].append(vulnerability)
                 self.scan_completion_metrics['vulnerabilities_found'] += 1
-                self.signals.vulnerability_found.emit(url, 'XSS', vulnerability['description'], 'medium')
+                self.signals.vulnerability_found.emit(url, 'xss', vulnerability['description'])
                 
         except Exception as e:
             logger.error(f"Error during XSS scan: {e}")
@@ -518,47 +518,67 @@ class ScanWorker:
                 
                 self.vulnerabilities['csrf'].append(vulnerability)
                 self.scan_completion_metrics['vulnerabilities_found'] += 1
-                self.signals.vulnerability_found.emit(url, 'CSRF', vulnerability['description'], 'medium')
+                self.signals.vulnerability_found.emit(url, 'csrf', vulnerability['description'])
                 
         except Exception as e:
             logger.error(f"Error during CSRF scan: {e}")
             self.scan_completion_metrics['errors_encountered'] += 1
 
     async def run_scan(self) -> Dict[str, Any]:
-        """Выполнение сканирования и возврат результатов."""
+        """
+        Выполнение полного сканирования и возврат результата.
+
+        Делегирует основную работу методу ``scan()`` и приводит результат
+        к формату, ожидаемому ScanController/UI.
+        """
         try:
-            self.scan_start_time = datetime.now()
-            logger.info(f"Starting scan of {self.base_url}")
+            raw_result = await self.scan()
 
-            # Выполняем сканирование для каждого типа уязвимостей
-            for scan_type in self.scan_types:
-                if self.should_stop:
-                    break
-                    
-                if scan_type == "sql":
-                    await self._scan_sql_injection(self.base_url)
-                elif scan_type == "xss":
-                    await self._scan_xss(self.base_url)
-                elif scan_type == "csrf":
-                    await self._scan_csrf(self.base_url)
+            vulnerabilities = raw_result.get('vulnerabilities', {})
+            if not isinstance(vulnerabilities, dict):
+                vulnerabilities = {'sql': [], 'xss': [], 'csrf': []}
 
-            self.scan_end_time = datetime.now()
-            duration = (self.scan_end_time - self.scan_start_time).total_seconds()
-            
-            # Формируем результаты
-            results: Dict[str, Any] = {
-                "url": self.base_url,
-                "scan_types": self.scan_types,
-                "start_time": self.scan_start_time.isoformat(),
-                "end_time": self.scan_end_time.isoformat(),
-                "duration": duration,
-                "vulnerabilities": self.vulnerabilities
+            total_vulnerabilities = sum(
+                len(items) for items in vulnerabilities.values() if isinstance(items, list)
+            )
+            total_urls_scanned = int(
+                raw_result.get('total_urls_scanned', len(self.all_scanned_urls))
+            )
+            total_forms_scanned = int(
+                raw_result.get('total_forms_scanned', self.scanned_forms_count)
+            )
+            scan_duration = float(raw_result.get('duration', 0.0))
+            unscanned_urls = list(raw_result.get('unscanned_urls', self.unscanned_urls))
+            total_urls_discovered = int(
+                raw_result.get('total_urls_discovered', self.total_links_count)
+            )
+            coverage_percent = 0.0
+            if total_urls_discovered > 0:
+                coverage_percent = round(
+                    (total_urls_scanned / total_urls_discovered) * 100.0, 2
+                )
+
+            return {
+                'url': raw_result.get('url', self.base_url),
+                'scan_types': raw_result.get('scan_types', self.scan_types),
+                'start_time': raw_result.get('timestamp', get_local_timestamp()),
+                'end_time': get_local_timestamp(),
+                'duration': scan_duration,
+                'results': vulnerabilities,
+                'vulnerabilities': vulnerabilities,
+                'scan_duration': scan_duration,
+                'total_vulnerabilities': total_vulnerabilities,
+                'total_urls_scanned': total_urls_scanned,
+                'total_forms_scanned': total_forms_scanned,
+                'total_urls_discovered': total_urls_discovered,
+                'coverage_percent': coverage_percent,
+                'unscanned_urls': unscanned_urls,
+                'status': raw_result.get('status', 'completed'),
+                'error': raw_result.get('error')
             }
 
-            return results
-
         except Exception as e:
-            logger.error(f"Error during scan: {e}")
+            logger.error(f"Error during scan: {e}", exc_info=True)
             raise
 
     def _cleanup_caches(self):
@@ -812,6 +832,17 @@ class ScanWorker:
             logger.error(f"Error checking domain {url} against {base_domain}: {e}")
             return False
 
+    def _client_timeout(self) -> aiohttp.ClientTimeout:
+        """Создаёт таймаут из параметра ScanWorker.timeout (мин. 5 сек)."""
+        total = max(5, int(self.timeout))
+        connect = max(5, min(10, total))
+        return aiohttp.ClientTimeout(
+            total=total,
+            connect=connect,
+            sock_connect=connect,
+            sock_read=total
+        )
+
     async def smart_request(self, session: aiohttp.ClientSession, method: str, url: str, 
                       retries: int = 2, **kwargs: Any) -> Optional[Tuple[aiohttp.ClientResponse, str]]:
         """Умный HTTP запрос с обработкой ошибок."""
@@ -834,7 +865,7 @@ class ScanWorker:
                 return None
                 
             try:
-                timeout = aiohttp.ClientTimeout(**HTTP_OPTIMIZATIONS['timeout'])
+                timeout = self._client_timeout()
                 headers = {**HTTP_OPTIMIZATIONS['headers'], **kwargs.get('headers', {})}
                 
                 async with session.request(method, url, timeout=timeout, headers=headers, **kwargs) as response:
@@ -1150,6 +1181,7 @@ class ScanWorker:
                         to_visit: asyncio.Queue[Tuple[str, int]], current_depth: int, 
                         forms_to_scan: Optional[List[Tag]] = None):
         """Сканирует один URL на уязвимости."""
+        precollected = forms_to_scan is not None
         if forms_to_scan is None:
             forms_to_scan = []
             
@@ -1182,8 +1214,9 @@ class ScanWorker:
             # Обновляем статистику после добавления URL в сканированные
             self.update_stats()
 
-            # Если не достигли максимальной глубины, извлекаем ссылки с текущей страницы
-            if current_depth < self.max_depth:
+            # Если ссылки/формы ещё не собраны, извлекаем их с текущей страницы.
+            # Когда данные уже переданы из _process_and_scan_url, повторно не ходим.
+            if not precollected and current_depth < self.max_depth:
                 logger.info(f"Extracting links from {url} at depth {current_depth} (max_depth: {self.max_depth})")
                 try:
                     links, forms = await self._extract_links_from_url(
@@ -1239,39 +1272,47 @@ class ScanWorker:
                 logger.info(f"Reached max depth {current_depth} for URL {url}, not extracting links")
                 
         try:
-            if forms_to_scan:
-                new_forms_count = 0
-                for form in forms_to_scan:
-                    form_hash = self.get_form_hash(form)
-                    if form_hash not in self.scanned_form_hashes:
-                        self.scanned_form_hashes.add(form_hash)
-                        new_forms_count += 1
-                if new_forms_count > 0:
-                    self.scanned_forms_count += new_forms_count
-                    
-                # --- Ограничиваем количество одновременных задач (batch gather) ---
-                batch_size = min(3, self.max_concurrent)  # уменьшено до 3 для снижения нагрузки
-                tasks: List[asyncio.Task[Any]] = []
-                for scan_type in self.scan_types:
-                    if self.should_stop:
-                        return
-                    if scan_type == 'sql':
-                        tasks.append(asyncio.create_task(self.check_sql_injection(session, url, forms_to_scan)))
-                    elif scan_type == 'xss':
-                        tasks.append(asyncio.create_task(self.check_xss(session, url, forms_to_scan)))
-                    elif scan_type == 'csrf':
-                        tasks.append(asyncio.create_task(self.check_csrf(url, forms_to_scan)))
-                # --- Batch gather ---
-                for i in range(0, len(tasks), batch_size):
-                    batch = tasks[i:i+batch_size]
-                    results = await asyncio.gather(*batch, return_exceptions=True)
-                    for j, result in enumerate(results):
-                        if isinstance(result, Exception):
-                            log_and_notify('error', f"Failed to scan URL {url}: {result}")
-                        elif result:
-                            scan_type = self.scan_types[i+j] if (i+j) < len(self.scan_types) else 'unknown'
-                            if isinstance(result, dict):
-                                self._process_scan_results(url, [result], [scan_type], results_by_type)
+            # Регистрируем уникальные формы для статистики
+            new_forms_count = 0
+            for form in forms_to_scan:
+                form_hash = self.get_form_hash(form)
+                if form_hash not in self.scanned_form_hashes:
+                    self.scanned_form_hashes.add(form_hash)
+                    new_forms_count += 1
+            if new_forms_count > 0:
+                self.scanned_forms_count += new_forms_count
+
+            # --- Ограничиваем количество одновременных задач (batch gather) ---
+            batch_size = min(3, self.max_concurrent)  # уменьшено до 3 для снижения нагрузки
+            tasks: List[asyncio.Task[Any]] = []
+            task_scan_types: List[str] = []
+            for scan_type in self.scan_types:
+                if self.should_stop:
+                    return
+                if scan_type == 'sql':
+                    tasks.append(asyncio.create_task(self.check_sql_injection(session, url, forms_to_scan)))
+                    task_scan_types.append(scan_type)
+                elif scan_type == 'xss':
+                    tasks.append(asyncio.create_task(self.check_xss(session, url, forms_to_scan)))
+                    task_scan_types.append(scan_type)
+                elif scan_type == 'csrf':
+                    tasks.append(asyncio.create_task(self.check_csrf(url, forms_to_scan)))
+                    task_scan_types.append(scan_type)
+
+            # --- Batch gather ---
+            for i in range(0, len(tasks), batch_size):
+                batch = tasks[i:i+batch_size]
+                results = await asyncio.gather(*batch, return_exceptions=True)
+                for j, result in enumerate(results):
+                    task_index = i + j
+                    if isinstance(result, Exception):
+                        log_and_notify('error', f"Failed to scan URL {url}: {result}")
+                    elif result:
+                        scan_type = task_scan_types[task_index] if task_index < len(task_scan_types) else 'unknown'
+                        if isinstance(result, dict):
+                            self._process_scan_results(url, [result], [scan_type], results_by_type)
+                        elif isinstance(result, str):
+                            self._process_scan_results(url, [{'details': result}], [scan_type], results_by_type)
                                 
             self.update_progress(url, current_depth, to_visit.qsize() if to_visit else 0)
             logger.info(f"Successfully scanned URL: {url} at depth {current_depth}")
@@ -1294,11 +1335,13 @@ class ScanWorker:
                     if scan_type not in self.vulnerabilities:
                         self.vulnerabilities[scan_type] = []
                     
+                    details = str(results)
                     self.vulnerabilities[scan_type].append({
                         'url': url,
-                        'details': str(results),
+                        'details': details,
                         'timestamp': datetime.now().isoformat()
                     })
+                    self.signals.vulnerability_found.emit(url, scan_type, details)
                     
         except Exception as e:
             logger.error(f"Error processing scan results: {e}")
@@ -1486,20 +1529,32 @@ class ScanWorker:
             
             self.signals.log_event.emit(f"🚀 Начинаем сканирование: {self.base_url} (глубина: {self.max_depth})")
             
-            # Инициализация
+            # Инициализация (полный сброс состояния между запусками)
             self.visited_urls.clear()
             self.scanned_urls.clear()
             self.all_scanned_urls.clear()
             self.all_found_forms.clear()
             self.scanned_form_hashes.clear()
-            
+            self.unscanned_urls.clear()
+            self.vulnerabilities = {'sql': [], 'xss': [], 'csrf': []}
+            self.scanned_forms_count = 0
+            self.total_scanned_count = 0
+            self.total_forms_count = 0
+            self.current_form_index = 0
+            self.current_depth = 0
+            self.max_depth_reached = False
+            self.scan_complete = False
+            self.scan_completion_metrics['errors_encountered'] = 0
+            self.scan_completion_metrics['urls_scanned'] = 0
+            self.scan_completion_metrics['vulnerabilities_found'] = 0
+
             self.to_visit = asyncio.Queue()
             
             await self.to_visit.put((self.base_url, 0))
             self.total_links_count = 1
             
             # Основное сканирование
-            timeout = aiohttp.ClientTimeout(**HTTP_OPTIMIZATIONS['timeout'])
+            timeout = self._client_timeout()
             
             async with aiohttp.ClientSession(timeout=timeout) as session:
                 semaphore = asyncio.Semaphore(self.max_concurrent)
