@@ -40,6 +40,20 @@ dev = [
     "pytest-asyncio>=0.23.0",
 ]
 
+[tool.setuptools.packages.find]
+include = [
+    "cli*",
+    "controllers*",
+    "export*",
+    "models*",
+    "policies*",
+    "scanner*",
+    "ui*",
+    "utils*",
+    "views*",
+]
+exclude = ["data*", "logs*", "typings*", "plugins*", "build*", "dist*"]
+
 [tool.pyright]
 venvPath = "."
 venv = ".venv"
