@@ -23,5 +23,22 @@
   "git.ignoreLimitWarning": true,
   "cursorpyright.analysis.autoImportCompletions": true,
   "cursorpyright.analysis.typeCheckingMode": "strict",
+  "cursorpyright.analysis.pythonVersion": "3.14",
+  "cursorpyright.analysis.diagnosticMode": "workspace",
+  "cursorpyright.analysis.stubPath": "${workspaceFolder}/.pylance_stubs",
+  "cursorpyright.analysis.indexing": false,
+  "cursorpyright.analysis.exclude": [
+    "**/.venv/**",
+    "**/build/**",
+    "**/dist/**",
+    "**/data/**",
+    "**/logs/**",
+    "**/plugins/**",
+    "**/__pycache__/**",
+    "**/node_modules/**",
+    "**/.git/**",
+    "**/typings/**",
+    "**/.pylance_stubs/**"
+  ],
   "Codegeex.RepoIndex": true
 }
