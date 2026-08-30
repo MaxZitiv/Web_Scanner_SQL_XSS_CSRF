@@ -1,3 +1,5 @@
+import asyncio
+
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QGroupBox,
     QLineEdit, QCheckBox, QSpinBox, QPushButton, QTreeWidget,
@@ -128,9 +130,8 @@ class ScanTabWidget(ScanTabStatsMixin, QWidget):
             error_handler.handle_error(e)
 
     def on_scan_button_clicked_wrapper(self):
-        """Обертка для запуска асинхронного обработчика кнопки сканирования"""
-        # Просто вызываем асинхронный метод, так как @asyncSlot уже обрабатывает его выполнение
-        _ = self.on_scan_button_clicked()  # Используем _ для явного игнорирования результата
+        """Обертка для запуска асинхронного обработчика кнопки сканирования."""
+        asyncio.create_task(self.on_scan_button_clicked())
 
     def setup_ui(self):
         """Настройка пользовательского интерфейса вкладки сканирования"""

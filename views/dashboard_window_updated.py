@@ -184,7 +184,7 @@ class DashboardWindow(QMainWindow):
                     background-color: #3d8b40;
                 }
             """)
-            cast(Any, self.start_scan_btn.clicked).connect(self.on_start_scan)
+            cast(Any, self.start_scan_btn.clicked).connect(self._start_scan_wrapper)
             buttons_layout.addWidget(self.start_scan_btn)
 
             self.pause_scan_btn = QPushButton("⏸ Пауза")
@@ -438,6 +438,10 @@ class DashboardWindow(QMainWindow):
                 parent_obj = parent_obj.parent()
         except Exception as e:
             logger.error(f"Ошибка при прокрутке к виджету: {e}")
+    def _start_scan_wrapper(self) -> None:
+        """Синхронная обёртка для запуска асинхронного on_start_scan через event loop."""
+        asyncio.create_task(self.on_start_scan())
+
     async def on_start_scan(self):
         """
         Начинает сканирование сайта.
