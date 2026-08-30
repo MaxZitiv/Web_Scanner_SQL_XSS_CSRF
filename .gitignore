@@ -135,4 +135,8 @@ logs/
 .Spotlight-V100
 .Trashes
 ehthumbs.db
-Thumbs.db 
+Thumbs.db
+
+# Pyright/Pylance generated stubs and temporary stub path
+typings/
+.pylance_stubs/
