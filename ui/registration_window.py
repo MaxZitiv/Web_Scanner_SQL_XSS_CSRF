@@ -1,10 +1,12 @@
-from typing import Optional
-from PyQt5.QtWidgets import (
+from typing import Any, Optional, cast
+from PyQt6.QtWidgets import (
     QLabel, QLineEdit, QPushButton, QVBoxLayout, QMessageBox, QHBoxLayout, QToolButton
 )
-from PyQt5.QtWidgets import QWidget
-from PyQt5.QtCore import Qt, QTimer
-from PyQt5.QtGui import QIcon
+from PyQt6.QtWidgets import QWidget
+from PyQt6.QtCore import (
+    Qt, QTimer
+)
+from PyQt6.QtGui import QIcon
 from utils.database import db
 import os
 from models.user_model import UserModel
@@ -41,7 +43,7 @@ class RegistrationWindow(QWidget):
         layout.addWidget(QLabel('Имя пользователя:'))
         self.username = QLineEdit()
         self.username.setPlaceholderText('Введите имя пользователя (минимум 3 символа)')
-        self.username.textChanged.connect(self.on_username_changed)
+        cast(Any, self.username.textChanged).connect(self.on_username_changed)
         layout.addWidget(self.username)
 
         # Статус имени пользователя
@@ -51,7 +53,7 @@ class RegistrationWindow(QWidget):
         layout.addWidget(QLabel('Email:'))
         self.email = QLineEdit()
         self.email.setPlaceholderText('Введите email адрес')
-        self.email.textChanged.connect(self.on_email_changed)
+        cast(Any, self.email.textChanged).connect(self.on_email_changed)
         layout.addWidget(self.email)
 
         # Статус email
@@ -71,13 +73,13 @@ class RegistrationWindow(QWidget):
         
         # Кнопка "Назад"
         self.btn_back = QPushButton('Назад')
-        self.btn_back.clicked.connect(self.on_back)
+        cast(Any, self.btn_back.clicked).connect(self.on_back)
         button_layout.addWidget(self.btn_back)
         
         # Кнопка "Зарегистрироваться"
         self.btn_register = QPushButton('Зарегистрироваться')
         self.btn_register.setObjectName("primaryButton")
-        self.btn_register.clicked.connect(self.on_register)
+        cast(Any, self.btn_register.clicked).connect(self.on_register)
         button_layout.addWidget(self.btn_register)
         
         layout.addLayout(button_layout)
@@ -88,7 +90,7 @@ class RegistrationWindow(QWidget):
         # Таймер для отложенной проверки
         self.check_timer = QTimer()
         self.check_timer.setSingleShot(True)
-        self.check_timer.timeout.connect(self.check_availability)
+        cast(Any, self.check_timer.timeout).connect(self.check_availability)
         
         # Загружаем стили
         self.load_styles()
@@ -106,7 +108,7 @@ class RegistrationWindow(QWidget):
         def toggle_password():
             line_edit.setEchoMode(QLineEdit.EchoMode.Normal if toggle_button.isChecked() else QLineEdit.EchoMode.Password)
 
-        toggle_button.clicked.connect(toggle_password)
+        cast(Any, toggle_button.clicked).connect(toggle_password)
 
         row = QHBoxLayout()
         row.setSpacing(0)  # Убираем отступ между полем и кнопкой
@@ -189,7 +191,7 @@ class RegistrationWindow(QWidget):
                 QMessageBox.information(self, "Успех", "Регистрация прошла успешно! Теперь вы можете войти.")
                 # Возвращаемся к окну входа - исправляем путь
             if self.parent_login and hasattr(self.parent_login, 'parent'):
-                    from PyQt5.QtWidgets import QWidget
+                    from PyQt6.QtWidgets import QWidget
                     parent_obj = self.parent_login.parent
                     if isinstance(parent_obj, QWidget):
                         parent = parent_obj
@@ -209,7 +211,7 @@ class RegistrationWindow(QWidget):
     def on_back(self):
         """Обработчик нажатия кнопки 'Назад'"""
         if self.parent_login and hasattr(self.parent_login, 'parent'):
-            from PyQt5.QtWidgets import QWidget
+            from PyQt6.QtWidgets import QWidget
             parent_obj = self.parent_login.parent
             if isinstance(parent_obj, QWidget):
                 parent = parent_obj
@@ -235,4 +237,3 @@ class RegistrationWindow(QWidget):
                 logger.warning(f"Файл стилей styles.qss не найден: {style_path}")
         except (ValueError, sqlite3.Error, KeyError, AttributeError) as e:
             logger.error(f"Ошибка при загрузке стилей: {e}")
-

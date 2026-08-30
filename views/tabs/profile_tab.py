@@ -1,11 +1,11 @@
-from typing import Dict, Any, Optional, Union, List
+from typing import Dict, Any, Optional, Union, List, cast
 
-from PyQt5.QtWidgets import (
+from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QGroupBox, QFormLayout, QLabel, 
     QPushButton, QFileDialog, QHBoxLayout
 )
-from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QPixmap
+from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QPixmap
 from utils.logger import logger, log_and_notify
 from utils.error_handler import error_handler
 from utils.performance import get_local_timestamp
@@ -82,11 +82,11 @@ class ProfileTabWidget(QWidget):
         avatar_buttons_layout = QHBoxLayout()
         
         self.change_avatar_button = QPushButton("Изменить аватар")
-        self.change_avatar_button.clicked.connect(self.change_avatar)
+        cast(Any, self.change_avatar_button.clicked).connect(self.change_avatar)
         avatar_buttons_layout.addWidget(self.change_avatar_button)
         
         self.remove_avatar_button = QPushButton("Удалить аватар")
-        self.remove_avatar_button.clicked.connect(self.remove_avatar)
+        cast(Any, self.remove_avatar_button.clicked).connect(self.remove_avatar)
         avatar_buttons_layout.addWidget(self.remove_avatar_button)
         
         avatar_layout.addLayout(avatar_buttons_layout)
@@ -95,7 +95,7 @@ class ProfileTabWidget(QWidget):
         
         # Update profile button
         self.update_profile_button = QPushButton("Обновить профиль")
-        self.update_profile_button.clicked.connect(self.update_profile)
+        cast(Any, self.update_profile_button.clicked).connect(self.update_profile)
         layout.addWidget(self.update_profile_button)
         
         # Load user data
@@ -212,7 +212,7 @@ class ProfileTabWidget(QWidget):
             user_data: Optional[Dict[str, Any]] = db.get_user_by_id(self.user_id)
             username = user_data.get('username', '') if user_data else ''
             edit_window: EditProfileWindow = EditProfileWindow(self.user_id, username, self)
-            if edit_window.exec_(): # type: ignore
+            if edit_window.exec():
                 # Refresh data after profile update
                 self.load_user_data()
         except Exception as e:

@@ -4,16 +4,16 @@ views/dashboard_window_optimized.py
 """
 
 import asyncio
-from typing import Optional, Dict, Any, TypeVar, List
-from PyQt5.QtWidgets import (
+from typing import Optional, Dict, Any, TypeVar, List, Callable, cast
+from PyQt6.QtWidgets import (
         QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLineEdit, QSpinBox,
         QCheckBox, QPushButton, QTableWidget, QTableWidgetItem, QTextEdit,
-        QLabel, QMessageBox, QScrollBar
+        QLabel, QMessageBox
     )
-from PyQt5.QtWidgets import QMessageBox
-from PyQt5.QtCore import pyqtSlot # type: ignore
-from PyQt5.QtGui import QFont, QColor
-from qasync import asyncSlot # type: ignore
+from PyQt6.QtWidgets import QMessageBox
+from PyQt6.QtGui import (
+    QFont, QColor
+)
 
 from models.user_model import UserModel
 from controllers.scan_controller import ScanController
@@ -81,24 +81,24 @@ class DashboardWindow(QMainWindow):
             # Кнопка профиля
             profile_btn = QPushButton("👤 Профиль")
             profile_btn.setMaximumWidth(100)
-            profile_btn.clicked.connect(self.on_profile)
+            cast(Any, profile_btn.clicked).connect(self.on_profile)
             profile_layout.addWidget(profile_btn)
 
             # Кнопка статистики
             statistics_btn = QPushButton("📊 Статистика")
             statistics_btn.setMaximumWidth(100)
-            statistics_btn.clicked.connect(self.on_statistics)
+            cast(Any, statistics_btn.clicked).connect(self.on_statistics)
             profile_layout.addWidget(statistics_btn)
 
             # Кнопка отчетов
             reports_btn = QPushButton("📋 Отчеты")
             reports_btn.setMaximumWidth(100)
-            reports_btn.clicked.connect(self.on_reports)
+            cast(Any, reports_btn.clicked).connect(self.on_reports)
             profile_layout.addWidget(reports_btn)
 
             logout_btn = QPushButton("🚪 Выход")
             logout_btn.setMaximumWidth(100)
-            logout_btn.clicked.connect(self.on_logout)
+            cast(Any, logout_btn.clicked).connect(self.on_logout)
             profile_layout.addWidget(logout_btn)
 
             main_layout.addLayout(profile_layout)
@@ -184,18 +184,18 @@ class DashboardWindow(QMainWindow):
                     background-color: #3d8b40;
                 }
             """)
-            self.start_scan_btn.clicked.connect(lambda: self._start_scan_wrapper())
+            cast(Any, self.start_scan_btn.clicked).connect(lambda: self._start_scan_wrapper())
             buttons_layout.addWidget(self.start_scan_btn)
 
             self.pause_scan_btn = QPushButton("⏸ Пауза")
             self.pause_scan_btn.setMinimumHeight(35)
-            self.pause_scan_btn.clicked.connect(self.on_pause_scan)
+            cast(Any, self.pause_scan_btn.clicked).connect(self.on_pause_scan)
             self.pause_scan_btn.setEnabled(False)
             buttons_layout.addWidget(self.pause_scan_btn)
 
             self.resume_scan_btn = QPushButton("▶ Продолжить")
             self.resume_scan_btn.setMinimumHeight(35)
-            self.resume_scan_btn.clicked.connect(self.on_resume_scan)
+            cast(Any, self.resume_scan_btn.clicked).connect(self.on_resume_scan)
             self.resume_scan_btn.setEnabled(False)
             buttons_layout.addWidget(self.resume_scan_btn)
 
@@ -217,7 +217,7 @@ class DashboardWindow(QMainWindow):
                     background-color: #ba0000;
                 }
             """)
-            self.stop_scan_btn.clicked.connect(self.on_stop_scan)
+            cast(Any, self.stop_scan_btn.clicked).connect(self.on_stop_scan)
             self.stop_scan_btn.setEnabled(False)
             buttons_layout.addWidget(self.stop_scan_btn)
 
@@ -242,7 +242,7 @@ class DashboardWindow(QMainWindow):
 
             self.results_table = QTableWidget()
             self.results_table.setColumnCount(5)
-            self.results_table.setHorizontalHeaderLabels([
+            cast(Any, self.results_table).setHorizontalHeaderLabels([
                 "Тип уязвимости",
                 "URL",
                 "Параметр",
@@ -353,7 +353,7 @@ class DashboardWindow(QMainWindow):
         try:
             from views.edit_profile_window import EditProfileWindow
             profile_window = EditProfileWindow(self.user_id, self.username, self)
-            profile_window.exec_() # type: ignore
+            profile_window.exec()
         except Exception as e:
             logger.error(f"Ошибка при открытии окна профиля: {e}")
             error_handler.show_error_message("Ошибка", f"Не удалось открыть окно профиля: {str(e)}")
@@ -428,7 +428,7 @@ class DashboardWindow(QMainWindow):
                     parent_widget = parent_obj
                     try:
                         # Явно указываем тип возвращаемого значения
-                        scroll_bar: Optional[QScrollBar] = self.log_text.verticalScrollBar()
+                        scroll_bar = self.log_text.verticalScrollBar()
                         if scroll_bar is not None:
                             widget_pos = widget.mapTo(parent_widget, widget.rect().topLeft()).y()
                             scroll_bar.setValue(int(widget_pos))
@@ -443,8 +443,6 @@ class DashboardWindow(QMainWindow):
     def _start_scan_wrapper(self):
         """Обертка для вызова асинхронного метода on_start_scan"""
         asyncio.create_task(self.on_start_scan())
-
-    @asyncSlot()  # type: ignore
     async def on_start_scan(self):
         """
         Начинает сканирование сайта.
@@ -490,7 +488,7 @@ class DashboardWindow(QMainWindow):
                     "URL может быть небезопасным. Продолжить?\n\n"
                     "Убедитесь, что вы сканируете только свои собственные сайты,\n"
                     "или сайты, на которые у вас есть разрешение.",
-                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, # type: ignore
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                     QMessageBox.StandardButton.No
                 )
 
@@ -634,7 +632,7 @@ class DashboardWindow(QMainWindow):
 
             # Прокручиваем лог к началу
             try:
-                scroll_bar: Optional[QScrollBar] = self.log_text.verticalScrollBar()
+                scroll_bar = self.log_text.verticalScrollBar()
                 if scroll_bar is not None:
                     scroll_bar.setValue(0)
             except AttributeError:
@@ -646,7 +644,6 @@ class DashboardWindow(QMainWindow):
                 # Получаем event loop
                 loop = asyncio.get_event_loop()
 
-                assert self.scan_controller is not None, "ScanController должен быть инициализирован"
                 self.current_scan_task = loop.create_task(
                     self.scan_controller.start_scan(
                     url=url,
@@ -748,7 +745,7 @@ class DashboardWindow(QMainWindow):
                 QMessageBox.StandardButton.No
             )
 
-            if reply == QMessageBox.StandardButton.Yes:  # type: ignore
+            if reply == QMessageBox.StandardButton.Yes:
                 if self.scan_controller:
                     self.scan_controller.stop_scan()
                     self.is_scanning = False
@@ -778,27 +775,26 @@ class DashboardWindow(QMainWindow):
 
             # Подключаем сигналы статистики
             if self.statistics_widget is not None:
-                self.scan_controller.signals.stats_updated.connect(
+                cast(Any, self.scan_controller.signals.stats_updated).connect(
                     self.on_stats_updated
                 )
                 # Используем лямбда-функцию для обновления прогресса в главном потоке
-                self.scan_controller.signals.progress_updated.connect(
-                    lambda progress: self.update_progress_in_main_thread(progress) # type: ignore
+                progress_handler: Callable[[Any], None] = lambda progress: (
+                    self.update_progress_in_main_thread(progress)
                 )
+                cast(Any, self.scan_controller.signals.progress_updated).connect(progress_handler)
                 logger.info("Сигналы статистики подключены успешно")
             else:
                 logger.warning("StatisticsWidget не инициализирован, сигналы не подключены")
 
             # Подключаем другие сигналы
-            self.scan_controller.signals.log_event.connect(self.on_log_event)
-            self.scan_controller.signals.vulnerability_found.connect(
+            cast(Any, self.scan_controller.signals.log_event).connect(self.on_log_event)
+            cast(Any, self.scan_controller.signals.vulnerability_found).connect(
                 self.on_vulnerability_found
             )
 
         except Exception as e:
             logger.error(f"Ошибка при подключении сигналов: {e}")
-
-    @pyqtSlot(int)
     def update_progress_in_main_thread(self, progress: int) -> None:
         """Обновляет прогресс-бар в главном потоке GUI"""
         try:
@@ -880,8 +876,6 @@ class DashboardWindow(QMainWindow):
 
         except Exception as e:
             logger.error(f"Критическая ошибка в on_stats_updated для {stat_name}: {e}", exc_info=True)
-
-    @pyqtSlot(str)
     def on_log_event(self, message: str):
         """Обработчик событий логирования"""
         try:
@@ -895,7 +889,7 @@ class DashboardWindow(QMainWindow):
 
             # Прокручиваем к последнему сообщению
             try:
-                scroll_bar: Optional[QScrollBar] = self.log_text.verticalScrollBar()
+                scroll_bar = self.log_text.verticalScrollBar()
 
                 if scroll_bar is not None:
                     max_value = scroll_bar.maximum()
@@ -908,8 +902,6 @@ class DashboardWindow(QMainWindow):
                 logger.debug(f"Ошибка при прокрутке логов: {scroll_error}")
         except Exception as e:
             logger.error(f"Ошибка при логировании события: {e}")
-
-    @pyqtSlot(str, str, str)
     def on_vulnerability_found(self, url: str, vulnerability_type: str, details: str):
         """Обработчик нахождения уязвимости"""
         try:
@@ -950,8 +942,6 @@ class DashboardWindow(QMainWindow):
 
         except Exception as e:
             logger.error(f"Ошибка при добавлении уязвимости в таблицу: {e}")
-
-    @asyncSlot(dict)  # type: ignore
     def on_scan_complete(self, result: Dict[str, Any]):
         """Обработчик завершения сканирования"""
         try:
@@ -1008,4 +998,3 @@ class DashboardWindow(QMainWindow):
         except Exception as e:
             logger.error(f"Ошибка при выходе из системы: {e}")
             error_handler.show_error_message("Ошибка", f"Ошибка при выходе: {str(e)}")
-

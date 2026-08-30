@@ -11,7 +11,7 @@ from typing import Optional, Callable, Any, Dict, Awaitable
 from functools import wraps
 from contextlib import contextmanager
 from collections import deque
-from PyQt5.QtWidgets import QApplication, QMessageBox
+from PyQt6.QtWidgets import QApplication, QMessageBox
 from utils.logger import logger, log_and_notify
 
 class UnifiedErrorHandler:
@@ -41,7 +41,7 @@ class UnifiedErrorHandler:
             msg.setText(message)
             if details:
                 msg.setDetailedText(details)
-            msg.exec_()
+            msg.exec()
         except Exception as e:
             logger.error(f"Failed to show error message: {e}", exc_info=True)
             log_and_notify("error", f"{title}: {message}\nDetails: {details}")

@@ -127,7 +127,7 @@ class AdvancedScanner:
             "; ls -la",
             "; dir",
             "; cat /etc/passwd",
-            "; type c:\windows\system32\drivers\etc\hosts", # type: ignore
+            r"; type c:\windows\system32\drivers\etc\hosts",
             "; ping -c 5 127.0.0.1",
             "; ping -n 5 127.0.0.1",
         ]

@@ -1,6 +1,8 @@
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QLabel, QPushButton, QMessageBox
-from PyQt5.QtCore import pyqtSignal
-from typing import Optional
+from PyQt6.QtWidgets import (
+    QWidget, QVBoxLayout, QLabel, QPushButton, QMessageBox
+)
+from PyQt6.QtCore import pyqtSignal
+from typing import Any, Optional, cast
 from utils.logger import logger
 import os
 
@@ -59,12 +61,12 @@ class ModeSelectionWindow(QWidget):
 
         # Кнопки выбора режима
         self.gui_button = QPushButton("GUI режим")
-        self.gui_button.clicked.connect(self.select_gui_mode)
+        cast(Any, self.gui_button.clicked).connect(self.select_gui_mode)
         self.gui_button.setMinimumHeight(40)
         layout.addWidget(self.gui_button)
 
         self.cli_button = QPushButton("CLI режим")
-        self.cli_button.clicked.connect(self.select_cli_mode)
+        cast(Any, self.cli_button.clicked).connect(self.select_cli_mode)
         self.cli_button.setMinimumHeight(40)
         layout.addWidget(self.cli_button)
 
@@ -80,7 +82,7 @@ class ModeSelectionWindow(QWidget):
             self, 
             "Подтверждение", 
             "Вы уверены, что хотите перейти в CLI режим? Графический интерфейс будет закрыт.",
-            QMessageBox.StandardButtons(QMessageBox.StandardButton.Yes) | (QMessageBox.StandardButton.No)
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
 
         if reply == QMessageBox.StandardButton.Yes:

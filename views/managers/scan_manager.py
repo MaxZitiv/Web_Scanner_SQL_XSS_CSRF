@@ -1,5 +1,5 @@
 from typing import Dict, Any, List, cast
-from PyQt5.QtCore import QObject
+from PyQt6.QtCore import QObject
 from utils.logger import logger
 
 class ScanManagerStatsMixin:
@@ -12,7 +12,7 @@ class ScanManagerStatsMixin:
             parent = self if isinstance(self, QObject) else None
             self.stats_manager = StatsManager(parent)
             # Подключаем сигнал обновления статистики
-            self.stats_manager.stats_updated.connect(self._on_stats_updated)
+            cast(Any, self.stats_manager.stats_updated).connect(self._on_stats_updated)
 
     def _on_stats_updated(self, key: str, value: int):
         """Обработчик сигнала обновления статистики от StatsManager"""

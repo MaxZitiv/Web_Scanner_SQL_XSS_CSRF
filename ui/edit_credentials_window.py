@@ -2,17 +2,19 @@
 
 import re
 import bcrypt
-from PyQt5.QtWidgets import (
+from PyQt6.QtWidgets import (
     QDialog, QLabel, QLineEdit, QPushButton,
     QVBoxLayout, QHBoxLayout, QMessageBox
 )
-from PyQt5.QtCore import pyqtSignal, Qt
-from PyQt5.QtGui import QCloseEvent
+from PyQt6.QtCore import (
+    pyqtSignal, Qt
+)
+from PyQt6.QtGui import QCloseEvent
 from utils.database import db
 from utils.logger import logger, log_and_notify
 import sqlite3
-from typing import Optional
-from PyQt5.QtWidgets import QWidget
+from typing import Any, Optional, cast
+from PyQt6.QtWidgets import QWidget
 
 
 class EditCredentialsWindow(QDialog):
@@ -26,7 +28,11 @@ class EditCredentialsWindow(QDialog):
         self.email_input: Optional[QLineEdit] = None
         self.username_input: Optional[QLineEdit] = None
         self.old_password_input: Optional[QLineEdit] = None
-        self.setWindowFlags(Qt.WindowFlags(Qt.WindowType.Window) | Qt.WindowFlags(Qt.WindowType.WindowTitleHint) | Qt.WindowFlags(Qt.WindowType.CustomizeWindowHint))
+        self.setWindowFlags(
+            Qt.WindowType.Window
+            | Qt.WindowType.WindowTitleHint
+            | Qt.WindowType.CustomizeWindowHint
+        )
         self.user_id = user_id
         self.parent_dashboard: Optional[QWidget] = parent
         self.setup_ui()
@@ -84,8 +90,8 @@ class EditCredentialsWindow(QDialog):
         buttons.addWidget(cancel_btn)
 
         # Подключение сигналов
-        save_btn.clicked.connect(self.save_changes)
-        cancel_btn.clicked.connect(self.hide)
+        cast(Any, save_btn.clicked).connect(self.save_changes)
+        cast(Any, cancel_btn.clicked).connect(self.hide)
 
         layout.addLayout(buttons)
         self.setLayout(layout)
@@ -152,13 +158,14 @@ class EditCredentialsWindow(QDialog):
                 logger.info(f"User {self.user_id} updated profile.")
 
                 # Обновляем информацию в родительском окне, если оно существует
-                if self.parent_dashboard and hasattr(self.parent_dashboard, 'username'):
-                    self.parent_dashboard.username = new_username
-                if self.parent_dashboard and hasattr(self.parent_dashboard, 'update_profile_info'):
-                    # Проверяем, что update_profile_info является вызываемым объектом
-                    update_method = getattr(self.parent_dashboard, 'update_profile_info')
-                    if callable(update_method):
-                        update_method()
+                if self.parent_dashboard is not None:
+                    if hasattr(self.parent_dashboard, 'username'):
+                        setattr(self.parent_dashboard, 'username', new_username)
+                    if hasattr(self.parent_dashboard, 'update_profile_info'):
+                        # Проверяем, что update_profile_info является вызываемым объектом
+                        update_method = getattr(self.parent_dashboard, 'update_profile_info')
+                        if callable(update_method):
+                            update_method()
                 
                 self.close()
             else:
@@ -168,7 +175,7 @@ class EditCredentialsWindow(QDialog):
             log_and_notify('error', f"Ошибка обновления профиля: {e}")
             QMessageBox.warning(self, "Ошибка", "Не удалось обновить профиль.")
 
-    def closeEvent(self, a0: QCloseEvent | None) -> None:
+    def closeEvent(self, a0: Optional[QCloseEvent]) -> None:
         """Безопасное закрытие окна"""
         self.closed.emit()
         super().closeEvent(a0)

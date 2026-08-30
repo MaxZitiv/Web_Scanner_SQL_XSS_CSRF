@@ -7,10 +7,10 @@ import faulthandler
 import traceback
 import signal
 import argparse
+import importlib
 from typing import Optional, Type, Any
 import types
-from PyQt5.QtWidgets import QApplication
-from qasync import QEventLoop
+from PyQt6.QtWidgets import QApplication
 import asyncio
 import logging
 
@@ -34,7 +34,7 @@ logger.info('FAULTHANDLER ENABLED, MAIN.PY START')
 # Глобальные переменные
 app_instance: Optional[QApplication] = None
 main_window_instance: Optional[MainWindow] = None
-event_loop: Any = None
+event_loop: Optional[asyncio.AbstractEventLoop] = None
 
 
 def resource_path(relative_path: str) -> str:
@@ -55,6 +55,18 @@ def load_styles(app: QApplication) -> None:
             logger.warning(f"Ошибка загрузки стилей: {e}")
     else:
         logger.warning(f"Файл стилей не найден: {style_path}")
+
+
+def create_qasync_event_loop(app: QApplication) -> asyncio.AbstractEventLoop:
+    """Create the qasync event loop integrated with the Qt application.
+
+    ``qasync.QEventLoop`` is created dynamically at runtime, so a direct import
+    is not reliably understood by Pylance.  Import it via ``importlib`` instead
+    and expose it through the standard :class:`asyncio.AbstractEventLoop` API.
+    """
+    qasync_module: Any = importlib.import_module("qasync")
+    loop_class: Any = getattr(qasync_module, "QEventLoop")
+    return loop_class(app)
 
 
 def parse_arguments() -> argparse.Namespace:
@@ -131,8 +143,11 @@ def setup_signal_handlers() -> None:
     try:
         signal.signal(signal.SIGINT, signal_handler)
         signal.signal(signal.SIGTERM, signal_handler)
-        if hasattr(signal, 'SIGBREAK'):
-            signal.signal(signal.SIGBREAK, signal_handler)
+        # SIGBREAK is only available on Windows; on other platforms
+        # getattr() returns None and no handler is registered.
+        sigbreak: Optional[int] = getattr(signal, 'SIGBREAK', None)
+        if sigbreak is not None:
+            signal.signal(sigbreak, signal_handler)
         logger.info("Signal handlers set up")
     except Exception as e:
         log_and_notify('error', f"Failed to set up signal handlers: {e}")
@@ -192,7 +207,7 @@ def main() -> int:
         app_instance = app_candidate
         load_styles(app_instance)
 
-        loop = QEventLoop(app_instance)
+        loop: asyncio.AbstractEventLoop = create_qasync_event_loop(app_instance)
         asyncio.set_event_loop(loop)
         event_loop = loop
 
@@ -204,24 +219,27 @@ def main() -> int:
         startup_time = performance_monitor.end_timer("startup", start_time)
         logger.info(f"Startup complete in {startup_time:.2f}s")
 
-        with loop:
-            try:
-                loop.run_forever()
-            except Exception as e:
-                logger.error(f"Exception in event loop: {e}")
-                if not loop.is_closed():
-                    try:
-                        loop.stop()
-                        logger.info("Event loop stopped gracefully")
-                    except RuntimeError as runtime_error:
-                        logger.warning(f"Event loop already stopped or closed: {runtime_error}")
-            finally:
-                if not loop.is_closed():
-                    try:
-                        loop.stop()
-                        logger.info("Event loop stopped gracefully")
-                    except RuntimeError as runtime_error:
-                        logger.warning(f"Event loop already stopped or closed: {runtime_error}")
+        try:
+            loop.run_forever()
+        except Exception as e:
+            logger.error(f"Exception in event loop: {e}")
+            if not loop.is_closed():
+                try:
+                    loop.stop()
+                    logger.info("Event loop stopped gracefully")
+                except RuntimeError as runtime_error:
+                    logger.warning(f"Event loop already stopped or closed: {runtime_error}")
+        finally:
+            if not loop.is_closed():
+                try:
+                    loop.stop()
+                    logger.info("Event loop stopped gracefully")
+                except RuntimeError as runtime_error:
+                    logger.warning(f"Event loop already stopped or closed: {runtime_error}")
+            # qasync's QEventLoop is normally used as a context manager; that
+            # context manager performs stop() + close(). With a plain asyncio
+            # loop we close it explicitly here.
+            loop.close()
 
     except SystemExit as e:
         logger.info(f"SystemExit with code: {getattr(e, 'code', None)}")

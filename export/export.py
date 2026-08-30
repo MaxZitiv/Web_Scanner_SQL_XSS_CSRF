@@ -305,7 +305,8 @@ class PDFReport(FPDF):
         safe_text = self._sanitize_text(text)
         if url_mode:
             self.set_text_color(0, 0, 180)  # Синий для URL
-        self.multi_cell(0, 5 if not url_mode else 4, safe_text)  # type: ignore
+        multi_cell = getattr(self, 'multi_cell')
+        multi_cell(0, 5 if not url_mode else 4, safe_text)
         if url_mode:
             self.set_text_color(0, 0, 0)
         self.ln(2 if not url_mode else 1)

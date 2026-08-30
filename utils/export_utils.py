@@ -2,7 +2,7 @@
 Утилиты для экспорта данных в различные форматы
 """
 from typing import List, Dict, Any
-from PyQt5.QtWidgets import QFileDialog, QWidget
+from PyQt6.QtWidgets import QFileDialog, QWidget
 from utils.performance import get_local_timestamp
 from utils import error_handler
 

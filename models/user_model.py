@@ -356,5 +356,3 @@ class UserModel:
         pattern = r'^[a-zA-Z0-9_]{3,20}$'
         return bool(re.match(pattern, username))
 
-
-

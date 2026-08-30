@@ -1,14 +1,14 @@
 import sqlite3
 import re
 import bcrypt
-from typing import Optional, Dict, Any, Tuple, List, Set, Union, TYPE_CHECKING
+from typing import Optional, Dict, Any, Tuple, TYPE_CHECKING
 
 if TYPE_CHECKING:
     pass
 from utils.logger import logger, log_and_notify
 from utils.database import db
 from utils.security import validate_password_strength
-from PyQt5.QtCore import QObject
+from PyQt6.QtCore import QObject
 
 
 class AuthController(QObject):
@@ -188,7 +188,7 @@ class AuthController(QObject):
                 logger.warning(f"User not found with ID: {user_id}")
                 return None
             
-            user_id, username, email, created_at, last_login = user_data  # type: ignore
+            user_id, username, email, created_at, last_login = user_data
             
             return {
                 'id': user_id,
@@ -221,53 +221,37 @@ class AuthController(QObject):
             conn = self._get_connection()
             cursor = conn.cursor()
             
-            updates: List[str] = []
-            params: List[Union[str, int]] = []
-            
             if username is not None:
                 if not self._validate_username(username):
                     logger.warning(f"Profile update failed: Invalid username format: {username}")
                     return False
-                updates.append("username = ?")
-                params.append(username)
-            
+
             if email is not None:
                 if not self._validate_email(email):
                     logger.warning(f"Profile update failed: Invalid email format: {email}")
                     return False
-                updates.append("email = ?")
-                params.append(email)
-            
-            if not updates:
+
+            if username is None and email is None:
                 logger.warning("Profile update failed: No fields to update")
                 return False
-            
-            params.append(user_id)
-            
-            # Безопасное формирование запроса для предотвращения SQL-инъекций
-            # Используем параметризованный запрос вместо форматирования строк
-            # Создаем список полей для безопасного обновления
-            valid_fields: Set[str] = {"username", "email"}  # Только разрешенные поля
-            safe_updates: List[str] = []
 
-            for update in updates:
-                # Извлекаем имя поля из строки вида "field = ?"
-                field_name = update.split(" = ")[0]
-                if field_name in valid_fields:
-                    safe_updates.append(update)
-
-            if not safe_updates:
-                logger.warning("Profile update failed: No valid fields to update")
-                return False
-
-            # Формируем и выполняем запрос для обновления профиля
-            set_clause = ", ".join(safe_updates)
-            query = f"UPDATE users SET {set_clause} WHERE id = ?"
-
-            # Добавляем ID пользователя в конец параметров
-            all_params = params + [str(user_id)]
-
-            cursor.execute(query, all_params)
+            # Используем только статичные SQL-запросы с параметрами:
+            # таким образом поля и значения не подставляются в строку запроса.
+            if username is not None and email is not None:
+                cursor.execute(
+                    "UPDATE users SET username = ?, email = ? WHERE id = ?",
+                    (username, email, user_id)
+                )
+            elif username is not None:
+                cursor.execute(
+                    "UPDATE users SET username = ? WHERE id = ?",
+                    (username, user_id)
+                )
+            else:
+                cursor.execute(
+                    "UPDATE users SET email = ? WHERE id = ?",
+                    (email, user_id)
+                )
             
             if cursor.rowcount == 0:
                 logger.warning(f"Profile update failed: User not found with ID {user_id}")

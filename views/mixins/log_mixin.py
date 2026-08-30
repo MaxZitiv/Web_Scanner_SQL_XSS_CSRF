@@ -2,8 +2,10 @@
 Миксин для функциональности работы с логами
 """
 from typing import List, Dict, Optional
-from PyQt5.QtGui import QColor
-from PyQt5.QtWidgets import QLabel, QTextEdit, QLineEdit, QCheckBox, QScrollBar
+from PyQt6.QtGui import QColor
+from PyQt6.QtWidgets import (
+    QLabel, QTextEdit, QLineEdit, QCheckBox
+)
 from utils.logger import logger
 
 
@@ -120,7 +122,7 @@ class LogMixin:
 
         # Прокручиваем вниз, если включена автопрокрутка
         if hasattr(self, 'auto_scroll_checkbox') and self.auto_scroll_checkbox.isChecked():
-            scrollbar: Optional[QScrollBar] = self.detailed_log.verticalScrollBar()
+            scrollbar = self.detailed_log.verticalScrollBar()
             if scrollbar is not None:
                 scrollbar.setValue(scrollbar.maximum())
 

@@ -1,5 +1,6 @@
-from typing import Any, Optional
-from PyQt5.QtWidgets import QWidget
+from typing import Any, Optional, cast
+from PyQt6.QtWidgets import QWidget
+from PyQt6.QtWidgets import QMainWindow
 from utils.logger import logger
 from views.dashboard_window_optimized import DashboardWindow
 
@@ -28,8 +29,11 @@ class DashboardWindowWrapper(DashboardWindow):
     def _initialize_components(self) -> None:
         """Инициализирует все компоненты DashboardWindow с правильными параметрами"""
         try:
-            # Инициализируем DashboardWindow с сохраненными параметрами
-            DashboardWindow.__init__(self, self._user_id, self._username, self._user_model, self._parent)
+            # Инициализируем DashboardWindow с сохраненными параметрами.
+            # Родительский объект может быть любым QWidget; DashboardWindow
+            # ожидает QMainWindow, поэтому приведём тип явно.
+            parent_main_window = cast(QMainWindow, self._parent)
+            DashboardWindow.__init__(self, self._user_id, self._username, self._user_model, parent_main_window)
         except Exception as e:
             logger.error(f"Error initializing DashboardWindow: {e}")
             raise

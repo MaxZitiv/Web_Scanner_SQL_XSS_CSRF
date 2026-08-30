@@ -61,7 +61,8 @@ class NetworkManager:
         if not self._session:
             await self.initialize()
             
-        assert self._session
+        if self._session is None:
+            raise RuntimeError("HTTP session is not initialized")
 
         for attempt in range(self.max_retries):
             try:

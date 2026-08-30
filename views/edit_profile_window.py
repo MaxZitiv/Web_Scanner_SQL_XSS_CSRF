@@ -1,7 +1,9 @@
 import bcrypt
-from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QLabel, QLineEdit, 
-                             QPushButton, QMessageBox, QDialog)
-from typing import Union, List
+from PyQt6.QtWidgets import (
+    QWidget, QVBoxLayout, QLabel, QLineEdit,
+    QPushButton, QMessageBox, QDialog
+)
+from typing import Any, Union, List, cast
 import sqlite3
 
 from utils.database import db
@@ -52,7 +54,7 @@ class EditProfileWindow(QDialog):
 
         # Кнопка
         self.save_button = QPushButton("Сохранить изменения")
-        self.save_button.clicked.connect(self.save_changes)
+        cast(Any, self.save_button.clicked).connect(self.save_changes)
         layout.addWidget(self.save_button)
 
         self.setLayout(layout)
@@ -143,7 +145,7 @@ class EditProfileWindow(QDialog):
 
             # Обновляем данные в родительском окне
             if hasattr(self.parent_dashboard, 'username'):
-                self.parent_dashboard.username = new_username
+                setattr(self.parent_dashboard, 'username', new_username)
             if hasattr(self.parent_dashboard, 'update_profile_info'):
                 # Используем getattr для безопасного доступа к методу
                 update_method = getattr(self.parent_dashboard, 'update_profile_info')

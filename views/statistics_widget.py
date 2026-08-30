@@ -3,11 +3,10 @@
 Без ошибок типизации Pylance
 """
 
-from PyQt5.QtWidgets import (
+from PyQt6.QtWidgets import (
     QWidget, QGridLayout, QVBoxLayout, QLabel, QProgressBar
 )
-from PyQt5.QtCore import pyqtSlot  # type: ignore
-from PyQt5.QtGui import QFont
+from PyQt6.QtGui import QFont
 from typing import Optional, Dict, Any
 
 class StatisticsWidget(QWidget):
@@ -77,13 +76,9 @@ class StatisticsWidget(QWidget):
             value_label.setFont(value_font)
             
             # Правильное использование AlignmentFlag
-            from PyQt5.QtCore import Qt
+            from PyQt6.QtCore import Qt
             value_label.setAlignment(
-                Qt.Alignment(
-                    Qt.AlignmentFlag.AlignRight
-                ) | Qt.Alignment(
-                    Qt.AlignmentFlag.AlignVCenter
-                )
+                Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
             )
             
             # Устанавливаем минимальную ширину для значений
@@ -127,8 +122,6 @@ class StatisticsWidget(QWidget):
                 border-radius: 2px;
             }
         """)
-    
-    @pyqtSlot(str, int)
     def update_stat(self, stat_name: str, value: int):
         """Обновляет одно значение статистики"""
         try:
@@ -167,8 +160,6 @@ class StatisticsWidget(QWidget):
         except Exception as e:
             from utils.logger import logger
             logger.error(f"Error updating stat {stat_name}: {e}")
-    
-    @pyqtSlot(str, str)
     def update_stat_string(self, stat_name: str, value: str):
         """Обновляет значение статистики строкового типа"""
         try:
@@ -179,8 +170,6 @@ class StatisticsWidget(QWidget):
         except Exception as e:
             from utils.logger import logger
             logger.error(f"Error updating stat string {stat_name}: {e}")
-    
-    @pyqtSlot(int)
     def update_progress(self, progress: int):
         """Обновляет прогресс-бар"""
         try:

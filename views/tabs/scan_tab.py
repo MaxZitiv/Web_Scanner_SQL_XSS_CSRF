@@ -1,16 +1,15 @@
-from PyQt5.QtWidgets import (
+from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QGroupBox,
     QLineEdit, QCheckBox, QSpinBox, QPushButton, QTreeWidget,
     QTextEdit, QComboBox,
     QSplitter, QTableWidget, 
     QHeaderView, QScrollArea, QMessageBox, QProgressBar)
-from PyQt5.QtCore import Qt
-from typing import Optional, Dict, Any, List
+from PyQt6.QtCore import Qt
+from typing import Optional, Dict, Any, List, cast
 from controllers.scan_controller import ScanController
 from utils.logger import logger
 from utils.error_handler import error_handler
 from utils.performance import get_local_timestamp
-from qasync import asyncSlot  # type: ignore
 from views.tabs.scan_tab_optimized import ScanTabStatsMixin
 
 class ScanTabWidget(ScanTabStatsMixin, QWidget):
@@ -106,11 +105,11 @@ class ScanTabWidget(ScanTabStatsMixin, QWidget):
             ]
             
             self.site_tree = QTreeWidget()
-            self.site_tree.setHeaderLabels(["URL", "Status", "Type"])
+            cast(Any, self.site_tree).setHeaderLabels(["URL", "Status", "Type"])
 
             # Подключаем сигналы и слоты
             if hasattr(self.scan_controller, 'signals') and hasattr(self.scan_controller, 'stats_updated'):
-                self.scan_controller.signals.stats_updated.connect(self.update_stats)
+                cast(Any, self.scan_controller.signals.stats_updated).connect(self.update_stats)
 
             for component in required_components:
                 if not hasattr(self, component):
@@ -216,12 +215,12 @@ class ScanTabWidget(ScanTabStatsMixin, QWidget):
             control_layout = QHBoxLayout()
 
             self.scan_button = QPushButton("Начать сканирование")
-            self.scan_button.clicked.connect(self.on_scan_button_clicked_wrapper)
+            cast(Any, self.scan_button.clicked).connect(self.on_scan_button_clicked_wrapper)
             self.pause_button = QPushButton("⏸️ Пауза")
-            self.pause_button.clicked.connect(self.pause_scan)
+            cast(Any, self.pause_button.clicked).connect(self.pause_scan)
             self.pause_button.setEnabled(False)
             self.stop_button = QPushButton("Остановить")
-            self.stop_button.clicked.connect(self.stop_scan)
+            cast(Any, self.stop_button.clicked).connect(self.stop_scan)
             self.stop_button.setEnabled(False)
 
             control_layout.addWidget(self.scan_button)
@@ -261,7 +260,7 @@ class ScanTabWidget(ScanTabStatsMixin, QWidget):
             left_layout.addWidget(tree_header)
 
             self.site_tree = QTreeWidget()
-            self.site_tree.setHeaderLabels(["Ресурс", "Тип", "Статус"])
+            cast(Any, self.site_tree).setHeaderLabels(["Ресурс", "Тип", "Статус"])
             left_layout.addWidget(self.site_tree)
 
             # Статистика в реальном времени
@@ -303,18 +302,18 @@ class ScanTabWidget(ScanTabStatsMixin, QWidget):
             filter_layout = QHBoxLayout()
             filter_layout.addWidget(QLabel("Фильтр:"))
             self.log_filter = QComboBox()
-            self.log_filter.addItems(["Все", "Информация", "Успех", "Предупреждение", "Ошибка"])
-            self.log_filter.currentTextChanged.connect(self.filter_log)
+            cast(Any, self.log_filter).addItems(["Все", "Информация", "Успех", "Предупреждение", "Ошибка"])
+            cast(Any, self.log_filter.currentTextChanged).connect(self.filter_log)
             filter_layout.addWidget(self.log_filter)
 
             filter_layout.addWidget(QLabel("Поиск:"))
             self.log_search = QLineEdit()
             self.log_search.setPlaceholderText("Поиск в логе...")
-            self.log_search.textChanged.connect(self.search_log)
+            cast(Any, self.log_search.textChanged).connect(self.search_log)
             filter_layout.addWidget(self.log_search)
 
             self.clear_search_button = QPushButton("🗑️")
-            self.clear_search_button.clicked.connect(self.clear_search)
+            cast(Any, self.clear_search_button.clicked).connect(self.clear_search)
             filter_layout.addWidget(self.clear_search_button)
 
             right_layout.addLayout(filter_layout)
@@ -327,7 +326,7 @@ class ScanTabWidget(ScanTabStatsMixin, QWidget):
             # Добавляем панели в сплиттер
             log_splitter.addWidget(left_panel)
             log_splitter.addWidget(right_panel)
-            log_splitter.setSizes([300, 500])  # Начальные размеры панелей
+            cast(Any, log_splitter).setSizes([300, 500])  # Начальные размеры панелей
 
             log_layout = QVBoxLayout(log_group)
             log_layout.addWidget(log_splitter)
@@ -359,7 +358,7 @@ class ScanTabWidget(ScanTabStatsMixin, QWidget):
 
             # Настраиваем таблицу
             self.results_table.setColumnCount(5)
-            self.results_table.setHorizontalHeaderLabels(["URL", "Тип уязвимости", "Параметр", "Статус", "Действия"])
+            cast(Any, self.results_table).setHorizontalHeaderLabels(["URL", "Тип уязвимости", "Параметр", "Статус", "Действия"])
 
             header = self.results_table.horizontalHeader()
             if header is not None:
@@ -549,8 +548,6 @@ class ScanTabWidget(ScanTabStatsMixin, QWidget):
                 self.stats_labels['scan_time'].setText("00:00:00")
         except Exception as e:
             logger.error(f"Error resetting stats: {e}")
-
-    @asyncSlot() # type: ignore
     async def scan_website_sync(self):
         """Синхронная обертка для асинхронного сканирования"""
         try:
@@ -601,9 +598,11 @@ class ScanTabWidget(ScanTabStatsMixin, QWidget):
                     max_depth=depth,
                     max_concurrent=concurrent,
                     timeout=timeout,
-                    on_progress=self.update_scan_progress,
+                    on_progress=lambda progress, message: self.update_scan_progress(float(progress)),
                     on_log=self.add_log_entry,
-                    on_vulnerability=self.update_stats,
+                    on_vulnerability=lambda url, vuln_type, description, severity: self.update_stats(
+                        "vulnerability_found", 1
+                    ),
                     on_status=lambda status: self.scan_status.setText(status)
                 )
             except Exception as e:

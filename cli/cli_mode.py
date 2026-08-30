@@ -238,8 +238,8 @@ class CLIMode:
                         match = re.search(r'Обнаружено (\d+) URL', message)
                         if match:
                             scan_metrics["total_urls"] = int(match.group(1))
-                    except:
-                        pass
+                    except (TypeError, ValueError, AttributeError):
+                        return
             
             # Создаем специальную обертку для обработки двух параметров из progress.emit
             def progress_wrapper(progress: float, current_url: str = "") -> None:

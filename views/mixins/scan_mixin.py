@@ -3,7 +3,10 @@
 """
 from typing import Dict, Any, Optional, List
 from types import CoroutineType
-from PyQt5.QtWidgets import QLabel, QPushButton, QLineEdit, QCheckBox, QSpinBox, QProgressBar, QTreeWidget, QDateTimeEdit
+from PyQt6.QtWidgets import (
+    QLabel, QPushButton, QLineEdit, QCheckBox, QSpinBox, QProgressBar,
+    QTreeWidget, QDateTimeEdit
+)
 from utils.security import is_safe_url
 from controllers.scan_controller import ScanController
 from policies.policy_manager import PolicyManager
@@ -215,7 +218,8 @@ class ScanMixin:
                 self._ensure_scan_controller(scan_url, scan_types)
                 
                 # Запускаем сканирование через контроллер
-                assert self.scan_controller is not None, "Scan controller should be initialized"
+                if self.scan_controller is None:
+                    raise RuntimeError("Scan controller should be initialized")
                 scan_id = await self.scan_controller.start_scan(
                     scan_url, 
                     scan_types,

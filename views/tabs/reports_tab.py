@@ -1,11 +1,11 @@
-from typing import Dict, Any, List, Optional, Union
-from PyQt5.QtWidgets import (
+from typing import Dict, Any, List, Optional, Union, cast
+from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QGroupBox, QLineEdit,
     QCheckBox, QDateTimeEdit, QTableWidget, QTableWidgetItem,
     QHeaderView, QPushButton, QFileDialog, QAbstractItemView
 )
-from PyQt5.QtCore import QDateTime
-from PyQt5.QtGui import QColor
+from PyQt6.QtCore import QDateTime
+from PyQt6.QtGui import QColor
 from utils.logger import log_and_notify
 from utils.error_handler import error_handler
 from utils.performance import get_local_timestamp
@@ -68,7 +68,7 @@ class ReportsTabWidget(QWidget):
         
         self.reports_table = QTableWidget()
         self.reports_table.setColumnCount(7)
-        self.reports_table.setHorizontalHeaderLabels([
+        cast(Any, self.reports_table).setHorizontalHeaderLabels([
             "ID", "URL", "Дата", "Тип", "Статус", "Длительность", "Уязвимости"
         ])
         
@@ -94,13 +94,13 @@ class ReportsTabWidget(QWidget):
         buttons_layout = QHBoxLayout()
         
         self.refresh_button = QPushButton("Обновить")
-        self.refresh_button.clicked.connect(self.refresh_reports)
+        cast(Any, self.refresh_button.clicked).connect(self.refresh_reports)
         self.export_json_button = QPushButton("Экспорт в JSON")
-        self.export_json_button.clicked.connect(self.export_to_json)
+        cast(Any, self.export_json_button.clicked).connect(self.export_to_json)
         self.export_csv_button = QPushButton("Экспорт в CSV")
-        self.export_csv_button.clicked.connect(self.export_to_csv)
+        cast(Any, self.export_csv_button.clicked).connect(self.export_to_csv)
         self.export_html_button = QPushButton("Экспорт в HTML")
-        self.export_html_button.clicked.connect(self.export_to_html)
+        cast(Any, self.export_html_button.clicked).connect(self.export_to_html)
         
         buttons_layout.addWidget(self.refresh_button)
         buttons_layout.addWidget(self.export_json_button)

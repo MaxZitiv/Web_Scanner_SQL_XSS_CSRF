@@ -1,5 +1,5 @@
 from typing import Any
-from PyQt5.QtCore import pyqtSignal
+from PyQt6.QtCore import pyqtSignal
 
 class SignalWrapper:
     """Обертка для pyqtSignal с явным объявлением метода emit"""

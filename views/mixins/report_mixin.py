@@ -1,10 +1,10 @@
 import json
 import os
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Dict, Any
 from utils.logger import logger
 
-def _generate_json_report(scan_details: dict) -> Optional[str]:  # noqa: D401  # Экспортируется для будущего использования
+def generate_json_report(scan_details: Dict[str, Any]) -> Optional[str]:
     """Генерация JSON отчета"""
     try:
         # Создание имени файла

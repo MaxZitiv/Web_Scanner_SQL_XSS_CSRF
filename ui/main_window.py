@@ -1,14 +1,20 @@
-from typing import Optional
+from typing import Any, Optional, cast
 import os
 import sys
 
 # Добавляем корневую директорию проекта в sys.path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from PyQt5.QtWidgets import QMainWindow, QStackedWidget, QGraphicsOpacityEffect, QApplication
-from PyQt5.QtWidgets import QWidget
-from PyQt5.QtCore import QPropertyAnimation, QEasingCurve, QThread
-from PyQt5.QtGui import QIcon, QCloseEvent
+from PyQt6.QtWidgets import (
+    QMainWindow, QStackedWidget, QGraphicsOpacityEffect, QApplication, QCheckBox
+)
+from PyQt6.QtWidgets import QWidget
+from PyQt6.QtCore import (
+    QPropertyAnimation, QEasingCurve, QThread
+)
+from PyQt6.QtGui import (
+    QIcon, QCloseEvent, QScreen
+)
 
 from models.user_model import UserModel
 from utils import error_handler
@@ -16,6 +22,7 @@ from utils.performance import measure_time
 from views.login_window import LoginWindow
 from ui.registration_window import RegistrationWindow
 from views.dashboard_window_updated import DashboardWindow
+from views.dashboard_window_wrapper import DashboardWindowWrapper
 from views.mode_selection_window import ModeSelectionWindow
 from utils.cache_cleanup import cleanup_on_exit
 from utils.logger import logger, log_and_notify
@@ -35,11 +42,11 @@ class MainWindow(QMainWindow):
         # Создаем объекты окон
         self.login_window = LoginWindow(self.user_model, self)
         self.registration_window = RegistrationWindow(self.login_window)
-        self.dashboard_window: Optional[DashboardWindow] = None
+        self.dashboard_window: Optional[QWidget] = None
         self.mode_selection_window: Optional[ModeSelectionWindow] = None
 
         # Подключаем сигналы
-        self.login_window.login_successful.connect(self.show_mode_selection)
+        cast(Any, self.login_window.login_successful).connect(self.show_mode_selection)
 
         self._current_animation: Optional[QPropertyAnimation] = None
         self.stack.addWidget(self.login_window)
@@ -91,7 +98,7 @@ class MainWindow(QMainWindow):
                 return
 
             # Получаем доступную геометрию экрана
-            screen = self.screen()
+            screen: Optional[QScreen] = self.screen()
             if screen is None:
                 logger.warning("Screen is None, cannot resize window")
                 return
@@ -124,7 +131,7 @@ class MainWindow(QMainWindow):
         """Центрирует окно на экране"""
         try:
             frame_geometry = self.frameGeometry()
-            screen = self.screen()
+            screen: Optional[QScreen] = self.screen()
             if screen is None:
                 logger.warning("Screen is None, cannot center window")
                 return
@@ -210,7 +217,7 @@ class MainWindow(QMainWindow):
 
             # Создаем новый экземпляр окна выбора режима
             self.mode_selection_window = ModeSelectionWindow(user_id, username, self)
-            self.mode_selection_window.mode_selected.connect(self.on_mode_selected)
+            cast(Any, self.mode_selection_window.mode_selected).connect(self.on_mode_selected)
             self.stack.addWidget(self.mode_selection_window)
             self.stack.setCurrentWidget(self.mode_selection_window)
 
@@ -239,7 +246,7 @@ class MainWindow(QMainWindow):
             logger.info(f"Switching to CLI mode for user: {username}")
 
             # Запускаем CLI режим в новом процессе с правильным перенаправлением стандартного ввода/вывода
-            import subprocess
+            import subprocess  # nosec B404  # subprocess нужен для запуска headless CLI
             import os
             import sys
             script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -247,13 +254,15 @@ class MainWindow(QMainWindow):
             main_script = os.path.join(project_dir, "main.py")
 
             # Используем CREATE_NEW_CONSOLE для создания нового консольного окна
+            # Аргументы передаются списком без shell=True, поэтому команда не
+            # интерпретируется оболочкой и инъекция команд невозможна.
             if sys.platform == "win32":
-                subprocess.Popen(
+                subprocess.Popen(  # nosec B603  # list argv, no shell
                     [sys.executable, main_script, "--cli", "--username", username],
                     creationflags=subprocess.CREATE_NEW_CONSOLE
                 )
             else:
-                subprocess.Popen(
+                subprocess.Popen(  # nosec B603  # list argv, no shell
                     [sys.executable, main_script, "--cli", "--username", username],
                     stdout=sys.stdout,
                     stderr=sys.stderr,
@@ -280,17 +289,19 @@ class MainWindow(QMainWindow):
                 return
 
             # Очищаем старый экземпляр панели управления
-            if hasattr(self, 'dashboard_window') and self.dashboard_window is not None:
+            if self.dashboard_window is not None:
+                self.stack.removeWidget(self.dashboard_window)
                 self.dashboard_window.deleteLater()
                 self.dashboard_window = None
 
             # Создаем новый экземпляр панели управления
-            self.dashboard_window = DashboardWindow(user_id, username, self.user_model, self)
-            self.stack.addWidget(self.dashboard_window)
-            self.stack.setCurrentWidget(self.dashboard_window)
-            
+            dashboard: QWidget = DashboardWindow(user_id, username, self.user_model, self)
+            self.dashboard_window = dashboard
+            self.stack.addWidget(dashboard)
+            self.stack.setCurrentWidget(dashboard)
+
             # Безопасно изменяем размер окна
-            self.safe_resize_window(self.dashboard_window)
+            self.safe_resize_window(dashboard)
             self.showMaximized()
 
         except Exception as e:
@@ -304,7 +315,7 @@ class MainWindow(QMainWindow):
             # Проверяем, что окно не уже максимизировано
             if not self.isMaximized():
                 # Получаем доступную геометрию экрана
-                screen = self.screen()
+                screen: Optional[QScreen] = self.screen()
                 if screen is None:
                     logger.warning("Screen is None, cannot maximize window")
                     return
@@ -338,8 +349,6 @@ class MainWindow(QMainWindow):
             # Если есть dashboard_window, проверяем настройку
             if hasattr(self, 'dashboard_window') and self.dashboard_window:
                 if hasattr(self.dashboard_window, 'clear_cache_checkbox'):
-                    # Явно указываем типы для избежания предупреждений
-                    from PyQt5.QtWidgets import QCheckBox
                     # Используем getattr для безопасного получения атрибута
                     clear_cache_checkbox: Optional[QCheckBox] = getattr(self.dashboard_window, 'clear_cache_checkbox', None)
                     if isinstance(clear_cache_checkbox, QCheckBox):
@@ -377,10 +386,8 @@ class MainWindow(QMainWindow):
             log_and_notify('error', f"Unexpected error during cache cleanup on window close: {e}")
 
         # Принимаем событие закрытия
-        if a0:
+        if a0 is not None:
             a0.accept()
-        else:
-            super().closeEvent(a0)
 
     def show_dashboard(self, user_id: int, username: str) -> None:
         """Показывает главное окно приложения после успешной аутентификации"""
@@ -405,26 +412,26 @@ class MainWindow(QMainWindow):
                 return
                 
             # Очищаем старый экземпляр dashboard если есть
-            if self.dashboard_window:
-                self.stack.removeWidget(self.dashboard_window)
-                self.dashboard_window.deleteLater()
-                
+            dashboard_widget: Optional[QWidget] = self.dashboard_window
+            if dashboard_widget is not None:
+                self.stack.removeWidget(dashboard_widget)
+                self.dashboard_window = None
+                dashboard_widget.deleteLater()
+
             # Создаем новый экземпляр dashboard
-            from views.dashboard_window_wrapper import DashboardWindowWrapper
-            self.dashboard_window = DashboardWindowWrapper(
+            dashboard: QWidget = DashboardWindowWrapper(
                 user_id=user_id,
                 username=username,
                 user_model=self.user_model,
                 parent=self
             )
-            
+
             # Добавляем в стек и показываем
-            self.stack.addWidget(self.dashboard_window)
-            self.stack.setCurrentWidget(self.dashboard_window)
-            self.stack.addWidget(self.dashboard_window)
-            self.stack.setCurrentWidget(self.dashboard_window)
-            
-            self.safe_resize_window(self.dashboard_window)
+            self.dashboard_window = dashboard
+            self.stack.addWidget(dashboard)
+            self.stack.setCurrentWidget(dashboard)
+
+            self.safe_resize_window(dashboard)
 
             # Максимизируем окно после перехода к дашборду
             self.showMaximized()

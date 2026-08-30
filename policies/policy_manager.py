@@ -1,8 +1,6 @@
 import os
 import json
-import policies
-from utils.database import db
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Union
 from models.policy_model import SecurityPolicy
 
 class PolicyManager:
@@ -21,16 +19,16 @@ class PolicyManager:
             policy_data = json.load(f)
         return policy_data
 
-    def save_policy(self, name: str, policy) -> None:
+    def save_policy(self, name: str, policy: Union[SecurityPolicy, Dict[str, Any]]) -> None:
         """Сохранение политики в файл после преобразования из датакласса SecurityPolicy или словаря"""
         path = os.path.join(self.policies_dir, f"{name}.json")
         with open(path, "w", encoding="utf-8") as f:
             if isinstance(policy, SecurityPolicy):
                 json.dump(policy.to_dict(), f, ensure_ascii=False, indent=2)
-            elif isinstance(policy, dict):
-                json.dump(policy, f, ensure_ascii=False, indent=2)
             else:
-                raise ValueError("Policy must be either SecurityPolicy or dict")
+                # Вход уже ограничен типом Union[SecurityPolicy, Dict[str, Any]],
+                # поэтому ветка else гарантированно является словарем.
+                json.dump(policy, f, ensure_ascii=False, indent=2)
 
     def delete_policy(self, policy_id: int) -> bool:
         """Удаление политики по её ID"""
@@ -116,11 +114,11 @@ class PolicyManager:
         try:
             policies_list = self.list_policies()
 
-            policies = []
+            policies: List[Dict[str, Any]] = []
             for i, policy_name in enumerate(policies_list):
                 policy_data = self.load_policy(policy_name)
                 # Используем метод get для доступа к данным словаря
-                name = policy_data.get('name', policy_name) if isinstance(policy_data, dict) else policy_name
+                name = policy_data.get('name', policy_name)
                 policies.append({
                     'id': i,
                     'name': name
@@ -135,7 +133,7 @@ class PolicyManager:
         """Получение политики по её ID"""
         return self.get_policy_by_id(policy_id)
 
-    def update_policy(self, policy_id: int, policy) -> bool:
+    def update_policy(self, policy_id: int, policy: Union[SecurityPolicy, Dict[str, Any]]) -> bool:
         """Обновление политики по её ID"""
         try:
             # Получаем список всех политик
@@ -155,16 +153,16 @@ class PolicyManager:
             # В случае ошибки возвращаем False
             return False
 
-    def create_policy(self, policy) -> bool:
+    def create_policy(self, policy: Union[SecurityPolicy, Dict[str, Any]]) -> bool:
         """Создание новой политики"""
         try:
             # Генерируем уникальное имя для политики
             if isinstance(policy, SecurityPolicy):
                 policy_name = policy.name
-            elif isinstance(policy, dict):
-                policy_name = policy.get('name', 'Unnamed Policy')
             else:
-                raise ValueError("Policy must be either SecurityPolicy or dict")
+                # Вход уже ограничен типом Union[SecurityPolicy, Dict[str, Any]],
+                # поэтому здесь безопасно работать со словарем.
+                policy_name = policy.get('name', 'Unnamed Policy')
 
             # Проверяем, существует ли уже политика с таким именем
             existing_policies = self.list_policies()

@@ -1,7 +1,9 @@
 import json
-from typing import List, TypedDict, Optional
-from PyQt5.QtWidgets import QTextEdit, QLabel, QTableWidget
-from PyQt5.QtCore import pyqtSignal
+from typing import List, Optional, Dict, Any
+from PyQt6.QtWidgets import (
+    QTextEdit, QLabel, QTableWidget
+)
+from PyQt6.QtCore import pyqtSignal
 
 from utils.logger import logger
 from utils.performance import extract_time_from_timestamp, get_local_timestamp
@@ -21,9 +23,9 @@ class LogProcessorMixin:
         # Таблица последних сканирований
         self.recent_scans_table: Optional[QTableWidget] = None
         # Список записей лога
-        self._log_entries: List[dict] = []
+        self._log_entries: List[Dict[str, Any]] = []
         # Фильтрованные записи лога
-        self._filtered_log_entries: List[dict] = []
+        self._filtered_log_entries: List[Dict[str, Any]] = []
 
     def _process_log_content(self, content: str, log_type: int) -> None:
         """Обработка загруженного содержимого лога"""
@@ -86,7 +88,7 @@ class LogProcessorMixin:
             except json.JSONDecodeError:
                 # Если не JSON, обрабатываем как текст
                 lines = content.strip().split('\n')
-                scan_results = []
+                scan_results: List[Dict[str, Any]] = []
 
                 for line in lines:
                     if line.strip():

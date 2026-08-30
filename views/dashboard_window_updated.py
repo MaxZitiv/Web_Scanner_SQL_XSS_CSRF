@@ -4,19 +4,22 @@ views/dashboard_window_optimized.py
 """
 
 import asyncio
-from typing import Optional, Dict, Any, List
-from PyQt5.QtWidgets import (
+from typing import Optional, Dict, Any, List, cast
+from PyQt6.QtWidgets import (
         QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLineEdit, QSpinBox,
         QCheckBox, QPushButton, QTableWidget, QTableWidgetItem, QTextEdit,
-        QLabel, QMessageBox, QScrollBar
+        QLabel, QMessageBox
     )
 
 # Определяем константы для кнопок
 Yes = QMessageBox.StandardButton.Yes
 No = QMessageBox.StandardButton.No
-from PyQt5.QtCore import QMetaObject, Qt, Q_ARG, pyqtSlot # type: ignore
-from PyQt5.QtGui import QFont, QColor, QCloseEvent
-from qasync import asyncSlot # type: ignore
+from PyQt6.QtCore import (
+    QMetaObject, Qt, Q_ARG, QObject
+)
+from PyQt6.QtGui import (
+    QFont, QColor, QCloseEvent
+)
 
 from models.user_model import UserModel
 from controllers.scan_controller import ScanController
@@ -78,24 +81,24 @@ class DashboardWindow(QMainWindow):
             # Кнопка профиля
             profile_btn = QPushButton("👤 Профиль")
             profile_btn.setMaximumWidth(100)
-            profile_btn.clicked.connect(self.on_profile)
+            cast(Any, profile_btn.clicked).connect(self.on_profile)
             profile_layout.addWidget(profile_btn)
 
             # Кнопка статистики
             statistics_btn = QPushButton("📊 Статистика")
             statistics_btn.setMaximumWidth(100)
-            statistics_btn.clicked.connect(self.on_statistics)
+            cast(Any, statistics_btn.clicked).connect(self.on_statistics)
             profile_layout.addWidget(statistics_btn)
 
             # Кнопка отчетов
             reports_btn = QPushButton("📋 Отчеты")
             reports_btn.setMaximumWidth(100)
-            reports_btn.clicked.connect(self.on_reports)
+            cast(Any, reports_btn.clicked).connect(self.on_reports)
             profile_layout.addWidget(reports_btn)
 
             logout_btn = QPushButton("🚪 Выход")
             logout_btn.setMaximumWidth(100)
-            logout_btn.clicked.connect(self.on_logout)
+            cast(Any, logout_btn.clicked).connect(self.on_logout)
             profile_layout.addWidget(logout_btn)
 
             main_layout.addLayout(profile_layout)
@@ -181,18 +184,18 @@ class DashboardWindow(QMainWindow):
                     background-color: #3d8b40;
                 }
             """)
-            self.start_scan_btn.clicked.connect(self.on_start_scan)
+            cast(Any, self.start_scan_btn.clicked).connect(self.on_start_scan)
             buttons_layout.addWidget(self.start_scan_btn)
 
             self.pause_scan_btn = QPushButton("⏸ Пауза")
             self.pause_scan_btn.setMinimumHeight(35)
-            self.pause_scan_btn.clicked.connect(self.on_pause_scan)
+            cast(Any, self.pause_scan_btn.clicked).connect(self.on_pause_scan)
             self.pause_scan_btn.setEnabled(False)
             buttons_layout.addWidget(self.pause_scan_btn)
 
             self.resume_scan_btn = QPushButton("▶ Продолжить")
             self.resume_scan_btn.setMinimumHeight(35)
-            self.resume_scan_btn.clicked.connect(self.on_resume_scan)
+            cast(Any, self.resume_scan_btn.clicked).connect(self.on_resume_scan)
             self.resume_scan_btn.setEnabled(False)
             buttons_layout.addWidget(self.resume_scan_btn)
 
@@ -214,7 +217,7 @@ class DashboardWindow(QMainWindow):
                     background-color: #ba0000;
                 }
             """)
-            self.stop_scan_btn.clicked.connect(self.on_stop_scan)
+            cast(Any, self.stop_scan_btn.clicked).connect(self.on_stop_scan)
             self.stop_scan_btn.setEnabled(False)
             buttons_layout.addWidget(self.stop_scan_btn)
 
@@ -239,7 +242,7 @@ class DashboardWindow(QMainWindow):
 
             self.results_table = QTableWidget()
             self.results_table.setColumnCount(5)
-            self.results_table.setHorizontalHeaderLabels([
+            cast(Any, self.results_table).setHorizontalHeaderLabels([
                 "Тип уязвимости",
                 "URL",
                 "Параметр",
@@ -350,7 +353,7 @@ class DashboardWindow(QMainWindow):
         try:
             from views.edit_profile_window import EditProfileWindow
             profile_window = EditProfileWindow(self.user_id, self.username, self)
-            profile_window.exec_() # type: ignore
+            profile_window.exec()
         except Exception as e:
             logger.error(f"Ошибка при открытии окна профиля: {e}")
             error_handler.show_error_message("Ошибка", f"Не удалось открыть окно профиля: {str(e)}")
@@ -425,7 +428,7 @@ class DashboardWindow(QMainWindow):
                     parent_widget = parent_obj
                     try:
                         # Явно указываем тип возвращаемого значения
-                        scroll_bar: Optional[QScrollBar] = self.log_text.verticalScrollBar()
+                        scroll_bar = self.log_text.verticalScrollBar()
                         if scroll_bar is not None:
                             widget_pos = widget.mapTo(parent_widget, widget.rect().topLeft()).y()
                             scroll_bar.setValue(int(widget_pos))
@@ -435,8 +438,6 @@ class DashboardWindow(QMainWindow):
                 parent_obj = parent_obj.parent()
         except Exception as e:
             logger.error(f"Ошибка при прокрутке к виджету: {e}")
-    
-    @asyncSlot()  # type: ignore
     async def on_start_scan(self):
         """
         Начинает сканирование сайта.
@@ -480,7 +481,7 @@ class DashboardWindow(QMainWindow):
                     self,
                     "⚠️ Предупреждение безопасности",
                     "URL может быть небезопасным. Продолжить?\n\nУбедитесь, что вы сканируете только свои собственные сайты\nили сайты, на которые у вас есть разрешение.",
-                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No # type: ignore
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
                 )
                 if reply == QMessageBox.StandardButton.No:
                     logger.info("Сканирование отменено пользователем")
@@ -639,7 +640,8 @@ class DashboardWindow(QMainWindow):
 
                 # Создаём асинхронную задачу для сканирования
                 async def scan_task():
-                    assert self.scan_controller is not None, "ScanController должен быть инициализирован"
+                    if self.scan_controller is None:
+                        raise RuntimeError("ScanController должен быть инициализирован")
                     await self.scan_controller.start_scan(
                         url=url,
                         scan_types=scan_types,
@@ -737,10 +739,10 @@ class DashboardWindow(QMainWindow):
                 self,
                 "Подтверждение",
                 "Вы уверены, что хотите остановить сканирование?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No  # type: ignore
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
             )
 
-            if reply == Yes:  # type: ignore
+            if reply == Yes:
                 if self.scan_controller:
                     self.scan_controller.stop_scan()
                     self.is_scanning = False
@@ -770,11 +772,11 @@ class DashboardWindow(QMainWindow):
 
             # Подключаем сигналы статистики
             if self.statistics_widget is not None:
-                self.scan_controller.signals.stats_updated.connect(
+                cast(Any, self.scan_controller.signals.stats_updated).connect(
                     self.on_stats_updated
                 )
                 # Используем лямбда-функцию для обновления прогресса в главном потоке
-                self.scan_controller.signals.progress_updated.connect(
+                cast(Any, self.scan_controller.signals.progress_updated).connect(
                     self._handle_progress_update
                 )
                 logger.info("Сигналы статистики подключены успешно")
@@ -782,8 +784,8 @@ class DashboardWindow(QMainWindow):
                 logger.warning("StatisticsWidget не инициализирован, сигналы не подключены")
 
             # Подключаем другие сигналы
-            self.scan_controller.signals.log_event.connect(self.on_log_event)
-            self.scan_controller.signals.vulnerability_found.connect(
+            cast(Any, self.scan_controller.signals.log_event).connect(self.on_log_event)
+            cast(Any, self.scan_controller.signals.vulnerability_found).connect(
                 self.on_vulnerability_found
             )
 
@@ -793,8 +795,6 @@ class DashboardWindow(QMainWindow):
     def _handle_progress_update(self, progress: int) -> None:
         """Обработка обновления прогресса сканирования"""
         self.update_progress_in_main_thread(progress)
-
-    @pyqtSlot(str, object)
     def update_progress_in_main_thread(self, progress: int) -> None:
         """Обновляет прогресс-бар в главном потоке GUI"""
         try:
@@ -820,7 +820,7 @@ class DashboardWindow(QMainWindow):
             
             # Обеспечиваем обновление в главном потоке GUI
             QMetaObject.invokeMethod(self.statistics_widget, "update_stat", 
-                                   Qt.QueuedConnection,
+                                   Qt.ConnectionType.QueuedConnection,
                                    Q_ARG(str, stat_name),
                                    Q_ARG(object, value))
 
@@ -884,8 +884,6 @@ class DashboardWindow(QMainWindow):
 
         except Exception as e:
             logger.error(f"Критическая ошибка в on_stats_updated для {stat_name}: {e}", exc_info=True)
-
-    @pyqtSlot(str)
     def on_log_event(self, message: str):
         """Обработчик событий логирования"""
         try:
@@ -899,9 +897,9 @@ class DashboardWindow(QMainWindow):
 
             # Прокручиваем к последнему сообщению
             try:
-                scroll_bar: Optional[QScrollBar] = self.log_text.verticalScrollBar()
+                scroll_bar = self.log_text.verticalScrollBar()
 
-                if isinstance(scroll_bar, QScrollBar):
+                if scroll_bar is not None:
                     max_value = scroll_bar.maximum()
                     scroll_bar.setValue(max_value)
                 else:
@@ -912,8 +910,6 @@ class DashboardWindow(QMainWindow):
                 logger.debug(f"Ошибка при прокрутке логов: {scroll_error}")
         except Exception as e:
             logger.error(f"Ошибка при логировании события: {e}")
-
-    @pyqtSlot(str, str, str)
     def on_vulnerability_found(self, url: str, vulnerability_type: str, details: str):
         """Обработчик нахождения уязвимости"""
         try:
@@ -954,8 +950,6 @@ class DashboardWindow(QMainWindow):
 
         except Exception as e:
             logger.error(f"Ошибка при добавлении уязвимости в таблицу: {e}")
-
-    @asyncSlot(dict)  # type: ignore
     def on_scan_complete(self, result: Dict[str, Any]):
         """Обработчик завершения сканирования"""
         try:
@@ -1005,10 +999,10 @@ class DashboardWindow(QMainWindow):
                 self,
                 "Подтверждение",
                 "Вы уверены, что хотите выйти?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No  # type: ignore
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
             )
 
-            if reply != Yes:  # type: ignore
+            if reply != Yes:
                 logger.info("Выход отменён пользователем")
                 return
 
@@ -1035,22 +1029,22 @@ class DashboardWindow(QMainWindow):
 
             try:
                 # Получаем родительский виджет
-                parent = self.parent()
+                parent = cast(Any, self.parent())
 
                 # Проверяем что parent существует и имеет метод go_to_login
                 if parent is not None and hasattr(parent, 'go_to_login'):
                     logger.info("Возвращаемся к окну входа через parent.go_to_login()")
-                    parent.go_to_login()  # type: ignore
+                    parent.go_to_login()
                 else:
                     # Если parent не подходит, пробуем найти MainWindow
                     logger.warning("Parent не имеет метода go_to_login, ищем MainWindow...")
 
                     # Пытаемся найти MainWindow через цепочку родителей
-                    main_window = self._find_main_window()
+                    main_window = cast(Any, self._find_main_window())
 
                     if main_window is not None and hasattr(main_window, 'go_to_login'):
                         logger.info("Найден MainWindow, вызываем go_to_login()")
-                        main_window.go_to_login()  # type: ignore
+                        main_window.go_to_login()
                     else:
                         # Если не нашли MainWindow, просто закрываем текущее окно
                         logger.warning("MainWindow не найден, просто закрываем DashboardWindow")
@@ -1090,17 +1084,17 @@ class DashboardWindow(QMainWindow):
         """
         try:
             # Начинаем с текущего виджета
-            current = self
+            current: Optional[QObject] = self
 
             # Проходим по цепочке родителей
             max_iterations = 10  # Защита от бесконечного цикла
             iteration = 0
 
-            while current is not None and iteration < max_iterations:  # type: ignore
+            while iteration < max_iterations:
                 iteration += 1
 
                 # Проверяем имя класса
-                class_name = current.__class__.__name__  # type: ignore
+                class_name = current.__class__.__name__
 
                 if class_name == 'MainWindow':
                     logger.debug(f"MainWindow найден на итерации {iteration}")
@@ -1131,7 +1125,7 @@ class DashboardWindow(QMainWindow):
                     self,
                     "Подтверждение",
                     "Сканирование ещё выполняется. Вы уверены, что хотите закрыть?",
-                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No # type: ignore
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
                 )
 
                 if reply == QMessageBox.StandardButton.No:

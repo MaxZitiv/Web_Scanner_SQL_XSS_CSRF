@@ -1,23 +1,19 @@
-import os
+
 import json
-from datetime import datetime, date
-from pydoc import text
+from datetime import datetime
 from typing import Dict, List, Any, Optional, cast
 
 import sqlite3
-from PyQt5.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QGroupBox, 
+from PyQt6.QtWidgets import (
+    QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QComboBox, QPushButton, QTableWidget, QTableWidgetItem,
     QHeaderView, QSplitter, QFileDialog, QMessageBox
 )
-from PyQt5.QtCore import Qt, pyqtSignal, QDate
-from PyQt5.QtGui import QColor, QPixmap
-import matplotlib
-import matplotlib.pyplot as plt
+from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QColor
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 from matplotlib.axes import Axes
-from matplotlib.text import Text
 
 from utils.database import db
 from utils.error_handler import error_handler
@@ -66,7 +62,7 @@ class StatsTabWidget(QWidget):
         splitter.addWidget(self.stats_table)
         
         # Устанавливаем пропорции разделения
-        splitter.setSizes([400, 300])
+        cast(Any, splitter).setSizes([400, 300])
         main_layout.addWidget(splitter)
         
         # Панель с кнопками действий
@@ -81,20 +77,20 @@ class StatsTabWidget(QWidget):
         # Фильтр по периоду
         layout.addWidget(QLabel("Период:"))
         self.period_combo = QComboBox()
-        self.period_combo.addItems([
+        cast(Any, self.period_combo).addItems([
             "За все время", 
             "За последний месяц", 
             "За последнюю неделю", 
             "За сегодня",
             "Произвольный период"
         ])
-        self.period_combo.currentTextChanged.connect(self._on_period_changed)
+        cast(Any, self.period_combo.currentTextChanged).connect(self._on_period_changed)
         layout.addWidget(self.period_combo)
         
         # Фильтр по типу сканирования
         layout.addWidget(QLabel("Тип сканирования:"))
         self.scan_type_combo = QComboBox()
-        self.scan_type_combo.addItems([
+        cast(Any, self.scan_type_combo).addItems([
             "Все типы",
             "Быстрое сканирование",
             "Полное сканирование",
@@ -102,12 +98,12 @@ class StatsTabWidget(QWidget):
             "Только XSS",
             "Только CSRF"
         ])
-        self.scan_type_combo.currentTextChanged.connect(self._on_filter_changed)
+        cast(Any, self.scan_type_combo.currentTextChanged).connect(self._on_filter_changed)
         layout.addWidget(self.scan_type_combo)
         
         # Кнопка применения фильтров
         self.apply_filter_btn = QPushButton("Применить")
-        self.apply_filter_btn.clicked.connect(self._on_filter_changed)
+        cast(Any, self.apply_filter_btn.clicked).connect(self._on_filter_changed)
         layout.addWidget(self.apply_filter_btn)
         
         # Растягивающийся элемент для выравнивания
@@ -119,7 +115,7 @@ class StatsTabWidget(QWidget):
         """Создание таблицы статистики"""
         table = QTableWidget()
         table.setColumnCount(3)
-        table.setHorizontalHeaderLabels(["Показатель", "Значение", "Детали"])
+        cast(Any, table).setHorizontalHeaderLabels(["Показатель", "Значение", "Детали"])
 
         # Получаем заголовок и проверяем, что он не None
         header = table.horizontalHeader()
@@ -153,17 +149,17 @@ class StatsTabWidget(QWidget):
         
         # Кнопка обновления
         self.refresh_btn = QPushButton("Обновить")
-        self.refresh_btn.clicked.connect(self.load_statistics)
+        cast(Any, self.refresh_btn.clicked).connect(self.load_statistics)
         layout.addWidget(self.refresh_btn)
         
         # Кнопка экспорта в PNG
         self.export_png_btn = QPushButton("Экспорт в PNG")
-        self.export_png_btn.clicked.connect(self._export_to_png)
+        cast(Any, self.export_png_btn.clicked).connect(self._export_to_png)
         layout.addWidget(self.export_png_btn)
         
         # Кнопка экспорта в CSV
         self.export_csv_btn = QPushButton("Экспорт в CSV")
-        self.export_csv_btn.clicked.connect(self._export_to_csv)
+        cast(Any, self.export_csv_btn.clicked).connect(self._export_to_csv)
         layout.addWidget(self.export_csv_btn)
         
         # Растягивающийся элемент для выравнивания
@@ -314,8 +310,8 @@ class StatsTabWidget(QWidget):
                 ax: Axes = self.stats_canvas.figure.add_subplot(111)
                 # Явно указываем тип возвращаемого значения для Pylance
                 # Сохраняем ссылку на текстовый объект для возможного будущего использования
-                _ = ax.text(0.5, 0.5, "Нет данных для отображения", 
-                                    horizontalalignment='center', verticalalignment='center')  # type: ignore
+                _ = cast(Any, ax).text(0.5, 0.5, "Нет данных для отображения", 
+                                    horizontalalignment='center', verticalalignment='center')
 
                 self.stats_canvas.draw()
                 return
@@ -325,10 +321,8 @@ class StatsTabWidget(QWidget):
             ax: Axes = self.stats_canvas.figure.add_subplot(111)
 
             # Подготовка данных
-            # Явно указываем тип для Pylance
-            from typing import Any
             dates: List[Any] = []  # Список дат сканирований
-            # type: List[datetime.date]
+
             vulnerability_counts: Dict[str, int] = {"SQL Injection": 0, "XSS": 0, "CSRF": 0}
             date_vulnerability_counts: Dict[str, Dict[str, int]] = {}
 
@@ -336,7 +330,7 @@ class StatsTabWidget(QWidget):
                 scan_date = datetime.strptime(scan['timestamp'], "%Y-%m-%d %H:%M:%S").date()
                 # Явно указываем тип для Pylance
                 scan_date: Any
-                # type: datetime.date
+
                 dates.append(scan_date)
 
                 scan_result = scan.get('result', {})
@@ -352,13 +346,11 @@ class StatsTabWidget(QWidget):
                 
                 # Обновляем общие счетчики
                 if isinstance(results, list):
-                    for result in results:  # type: ignore
+                    for result in cast(List[Any], results):
                         # Проверяем разные возможные структуры результатов
                         vuln_type: Optional[str] = None
                         if isinstance(result, dict):
-                            # Явно указываем типы для Pylance
-                            result: Dict[str, Any]
-                            # Явно указываем типы для Pylance
+                            # Явно указываем тип словаря
                             result_dict: Dict[str, Any] = cast(Dict[str, Any], result)
                             type_value: Optional[str] = cast(Optional[str], result_dict.get('type'))
                             vuln_type_value: Optional[str] = cast(Optional[str], result_dict.get('vuln_type'))
@@ -366,13 +358,13 @@ class StatsTabWidget(QWidget):
                             # Если нет прямого типа, проверяем в vulnerabilities
                             if not vuln_type and 'vulnerabilities' in result:
                                 # Явно указываем типы для Pylance
-                                vulnerabilities_data: Dict[str, List[Any]] = result_dict.get('vulnerabilities', {})  # type: Dict[str, List[Any]]
+                                vulnerabilities_data: Dict[str, List[Any]] = result_dict.get('vulnerabilities', {})
                                 for vuln_cat, vulns_data in vulnerabilities_data.items():
                                     # Явно указываем типы для Pylance
                                     vuln_cat: str
                                     # Используем Any для избежания циклических ссылок
-                                    if vulns_data:  # type: ignore  # Если есть уязвимости в этой категории
-                                        vulns: List[Any] = vulns_data  # type: ignore
+                                    if vulns_data:
+                                        vulns: List[Any] = vulns_data
                                         if vuln_cat == 'sql':
                                             vuln_type = 'SQL Injection'
                                         elif vuln_cat == 'xss':
@@ -395,7 +387,7 @@ class StatsTabWidget(QWidget):
                     if 'vulnerabilities' in results:
                         # Явно указываем типы для Pylance
                         results_dict: Dict[str, Any] = cast(Dict[str, Any], results)
-                        vulnerabilities_data: Dict[str, List[Any]] = results_dict.get('vulnerabilities', {})  # type: Dict[str, List[Any]]
+                        vulnerabilities_data: Dict[str, List[Any]] = results_dict.get('vulnerabilities', {})
                         for vuln_cat, vulns_data in vulnerabilities_data.items():
                             # Явно указываем типы для Pylance
                             vuln_cat: str
@@ -433,13 +425,15 @@ class StatsTabWidget(QWidget):
                     date_vuln_counts: Dict[str, int] = date_vulnerability_counts.get(date, {})
                     count: int = date_vuln_counts.get(vuln_type, 0)
                     counts.append(count)
-                ax.plot(sorted_dates, counts, marker='o', linestyle='-', label=vuln_type)
+                ax_any = cast(Any, ax)
+                ax_any.plot(sorted_dates, counts, marker='o', linestyle='-', label=vuln_type)
 
-            ax.set_title("Статистика сканирований по типам уязвимостей")
-            ax.set_xlabel("Дата")
-            ax.set_ylabel("Количество обнаружений")
-            ax.grid(True)
-            ax.legend()
+            ax_any = cast(Any, ax)
+            ax_any.set_title("Статистика сканирований по типам уязвимостей")
+            ax_any.set_xlabel("Дата")
+            ax_any.set_ylabel("Количество обнаружений")
+            ax_any.grid(True)
+            ax_any.legend()
 
             self.stats_canvas.figure.tight_layout()
             self.stats_canvas.draw()
@@ -447,7 +441,7 @@ class StatsTabWidget(QWidget):
             log_and_notify('error', f"Error updating matplotlib stats: {e}")
             self.stats_canvas.figure.clear()
             ax: Axes = self.stats_canvas.figure.add_subplot(111)
-            ax.text(0.5, 0.5, f"Ошибка отображения статистики: {str(e)}",  # type: ignore 
+            cast(Any, ax).text(0.5, 0.5, f"Ошибка отображения статистики: {str(e)}",
                    horizontalalignment='center', verticalalignment='center')
             self.stats_canvas.draw()
     
@@ -526,7 +520,7 @@ class StatsTabWidget(QWidget):
                 self, "Сохранить график", "", "PNG Files (*.png)"
             )
             if file_path:
-                self.stats_canvas.figure.savefig(file_path, dpi=300, bbox_inches='tight')
+                cast(Any, self.stats_canvas.figure).savefig(file_path, dpi=300, bbox_inches='tight')
                 QMessageBox.information(self, "Успех", "График успешно сохранен")
                 logger.info(f"Statistics chart exported to {file_path}")
         except Exception as e:

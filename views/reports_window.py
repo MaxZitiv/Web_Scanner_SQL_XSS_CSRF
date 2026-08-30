@@ -3,12 +3,16 @@
 views/reports_window.py
 """
 
-from PyQt5.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
-                            QLabel, QTableWidget, QTableWidgetItem, QPushButton, 
-                            QComboBox, QMessageBox, QDateEdit)
-from PyQt5.QtCore import Qt, QDate
-from PyQt5.QtGui import QFont
-from typing import Dict, List, Optional
+from PyQt6.QtWidgets import (
+    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
+    QLabel, QTableWidget, QTableWidgetItem, QPushButton,
+    QComboBox, QMessageBox, QDateEdit, QAbstractItemView
+)
+from PyQt6.QtCore import (
+    Qt, QDate
+)
+from PyQt6.QtGui import QFont
+from typing import Any, Dict, List, Optional, cast
 from utils.database import db
 from utils.logger import logger
 from utils.export_utils import ExportUtils
@@ -64,19 +68,19 @@ class ReportsWindow(QMainWindow):
 
         # Кнопка применения фильтра
         apply_filter_btn = QPushButton("Применить фильтр")
-        apply_filter_btn.clicked.connect(self.apply_filter)
+        cast(Any, apply_filter_btn.clicked).connect(self.apply_filter)
         filters_layout.addWidget(apply_filter_btn)
 
         # Кнопка сброса фильтра
         reset_filter_btn = QPushButton("Сбросить фильтр")
-        reset_filter_btn.clicked.connect(self.reset_filter)
+        cast(Any, reset_filter_btn.clicked).connect(self.reset_filter)
         filters_layout.addWidget(reset_filter_btn)
 
         filters_layout.addStretch()
 
         # Кнопка экспорта
         export_btn = QPushButton("Экспортировать отчет")
-        export_btn.clicked.connect(self.export_report)
+        cast(Any, export_btn.clicked).connect(self.export_report)
         filters_layout.addWidget(export_btn)
 
         main_layout.addLayout(filters_layout)
@@ -84,11 +88,11 @@ class ReportsWindow(QMainWindow):
         # Таблица отчетов
         self.reports_table = QTableWidget()
         self.reports_table.setColumnCount(7)
-        self.reports_table.setHorizontalHeaderLabels([
+        cast(Any, self.reports_table).setHorizontalHeaderLabels([
             "ID сканирования", "URL", "Дата", "Тип уязвимости", 
             "Параметр", "Серьезность", "Подробности"
         ])
-        self.reports_table.setSelectionBehavior(QTableWidget.SelectRows)  # type: ignore
+        self.reports_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         main_layout.addWidget(self.reports_table)
 
         # Панель экспорта
@@ -98,7 +102,7 @@ class ReportsWindow(QMainWindow):
         export_layout.addWidget(export_format_label)
 
         self.export_format = QComboBox()
-        self.export_format.addItems(["HTML", "PDF", "JSON", "CSV"])
+        cast(Any, self.export_format).addItems(["HTML", "PDF", "JSON", "CSV"])
         export_layout.addWidget(self.export_format)
 
         export_layout.addStretch()
@@ -107,7 +111,7 @@ class ReportsWindow(QMainWindow):
 
         # Кнопка закрытия
         close_btn = QPushButton("Закрыть")
-        close_btn.clicked.connect(self.close_window)
+        cast(Any, close_btn.clicked).connect(self.close_window)
         main_layout.addWidget(close_btn)
 
         central_widget.setLayout(main_layout)
@@ -232,4 +236,3 @@ class ReportsWindow(QMainWindow):
                 "Ошибка", 
                 f"Не удалось экспортировать отчет: {str(e)}"
             )
-

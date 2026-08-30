@@ -130,7 +130,7 @@ class DatabaseEncryption:
             if isinstance(data, (Dict, List)):
                 json_data = json.dumps(data, ensure_ascii=False)
             else:
-                json_data = str(data)  # type: ignore[arg-type]
+                json_data = str(data)
             
             # Шифруем
             encrypted_bytes = self.fernet.encrypt(json_data.encode('utf-8'))
@@ -193,7 +193,7 @@ class DatabaseEncryption:
         """
         decrypted: Union[str, Dict[str, Any], List[Any]] = self.decrypt_data(encrypted_results)
         if isinstance(decrypted, List):
-            return decrypted  # type: ignore[return-value]
+            return decrypted
         else:
             logger.warning("Decrypted data is not a list, returning empty list")
             return []

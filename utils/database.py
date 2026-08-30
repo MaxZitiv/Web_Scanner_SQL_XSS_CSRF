@@ -2,7 +2,7 @@ import sqlite3
 import os
 import json
 import datetime
-from typing import List, Dict, Optional, Any, Tuple, Union, Callable
+from typing import List, Dict, Optional, Any, Tuple, Union, Callable, cast
 from urllib.parse import urlparse
 from utils.logger import logger, log_and_notify
 from utils.encryption import encrypt_sensitive_data, decrypt_sensitive_data
@@ -140,9 +140,37 @@ class Database:
                         url TEXT NOT NULL,
                         type TEXT NOT NULL,
                         details TEXT,
+                        status TEXT DEFAULT 'Новая',
+                        severity TEXT DEFAULT 'Средний',
+                        description TEXT DEFAULT '',
+                        response TEXT DEFAULT '',
+                        request_params TEXT DEFAULT '',
+                        recommendations TEXT DEFAULT '[]',
+                        resources TEXT DEFAULT '[]',
+                        comments TEXT DEFAULT '[]',
+                        created_date TEXT DEFAULT CURRENT_TIMESTAMP,
                         FOREIGN KEY(scan_id) REFERENCES scans(id) ON DELETE CASCADE
                     )
                 ''')
+
+                # Миграция для уже существующих таблиц: добавляем новые колонки,
+                # если схема была создана до включения расширенных полей.
+                for column, ddl in (
+                    ('status', "TEXT DEFAULT 'Новая'"),
+                    ('severity', "TEXT DEFAULT 'Средний'"),
+                    ('description', "TEXT DEFAULT ''"),
+                    ('response', "TEXT DEFAULT ''"),
+                    ('request_params', "TEXT DEFAULT ''"),
+                    ('recommendations', "TEXT DEFAULT '[]'"),
+                    ('resources', "TEXT DEFAULT '[]'"),
+                    ('comments', "TEXT DEFAULT '[]'"),
+                    ('created_date', "TEXT DEFAULT CURRENT_TIMESTAMP"),
+                ):
+                    try:
+                        cursor.execute(f'ALTER TABLE vulnerabilities ADD COLUMN {column} {ddl}')
+                    except sqlite3.OperationalError:
+                        # Колонка уже существует — ошибка ожидаемая и не критичная.
+                        pass
 
                 cursor.execute('CREATE INDEX IF NOT EXISTS idx_users_username ON users(username)')
                 cursor.execute('CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)')
@@ -502,7 +530,7 @@ class Database:
                 cursor.execute('''
                     INSERT INTO scans (user_id, url, result, scan_type, scan_duration)
                     VALUES (?, ?, ?, ?, ?)
-                ''', (user_id, encrypted_url, encrypted_result, scan_type, scan_duration))  # type: ignore[arg-type]
+                ''', (user_id, encrypted_url, encrypted_result, scan_type, scan_duration))
                 scan_id = cursor.lastrowid
                 
                 for vuln in results:
@@ -512,7 +540,7 @@ class Database:
                         cursor.execute('''
                             INSERT INTO vulnerabilities (scan_id, url, type, details)
                             VALUES (?, ?, ?, ?)
-                        ''', (scan_id, encrypted_vuln_url, vuln['type'], str(vuln['details'])))  # type: ignore[arg-type]
+                        ''', (scan_id, encrypted_vuln_url, vuln['type'], str(vuln['details'])))
             return True
         except Exception as e:
             log_and_notify('error', f"Error saving scan: {e}")
@@ -568,6 +596,119 @@ class Database:
                 return cursor.rowcount > 0
         except Exception as e:
             log_and_notify('error', f"Error updating status for scan {scan_id}: {e}")
+            return False
+
+    # --- Методы для работы с найденными уязвимостями ---
+
+    @staticmethod
+    def _parse_json_field(value: Any, default: Any) -> Any:
+        """Безопасно разбирает JSON-поле из БД."""
+        if value is None:
+            return default
+        if isinstance(value, (dict, list)):
+            return cast(Any, value)
+        try:
+            return json.loads(str(value))
+        except (json.JSONDecodeError, TypeError):
+            return default
+
+    def _vulnerability_from_row(self, row: Dict[str, Any]) -> Dict[str, Any]:
+        """Преобразует строку таблицы vulnerabilities в словарь для UI."""
+        data = dict(row)
+        try:
+            data['url'] = decrypt_sensitive_data(str(data.get('url', '')))
+        except Exception as e:
+            logger.warning(f"Failed to decrypt vulnerability URL: {e}")
+            data['url'] = str(data.get('url', ''))
+
+        data['details'] = self._parse_json_field(data.get('details'), {})
+        data['request_params'] = self._parse_json_field(data.get('request_params'), {})
+        data['recommendations'] = self._parse_json_field(data.get('recommendations'), [])
+        data['resources'] = self._parse_json_field(data.get('resources'), [])
+        data['comments'] = self._parse_json_field(data.get('comments'), [])
+
+        # Общие поля, ожидаемые интерфейсом.
+        data.setdefault('description', '')
+        data.setdefault('status', 'Новая')
+        data.setdefault('severity', 'Средний')
+        data.setdefault('response', '')
+        data.setdefault('created_date', '')
+        return data
+
+    def get_all_vulnerabilities(self) -> List[Dict[str, Any]]:
+        """Возвращает все найденные уязвимости."""
+        try:
+            with self.get_db_connection_cm() as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    SELECT id, scan_id, url, type, details, status, severity,
+                           description, response, request_params, recommendations,
+                           resources, comments, created_date
+                    FROM vulnerabilities
+                    ORDER BY id DESC
+                ''')
+                rows: List[Dict[str, Any]] = [dict(row) for row in cursor.fetchall()]
+            return [self._vulnerability_from_row(row) for row in rows]
+        except Exception as e:
+            log_and_notify('error', f"Error loading vulnerabilities: {e}")
+            return []
+
+    def get_vulnerability_by_id(self, vuln_id: int) -> Optional[Dict[str, Any]]:
+        """Возвращает одну уязвимость по её ID."""
+        if vuln_id <= 0:
+            return None
+        try:
+            with self.get_db_connection_cm() as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    SELECT id, scan_id, url, type, details, status, severity,
+                           description, response, request_params, recommendations,
+                           resources, comments, created_date
+                    FROM vulnerabilities
+                    WHERE id = ?
+                ''', (vuln_id,))
+                row = cursor.fetchone()
+            return self._vulnerability_from_row(dict(row)) if row else None
+        except Exception as e:
+            log_and_notify('error', f"Error loading vulnerability {vuln_id}: {e}")
+            return None
+
+    def update_vulnerability_status(self, vuln_id: int, status: str) -> bool:
+        """Обновляет статус уязвимости."""
+        try:
+            with self.get_db_connection_cm() as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    UPDATE vulnerabilities SET status = ? WHERE id = ?
+                ''', (status, vuln_id))
+                return cursor.rowcount > 0
+        except Exception as e:
+            log_and_notify('error', f"Error updating vulnerability status {vuln_id}: {e}")
+            return False
+
+    def add_vulnerability_comment(self, vuln_id: int, comment: str) -> bool:
+        """Добавляет комментарий к уязвимости."""
+        try:
+            with self.get_db_connection_cm() as conn:
+                cursor = conn.cursor()
+                cursor.execute('SELECT comments FROM vulnerabilities WHERE id = ?', (vuln_id,))
+                row = cursor.fetchone()
+                if not row:
+                    return False
+                comments_value = self._parse_json_field(row['comments'], [])
+                comments: List[Dict[str, Any]] = (
+                    cast(List[Dict[str, Any]], comments_value)
+                    if isinstance(comments_value, list)
+                    else []
+                )
+                comments.append({'text': comment, 'created_date': datetime.datetime.now().isoformat()})
+                cursor.execute(
+                    'UPDATE vulnerabilities SET comments = ? WHERE id = ?',
+                    (json.dumps(comments, ensure_ascii=False), vuln_id)
+                )
+                return True
+        except Exception as e:
+            log_and_notify('error', f"Error adding vulnerability comment {vuln_id}: {e}")
             return False
 
 # --- Создаем единственный экземпляр класса для использования во всем приложении ---

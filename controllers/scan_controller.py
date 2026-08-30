@@ -3,7 +3,7 @@
 Замените весь класс ScanController в controllers/scan_controller.py на этот код
 """
 
-from PyQt5.QtCore import QObject, pyqtSignal
+from PyQt6.QtCore import QObject, pyqtSignal
 from scanner.scanner_fixed import ScanWorker
 from utils.logger import logger, log_and_notify
 from typing import Callable, List, Optional, Dict, Any, Tuple, cast
@@ -157,9 +157,9 @@ class ScanController(QObject):
         max_depth: int = 3,
         max_concurrent: int = 5,
         timeout: int = 30,
-        on_progress: Optional[Callable[[float], None]] = None,
+        on_progress: Optional[Callable[[int, str], None]] = None,
         on_log: Optional[Callable[[str], None]] = None,
-        on_vulnerability: Optional[Callable[[str, int], None]] = None,
+        on_vulnerability: Optional[Callable[[str, str, str, str], None]] = None,
         on_result: Optional[Callable[[Dict[str, Any]], None]] = None,
         on_status: Optional[Callable[[str], None]] = None,
         max_coverage_mode: bool = False) -> None:
@@ -262,9 +262,9 @@ class ScanController(QObject):
 
     async def _perform_scan(self, url: str, scan_types: List[str], max_depth: int, 
                            max_concurrent: int, timeout: int,
-                           on_progress: Optional[Callable[[float], None]] = None,
+                           on_progress: Optional[Callable[[int, str], None]] = None,
                            on_log: Optional[Callable[[str], None]] = None,
-                           on_vulnerability: Optional[Callable[[str, int], None]] = None,
+                           on_vulnerability: Optional[Callable[[str, str, str, str], None]] = None,
                            on_status: Optional[Callable[[str], None]] = None,
                            max_coverage_mode: bool = False) -> Dict[str, Any]:
         """Выполняет основное сканирование"""
@@ -289,7 +289,7 @@ class ScanController(QObject):
                 on_log(f"🔍 Начинаем сканирование: {', '.join(scan_types_lower)}")
             
             # Создаём ScanWorker
-            worker = ScanWorker(
+            worker: ScanWorker = ScanWorker(
                 url=url,
                 scan_types=scan_types_lower,
                 user_id=self.user_id,
@@ -302,13 +302,14 @@ class ScanController(QObject):
             # Передаём флаг максимального покрытия
             worker.max_coverage_mode = max_coverage_mode
             
-            # Настраиваем callbacks
+            # Настраиваем callbacks. Сигнальные объекты PyQt имеют
+            # динамически типизированные слоты, поэтому приводим их к Any.
             if on_progress:
-                worker.signals.progress.connect(on_progress)
+                cast(Any, worker.signals.progress).connect(on_progress)
             if on_log:
-                worker.signals.log_event.connect(on_log)
+                cast(Any, worker.signals.log_event).connect(on_log)
             if on_vulnerability:
-                worker.signals.vulnerability_found.connect(on_vulnerability)
+                cast(Any, worker.signals.vulnerability_found).connect(on_vulnerability)
             
             # Добавляем в активные сканирования
             self.active_scans[url] = worker

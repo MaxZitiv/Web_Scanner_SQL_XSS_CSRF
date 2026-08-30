@@ -1,8 +1,8 @@
 import time
 import functools
 import threading
-from PyQt5.QtCore import QCoreApplication, QThread
-from typing import Callable, Any, Dict, List, Optional
+from PyQt6.QtCore import QCoreApplication, QThread
+from typing import Callable, Any, Dict, List, Optional, Iterable, cast
 from collections import OrderedDict
 import psutil
 import os
@@ -214,8 +214,8 @@ def cache_result(max_size: int = 100, ttl: int = 300):
             cache_times[key] = current_time
             
             # Очищаем старые записи времени
-            current_keys: set[str] = set(cache_times.keys())  # type: ignore
-            cache_keys: set[str] = set(cache.keys())  # type: ignore
+            current_keys: set[str] = set(cast(Iterable[str], cache_times.keys()))
+            cache_keys: set[str] = set(cast(Iterable[str], cache.keys()))
             for old_key in current_keys - cache_keys:
                 del cache_times[old_key]
             

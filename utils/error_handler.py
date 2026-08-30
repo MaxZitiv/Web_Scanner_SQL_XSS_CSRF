@@ -172,7 +172,7 @@ class ErrorHandler:
     def show_error_message(self, title: str, message: str, details: str = ""):
         """Показывает сообщение об ошибке пользователю"""
         try:
-            from PyQt5.QtWidgets import QApplication, QMessageBox
+            from PyQt6.QtWidgets import QApplication, QMessageBox
 
             app = QApplication.instance()
             if app is None:
@@ -187,7 +187,7 @@ class ErrorHandler:
             msg.setText(message)
             if details:
                 msg.setDetailedText(details)
-            msg.exec_()
+            msg.exec()
         except Exception as e:
             log_and_notify('error', f"Unexpected error showing error message: {e}")
 

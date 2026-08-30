@@ -2,7 +2,7 @@
 Миксин для функциональности экспорта данных
 """
 from typing import Optional
-from PyQt5.QtWidgets import QWidget
+from PyQt6.QtWidgets import QWidget
 from utils import error_handler
 from utils.database import db
 from utils.export_utils import ExportUtils
@@ -45,12 +45,15 @@ class ExportMixin:
             if user_id is None and parent_widget is not None and hasattr(parent_widget, "user_id"):
                 user_id = getattr(parent_widget, "user_id", None)
             
-            if user_id is not None:
+            if user_id is not None and parent_widget is not None:
                 scans = db.get_scans_by_user(user_id)
                 ExportUtils.export_data(parent_widget, scans, format_name, file_extension, user_id)
             else:
-                # Если user_id так и не был найден, показываем сообщение об ошибке
-                error_handler.show_error_message("Ошибка экспорта", "Не удалось определить идентификатор пользователя")
+                # Если user_id или родительский виджет не удалось определить
+                error_handler.show_error_message(
+                    "Ошибка экспорта",
+                    "Не удалось определить идентификатор пользователя или родительский виджет"
+                )
         except Exception as e:
             error_handler.handle_file_error(e, f"export_to_{file_extension}")
 

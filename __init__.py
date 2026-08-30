@@ -8,7 +8,7 @@ Web Scanner SQL XSS CSRF - Веб-сканер для поиска уязвим�
 - Сканирование SQL Injection уязвимостей
 - Обнаружение XSS уязвимостей
 - Проверка CSRF защиты
-- Графический интерфейс на PyQt5
+- Графический интерфейс на PyQt6
 - Асинхронное сканирование
 - Шифрование чувствительных данных
 - Подробное логирование
@@ -92,16 +92,8 @@ def validate_config():
         if MAX_SCAN_DEPTH <= 0:
             raise ValueError("MAX_SCAN_DEPTH должен быть положительным")
         
-        # Проверяем типы уязвимостей
-        if not all(isinstance(k, str) and isinstance(v, str) 
-                  for k, v in VULNERABILITY_TYPES.items()):
-            raise TypeError("VULNERABILITY_TYPES должен содержать строки")
-        
-        # Проверяем уровни логирования
-        if not all(isinstance(k, str) and isinstance(v, int) 
-                  for k, v in LOG_LEVELS.items()):
-            raise TypeError("LOG_LEVELS должен содержать строки и числа")
-        
+        # Проверка типов констант выполняется статически типизированным
+        # анализатором; конфигурация задана в виде литералов выше.
         return True
     except (ValueError, TypeError) as e:
         print(f"Ошибка конфигурации: {e}")

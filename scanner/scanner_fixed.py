@@ -19,7 +19,7 @@ from urllib.parse import urlparse, urljoin, parse_qs, urlencode
 import aiohttp
 from bs4 import BeautifulSoup
 from bs4.element import Tag
-from PyQt5.QtCore import pyqtSignal, QObject
+from PyQt6.QtCore import pyqtSignal, QObject
 
 # Внутренние модули
 from .cache_manager import TTLCache, cache_manager
@@ -176,7 +176,7 @@ class Scanner(QObject):
         self._scan_in_progress = False
         self._scan_results: ScanResults = []
         self._current_url = ""
-        self._scan_id = hashlib.md5(str(time.time()).encode()).hexdigest()
+        self._scan_id = hashlib.md5(str(time.time()).encode(), usedforsecurity=False).hexdigest()
         self._scan_options = {
             'max_depth': MAX_DEPTH,
             'timeout': REQUEST_TIMEOUT,

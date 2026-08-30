@@ -4,16 +4,23 @@ views/statistics_window.py
 """
 
 # Исправление импортов
-from PyQt5.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
-                            QLabel, QTableWidget, QTableWidgetItem, QPushButton, 
-                            QTabWidget)
-from PyQt5.QtCore import Qt, QRect
-from PyQt5.QtGui import QFont, QPainter, QColor
-from PyQt5.QtCore import Qt
-from typing import List, Optional
+from PyQt6.QtWidgets import (
+    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
+    QLabel, QTableWidget, QTableWidgetItem, QPushButton,
+    QTabWidget
+)
+from PyQt6.QtCore import (
+    Qt, QRect
+)
+from PyQt6.QtGui import (
+    QFont, QPainter, QColor
+)
+from typing import Any, List, Optional, cast
 from utils import logger
 from utils.database import db
-from PyQt5.QtChart import QChart, QChartView, QPieSeries, QHorizontalBarSeries, QBarSet
+from PyQt6.QtCharts import (
+    QChart, QChartView, QPieSeries, QHorizontalBarSeries, QBarSet
+)
 
 
 class StatisticsWindow(QMainWindow):
@@ -50,7 +57,7 @@ class StatisticsWindow(QMainWindow):
         # Вкладка с таблицей сканирований
         self.scans_table = QTableWidget()
         self.scans_table.setColumnCount(6)
-        self.scans_table.setHorizontalHeaderLabels([
+        cast(Any, self.scans_table).setHorizontalHeaderLabels([
             "ID сканирования", "URL", "Дата", "Найдено уязвимостей", "Время сканирования", "Статус"
         ])
         self.tabs.addTab(self.scans_table, "История сканирований")
@@ -69,7 +76,7 @@ class StatisticsWindow(QMainWindow):
 
         # Кнопка закрытия
         close_btn = QPushButton("Закрыть")
-        close_btn.clicked.connect(self.close_window)
+        cast(Any, close_btn.clicked).connect(self.close_window)
         main_layout.addWidget(close_btn)
 
         central_widget.setLayout(main_layout)
@@ -175,22 +182,25 @@ class StatisticsWindow(QMainWindow):
 
             # Создаем круговую диаграмму
             series = QPieSeries()
+            series_any = cast(Any, series)
             
             for row in rows:
                 vuln_type = row[0]
                 count = row[1]
-                series.append(f"{vuln_type}: {count}", count)
+                series_any.append(f"{vuln_type}: {count}", count)
 
             chart = QChart()
-            chart.addSeries(series)
-            chart.setTitle("Распределение уязвимостей по типам")
-            legend = chart.legend()
-            if legend:
-                legend.setVisible(True)
-                legend.setAlignment(Qt.AlignmentFlag.AlignRight)
+            chart_any = cast(Any, chart)
+            chart_any.addSeries(series)
+            chart_any.setTitle("Распределение уязвимостей по типам")
+            legend = chart_any.legend()
+            legend_any = legend
+            if legend_any:
+                legend_any.setVisible(True)
+                legend_any.setAlignment(Qt.AlignmentFlag.AlignRight)
 
             chart_view = QChartView(chart)
-            chart_view.setRenderHint(QPainter.Antialiasing) # type: ignore
+            cast(Any, chart_view).setRenderHint(QPainter.RenderHint.Antialiasing)
 
             self.charts_layout.addWidget(chart_view)
 
@@ -243,30 +253,33 @@ class StatisticsWindow(QMainWindow):
             
             for vuln_type, data in vuln_types.items():
                 bar_set = QBarSet(vuln_type)
-                bar_set.setColor(QColor(colors[color_index % len(colors)]))
+                bar_set_any = cast(Any, bar_set)
+                bar_set_any.setColor(QColor(colors[color_index % len(colors)]))
                 color_index += 1
 
                 for date in sorted(dates):
-                    bar_set.append(data.get(date, 0))
+                    bar_set_any.append(data.get(date, 0))
 
                 series_list.append(bar_set)
 
             try:
                 # Упрощаем создание осей
                 bar_series: QHorizontalBarSeries = QHorizontalBarSeries()
+                bar_series_any = cast(Any, bar_series)
                 for bar_set in series_list:
-                    bar_series.append(bar_set) # type: ignore
+                    bar_series_any.append(bar_set)
 
                 chart = QChart()
-                chart.setTitle("Динамика обнаружения уязвимостей")
-                chart.addSeries(bar_series)
-                chart.createDefaultAxes()
+                chart_any = cast(Any, chart)
+                chart_any.setTitle("Динамика обнаружения уязвимостей")
+                chart_any.addSeries(bar_series)
+                chart_any.createDefaultAxes()
 
                 chart_view = QChartView(chart)
             except NameError:
                 # QChart, QChartView или QHorizontalBarSeries недоступны
                 return
-            chart_view.setRenderHint(QPainter.Antialiasing) # type: ignore
+            cast(Any, chart_view).setRenderHint(QPainter.RenderHint.Antialiasing)
 
             self.charts_layout.addWidget(chart_view)
 

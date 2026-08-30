@@ -4,18 +4,19 @@ import sys
 # Добавляем корневую директорию проекта в sys.path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from PyQt5.QtWidgets import (QPushButton, QVBoxLayout, QLabel,
-                             QMessageBox, QHBoxLayout, QApplication, QLineEdit)
-from PyQt5.QtWidgets import QWidget
-from PyQt5.QtWidgets import QLineEdit
-from PyQt5.QtGui import QKeyEvent
-from typing import Optional
+from PyQt6.QtWidgets import (
+    QPushButton, QVBoxLayout, QLabel,
+    QMessageBox, QHBoxLayout, QApplication, QLineEdit
+)
+from PyQt6.QtWidgets import QWidget
+from PyQt6.QtWidgets import QLineEdit
+from PyQt6.QtGui import QKeyEvent
+from typing import Optional, Any, cast
 from controllers.auth_controller import AuthController
 from models.user_model import UserModel
 from utils.logger import logger, log_and_notify
 import sqlite3
-from PyQt5.QtCore import pyqtSignal
-from typing import Optional, Any
+from PyQt6.QtCore import pyqtSignal
 
 
 class LoginWindow(QWidget):
@@ -62,7 +63,7 @@ class LoginWindow(QWidget):
         self.show_password_button = QPushButton("👁")
         self.show_password_button.setToolTip("Показать/скрыть пароль")
         self.show_password_button.setMaximumWidth(40)
-        self.show_password_button.clicked.connect(self.toggle_password_visibility)
+        cast(Any, self.show_password_button.clicked).connect(self.toggle_password_visibility)
 
         # Контейнер для пароля и кнопки
         password_container = QHBoxLayout()
@@ -71,10 +72,10 @@ class LoginWindow(QWidget):
 
         self.login_button = QPushButton("Войти")
         self.login_button.setObjectName("primaryButton")
-        self.login_button.clicked.connect(self.login)
+        cast(Any, self.login_button.clicked).connect(self.login)
 
         self.register_button = QPushButton("Регистрация")
-        self.register_button.clicked.connect(self.register)
+        cast(Any, self.register_button.clicked).connect(self.register)
 
         # Вертикальный компоновщик
         layout = QVBoxLayout()
@@ -99,8 +100,8 @@ class LoginWindow(QWidget):
         self.adjustSize()
 
         # Обработка Enter для каждого поля
-        self.username_input.returnPressed.connect(self.login)
-        self.password_input.returnPressed.connect(self.login)
+        cast(Any, self.username_input.returnPressed).connect(self.login)
+        cast(Any, self.password_input.returnPressed).connect(self.login)
 
         logger.debug("Login UI components created.")
 

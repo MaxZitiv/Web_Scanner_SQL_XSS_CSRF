@@ -1,6 +1,8 @@
-from typing import Optional
-from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QLineEdit, QTextEdit, QComboBox, QCheckBox,
-                         QMessageBox, QFormLayout, QSpinBox, QGroupBox)
+from typing import Optional, Dict, Any
+from PyQt6.QtWidgets import (
+    QDialog, QVBoxLayout, QLineEdit, QTextEdit, QComboBox, QCheckBox,
+    QMessageBox, QFormLayout, QSpinBox, QGroupBox
+)
 
 from utils.logger import logger
 from policies.policy_manager import PolicyManager
@@ -71,7 +73,7 @@ class PolicyEditDialog(QDialog):
                 logger.error(f"Error loading policy {self.policy_id}: {e}")
                 QMessageBox.critical(self, "Ошибка", "Не удалось загрузить политику безопасности")
 
-    def get_policy_data(self) -> dict:
+    def get_policy_data(self) -> Dict[str, Any]:
         """Получение данных политики из диалога"""
         return {
             'name': self.name_edit.text(),
@@ -125,7 +127,7 @@ class ScanSettingsDialog(QDialog):
             logger.error(f"Error loading policies: {e}")
             QMessageBox.warning(self, "Предупреждение", "Не удалось загрузить список политик")
 
-    def get_settings(self) -> dict:
+    def get_settings(self) -> Dict[str, Any]:
         """Получение настроек сканирования"""
         return {
             'policy_id': self.policy_combo.currentData(),

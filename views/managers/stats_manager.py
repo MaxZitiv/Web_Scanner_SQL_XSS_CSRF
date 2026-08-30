@@ -1,5 +1,7 @@
-from typing import Dict, Any, Optional
-from PyQt5.QtCore import QTimer, QObject, pyqtSignal
+from typing import Dict, Any, Optional, cast
+from PyQt6.QtCore import (
+    QTimer, QObject, pyqtSignal
+)
 from utils.logger import logger
 from typing import Tuple, List
 
@@ -32,7 +34,7 @@ class StatsManager(QObject):
         # Таймер для пакетного обновления UI
         self._stats_update_timer = QTimer()
         self._stats_update_timer.setSingleShot(True)
-        self._stats_update_timer.timeout.connect(self._flush_stats_updates)
+        cast(Any, self._stats_update_timer.timeout).connect(self._flush_stats_updates)
 
     def update_stats(self, key: str, value: int) -> None:
         """Обновляет значение статистики"""

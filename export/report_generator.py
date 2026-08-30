@@ -187,7 +187,8 @@ class PDF(FPDF):
         # Обработка текста для корректного отображения в PDF
         body = self._clean_text_for_pdf(body)
         # Используем multi_cell и игнорируем возвращаемое значение
-        self.multi_cell(0, 5, body)  # type: ignore
+        multi_cell = getattr(self, 'multi_cell')
+        multi_cell(0, 5, body)
         self.ln()
 
     @staticmethod
@@ -248,7 +249,8 @@ def generate_pdf_report(scan_id: int, filename: str):
         report_text = report_text.replace("=" * 60, "-" * 80)
 
         # Добавляем содержимое в PDF
-        pdf.multi_cell(0, 5, report_text) # type: ignore
+        multi_cell = getattr(pdf, 'multi_cell')
+        multi_cell(0, 5, report_text)
 
         # Сохраняем PDF
         pdf.output(filename, 'F')

@@ -1,10 +1,15 @@
 """
 Миксин для оптимизации вкладки сканирования
 """
-from PyQt5.QtCore import QTimer, QObject
-from PyQt5.QtWidgets import QTreeWidget, QTreeWidgetItem
+from PyQt6.QtCore import (
+    QTimer, QObject
+)
+from PyQt6.QtWidgets import (
+    QTreeWidget, QTreeWidgetItem
+)
 from utils.logger import logger
-from typing import Optional, Any, Dict, List
+from typing import Optional, Any, Dict, List, Tuple, Union, cast
+from views.managers.stats_manager import StatsManager
 
 
 class ScanTabStatsMixin:
@@ -16,15 +21,15 @@ class ScanTabStatsMixin:
         # Инициализируем атрибуты, которые могут использоваться в методах
         self.stats_labels: Dict[str, Any] = {}
         self._scan_start_time = None
-        self.stats_manager: Optional[Any] = None  # Явно указываем, что stats_manager может быть None
+        self.stats_manager: Optional[StatsManager] = None  # Явно указываем, что stats_manager может быть None
         self._setup_stats_timer()
         self.init_stats_manager()
         self._update_scan_stats()
         
         self.site_tree = QTreeWidget()
-        self.site_tree.setHeaderLabels(["URL", "Статус"])
+        cast(Any, self.site_tree).setHeaderLabels(["URL", "Статус"])
         
-    def update_site_tree(self, data):
+    def update_site_tree(self, data: Union[Dict[str, List[str]], Tuple[List[str], List[str]]]) -> None:
         """Обновление структуры сайта"""
         if not data:
             logger.warning("Empty data received")
@@ -54,7 +59,7 @@ class ScanTabStatsMixin:
         """Настройка таймера для обновления статистики"""
         self._scan_stats_timer = QTimer()
         self._scan_stats_timer.setInterval(1000)  # Обновление каждую секунду
-        self._scan_stats_timer.timeout.connect(self._update_scan_stats)
+        cast(Any, self._scan_stats_timer.timeout).connect(self._update_scan_stats)
         self._scan_stats_timer.start()
 
     def stop_stats_timer(self):
@@ -85,7 +90,7 @@ class ScanTabStatsMixin:
                     return
 
                 # Подключаем сигнал обновления статистики
-                self.stats_manager.stats_updated.connect(self._on_stats_updated)
+                cast(Any, self.stats_manager.stats_updated).connect(self._on_stats_updated)
 
                 logger.info("StatsManager initialized successfully")
         except Exception as e:
