@@ -14,9 +14,7 @@ from PyQt6.QtWidgets import (
 # Определяем константы для кнопок
 Yes = QMessageBox.StandardButton.Yes
 No = QMessageBox.StandardButton.No
-from PyQt6.QtCore import (
-    QMetaObject, Qt, Q_ARG, QObject
-)
+from PyQt6.QtCore import QObject
 from PyQt6.QtGui import (
     QFont, QColor, QCloseEvent
 )
@@ -821,13 +819,11 @@ class DashboardWindow(QMainWindow):
             if self.statistics_widget is None:
                 logger.debug(f"statistics_widget is None, пропускаем обновление {stat_name}")
                 return
-            
-            # Обеспечиваем обновление в главном потоке GUI
-            QMetaObject.invokeMethod(self.statistics_widget, "update_stat", 
-                                   Qt.ConnectionType.QueuedConnection,
-                                   Q_ARG(str, stat_name),
-                                   Q_ARG(object, value))
 
+            # Сигналы приходят в главный поток GUI, поэтому обновляем виджет
+            # напрямую. QMetaObject.invokeMethod не используется: метод
+            # update_stat не зарегистрирован как слот и может не вызываться,
+            # а дублирующий вызов ломает последовательность метрик.
             # ===== ПРЕОБРАЗОВАНИЕ И ВАЛИДАЦИЯ ЗНАЧЕНИЯ =====
 
             # Логируем полученное значение для отладки

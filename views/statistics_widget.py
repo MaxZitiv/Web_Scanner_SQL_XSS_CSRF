@@ -175,6 +175,7 @@ class StatisticsWidget(QWidget):
         try:
             progress_value = max(0, min(100, progress))
             self.progress_bar.setValue(progress_value)
+            self.stats_data['progress'] = progress_value
         except Exception as e:
             from utils.logger import logger
             logger.error(f"Error updating progress: {e}")
@@ -196,7 +197,7 @@ class StatisticsWidget(QWidget):
             
             # Очищаем данные
             for key in self.stats_data:
-                self.stats_data[key] = 0
+                self.stats_data[key] = '00:00:00' if key == 'scan_time' else 0
         except Exception as e:
             from utils.logger import logger
             logger.error(f"Error resetting stats: {e}")

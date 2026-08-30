@@ -338,7 +338,7 @@ class ScanWorkerSignals(QObject):
     progress_updated = pyqtSignal(int)
     vulnerability_found = pyqtSignal(str, str, str)
     log_event = pyqtSignal(str)
-    stats_updated = pyqtSignal(str, int)
+    stats_updated = pyqtSignal(str, object)
     site_structure_updated = pyqtSignal(list, list)
 
 class ScanWorker:
@@ -397,6 +397,7 @@ class ScanWorker:
         self.max_depth_reached = False
         self.scan_complete = False
         self.scan_started = False
+        self.reported_progress = 0
         
         # Параметры сканирования
         self.url = url
@@ -753,23 +754,30 @@ class ScanWorker:
         return self._is_paused
 
     def calculate_progress(self) -> int:
-        """Вычисляет прогресс сканирования."""
+        """Вычисляет прогресс сканирования (0..100)."""
         try:
             total = self.total_links_count
             processed = len(self.all_scanned_urls)
-            return int((processed / total) * 100) if total > 0 else 0
+            if total <= 0:
+                return 0
+            return max(0, min(100, int((processed / total) * 100)))
         except Exception as e:
             logger.error(f"Error calculating progress: {e}")
             return 0
 
     def update_progress(self, current_url: str = "", current_depth: Optional[int] = None, queue_size: Optional[int] = None):
-        """Обновляет прогресс сканирования."""
+        """Обновляет прогресс сканирования (монотонно, без отката)."""
         try:
             if queue_size is None:
                 queue_size = self.to_visit.qsize() if self.to_visit else 0
             
             progress = self.calculate_progress()
-            
+            # Прогресс не должен уменьшаться при обнаружении новых URL.
+            if progress < self.reported_progress:
+                progress = self.reported_progress
+            else:
+                self.reported_progress = progress
+
             # Отправляем сигналы о прогрессе
             self.signals.progress.emit(progress, current_url)
             self.signals.progress_updated.emit(progress)
@@ -1550,6 +1558,7 @@ class ScanWorker:
             self.current_depth = 0
             self.max_depth_reached = False
             self.scan_complete = False
+            self.reported_progress = 0
             self.scan_completion_metrics['errors_encountered'] = 0
             self.scan_completion_metrics['urls_scanned'] = 0
             self.scan_completion_metrics['vulnerabilities_found'] = 0
@@ -1616,7 +1625,11 @@ class ScanWorker:
             
             total_vulnerabilities = sum(len(vulns) for vulns in self.vulnerabilities.values())
             self.signals.log_event.emit(f"📊 Просканировано URL: {len(self.all_scanned_urls)}, форм: {self.scanned_forms_count}, уязвимостей: {total_vulnerabilities}")
-            
+
+            # Финальный прогресс и статистика
+            self.reported_progress = 100
+            self.signals.progress.emit(100, "")
+            self.signals.progress_updated.emit(100)
             self.update_stats()
             return result
             
