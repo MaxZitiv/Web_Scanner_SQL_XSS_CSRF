@@ -2,11 +2,11 @@ import csv
 import json
 import os
 import sqlite3
-from typing import List, Dict, Any, Optional, Set
+from typing import List, Dict, Any, Optional, Set, cast
 
 from fpdf import FPDF
 
-from utils.encryption import decrypt_sensitive_data
+from utils.encryption import decrypt_sensitive_data_safe
 from utils.logger import logger, log_and_notify
 from utils.performance import get_local_timestamp
 
@@ -30,53 +30,71 @@ def format_scan_data_for_export(scans: List[Dict[str, Any]], user_id: Optional[i
     formatted_data: List[Dict[str, Any]] = []
     
     for scan in scans:
-        # Парсим результаты сканирования
-        results: List[Dict[str, Any]] = scan.get('result', [])
-        if isinstance(results, str):
+        # Парсим результаты сканирования. Поддерживаются две формы входных
+        # данных: полные записи о сканировании (url/result) и строки таблицы
+        # уязвимостей (URL + тип + параметр + серьёзность), которые приходят
+        # из окна «Отчёты».
+        results: List[Dict[str, Any]] = []
+        raw_results: Any = scan.get('result', scan.get('results', []))
+        if isinstance(raw_results, str):
             try:
-                results = json.loads(results)
+                parsed_results = json.loads(raw_results)
             except json.JSONDecodeError:
-                results = []
-        
+                parsed_results = []
+            if isinstance(parsed_results, list):
+                results = cast(List[Dict[str, Any]], parsed_results)
+        elif isinstance(raw_results, list):
+            results = cast(List[Dict[str, Any]], raw_results)
+
+        is_vulnerability_row = (
+            not results
+        ) and any(
+            key in scan for key in ('URL', 'Тип уязвимости', 'vulnerability_type', 'parameter', 'Параметр')
+        )
+
+        if is_vulnerability_row:
+            severity = str(scan.get('severity', scan.get('Серьёзность', 'Средний')))
+            vuln_row: Dict[str, Any] = {
+                'type': str(scan.get('vulnerability_type', scan.get('Тип уязвимости', 'Unknown'))),
+                'status': str(scan.get('status', 'Vulnerable' if severity.lower() in ('high', 'высокий') else 'Проверено')),
+                'url': str(scan.get('url', scan.get('URL', ''))),
+                'parameter': str(scan.get('parameter', scan.get('Параметр', ''))),
+                'severity': severity,
+                'details': str(scan.get('details', '')),
+            }
+            results = [vuln_row]
+
         # Получаем количество отсканированных URL
         total_urls_scanned = scan.get('total_urls_scanned', 0)
         total_forms_scanned = scan.get('total_forms_scanned', 0)
         total_checks = total_urls_scanned + total_forms_scanned
-        
-        # Если нет данных о URL, используем количество результатов как fallback
+
+        # Если нет данных о количестве, используем количество результатов как fallback.
         if total_checks == 0:
             total_checks = len(results)
-        
+
         # Обрабатываем URL - расшифровываем для текущего пользователя.
         # Пользователь уже прошёл аутентификацию до вызова экспорта, поэтому
         # повторная проверка в БД не требуется и может быть недоступна.
-        target_url = scan.get('url', 'N/A')
+        target_url = scan.get('url', scan.get('URL', 'N/A'))
         if user_id:
-            try:
-                target_url = decrypt_sensitive_data(target_url)
-            except Exception as e:
-                logger.warning(f"Failed to decrypt URL for scan {scan.get('id', 'unknown')}: {e}")
-                # Если расшифровка не удалась, оставляем зашифрованным
-                pass
-        
+            target_url = decrypt_sensitive_data_safe(target_url, target_url)
+
         # Группируем результаты по типам уязвимостей
         vuln_summary: Dict[str, Dict[str, Any]] = {}
         vulnerable_count = 0
-        
+
         for result in results:
-            vuln_type = result.get('type', 'Unknown')
-            status = result.get('status', 'Unknown')
-            url = result.get('url', 'Unknown')
-            
+            vuln_type: str = str(result.get('type', 'Unknown'))
+            status: str = str(result.get('status', 'Unknown'))
+            severity: str = str(result.get('severity', ''))
+            url_value: Any = result.get('url', 'Unknown')
+
             # Расшифровываем URL в результатах для текущего пользователя.
             if user_id:
-                try:
-                    url = decrypt_sensitive_data(url)
-                except Exception as e:
-                    logger.warning(f"Failed to decrypt URL in result: {e}")
-                    # Если расшифровка не удалась, оставляем зашифрованным
-                    pass
-            
+                url_value = decrypt_sensitive_data_safe(url_value, url_value)
+            url: str = str(url_value)
+
             if vuln_type not in vuln_summary:
                 vuln_summary[vuln_type] = {
                     'total': 0,
@@ -84,29 +102,42 @@ def format_scan_data_for_export(scans: List[Dict[str, Any]], user_id: Optional[i
                     'safe': 0,
                     'details': []
                 }
-            
+
             vuln_summary[vuln_type]['total'] += 1
-            
-            if 'Vulnerable' in status or 'уязвим' in status.lower():
+
+            is_vulnerable = (
+                'Vulnerable' in status
+                or 'уязвим' in status.lower()
+                or severity.lower() in ('high', 'высокий', 'critical', 'критический')
+            )
+            if is_vulnerable:
                 vuln_summary[vuln_type]['vulnerable'] += 1
                 vulnerable_count += 1
-                severity = 'HIGH'
+                severity_value = 'HIGH'
             else:
                 vuln_summary[vuln_type]['safe'] += 1
-                severity = 'LOW'
-            
+                severity_value = 'LOW'
+
+            param: str = str(result.get('parameter', ''))
             vuln_summary[vuln_type]['details'].append({
                 'url': url,
+                'parameter': param,
                 'status': status,
-                'severity': severity
+                'severity': severity_value,
             })
-        
-        # Создаем форматированную запись
+
+        # Создаем форматированную запись.
+        # scan_type берём из записи, иначе строим из типов найденных уязвимостей.
+        if not scan.get('scan_type'):
+            scan_type = ', '.join(vuln_summary.keys()) if vuln_summary else 'general'
+        else:
+            scan_type = scan.get('scan_type', 'general')
+
         formatted_scan: Dict[str, Any] = {
-            'scan_id': scan.get('id', 'N/A'),
+            'scan_id': scan.get('id', scan.get('scan_id', 'N/A')),
             'target_url': target_url,
-            'scan_date': scan.get('timestamp', 'N/A'),
-            'scan_type': scan.get('scan_type', 'general'),
+            'scan_date': scan.get('timestamp', scan.get('Время обнаружения', 'N/A')),
+            'scan_type': scan_type,
             'status': scan.get('status', 'completed'),
             'scan_duration': scan.get('scan_duration', 0.0),
             'summary': {
@@ -114,12 +145,12 @@ def format_scan_data_for_export(scans: List[Dict[str, Any]], user_id: Optional[i
                 'total_urls_scanned': total_urls_scanned,
                 'total_forms_scanned': total_forms_scanned,
                 'vulnerable_count': vulnerable_count,
-                'safe_count': total_checks - vulnerable_count,
-                'risk_level': 'HIGH' if vulnerable_count > 0 else 'LOW'
+                'safe_count': max(0, total_checks - vulnerable_count),
+                'risk_level': 'HIGH' if vulnerable_count > 0 else 'LOW',
             },
-            'vulnerabilities': vuln_summary
+            'vulnerabilities': vuln_summary,
         }
-        
+
         formatted_data.append(formatted_scan)
     
     return formatted_data

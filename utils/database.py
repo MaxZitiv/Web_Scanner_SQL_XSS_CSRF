@@ -5,10 +5,15 @@ import datetime
 from typing import List, Dict, Optional, Any, Tuple, Union, Callable, cast
 from urllib.parse import urlparse
 from utils.logger import logger, log_and_notify
-from utils.encryption import encrypt_sensitive_data, decrypt_sensitive_data
+from utils.encryption import (
+    encrypt_sensitive_data,
+    decrypt_sensitive_data,
+    decrypt_sensitive_data_safe,
+)
 # Добавляем аннотации типов для функций шифрования
 encrypt_sensitive_data: Callable[[Union[str, Dict[str, Any], List[Any]]], str] = encrypt_sensitive_data
 decrypt_sensitive_data: Callable[[str], Union[str, Dict[str, Any], List[Any]]] = decrypt_sensitive_data
+decrypt_sensitive_data_safe: Callable[[Any, Any], Union[str, Dict[str, Any], List[Any], Any]] = decrypt_sensitive_data_safe
 # from utils.validators import validator
 from contextlib import contextmanager
 from concurrent.futures import ThreadPoolExecutor
@@ -74,6 +79,22 @@ class Database:
 
     def get_db_connection(self) -> sqlite3.Connection:
         """Создает и возвращает соединение с базой данных."""
+        # Некоторые внешние вызовы закрывают общее соединение (conn.close()).
+        # Если это произошло, пересоздаем его, чтобы следующие запросы
+        # (статистика, уязвимости, отчёты) не падали с
+        # "Cannot operate on a closed database".
+        if self._connection is not None:
+            try:
+                cur = self._connection.cursor()
+                cur.execute('SELECT 1')
+                cur.fetchone()
+            except (sqlite3.ProgrammingError, sqlite3.OperationalError, sqlite3.DatabaseError):
+                try:
+                    self._connection.close()
+                except Exception:
+                    pass
+                self._connection = None
+
         if self._connection is None:
             db_path = self.get_resource_path(os.path.join('data', self.db_file))
             os.makedirs(os.path.dirname(db_path), exist_ok=True)
@@ -394,11 +415,10 @@ class Database:
                 result: List[Dict[str, Any]] = []
                 for row in rows:
                     item = dict(row)
-                    try:
-                        item['url'] = decrypt_sensitive_data(item['url'])
-                    except Exception as e:
-                        logger.warning(f"Failed to decrypt URL for scan {item['id']}: {e}")
-                        item['url'] = '[decryption error]'
+                    item['url'] = decrypt_sensitive_data_safe(
+                        item.get('url', ''),
+                        '[URL недоступен: ключ шифрования]',
+                    )
                     result.append(item)
                 return result
         except Exception as e:
@@ -562,23 +582,27 @@ class Database:
                 row = cursor.fetchone()
                 if row:
                     data = dict(row)
-                    try:
-                        data['url'] = decrypt_sensitive_data(data['url'])
-                    except Exception as e:
-                        logger.warning(f"Failed to decrypt URL for scan {scan_id}: {e}")
-                        data['url'] = '[decryption error]'
-                    
-                    try:
-                        decrypted_result: Union[str, Dict[str, Any], List[Any]] = decrypt_sensitive_data(data['result'])
-                        if isinstance(decrypted_result, str):
+                    data['url'] = decrypt_sensitive_data_safe(
+                        data.get('url', ''),
+                        '[URL недоступен: ключ шифрования]',
+                    )
+
+                    decrypted_result = decrypt_sensitive_data_safe(
+                        data.get('result', '[]'),
+                        None,
+                    )
+                    if isinstance(decrypted_result, str):
+                        try:
                             data['results'] = json.loads(decrypted_result)
-                        else:
-                            data['results'] = decrypted_result
-                    except (json.JSONDecodeError, Exception) as e:
-                        logger.error(f"Error decoding JSON for scan {scan_id}: {e}")
+                        except json.JSONDecodeError:
+                            data['results'] = []
+                    elif isinstance(decrypted_result, (dict, list)):
+                        data['results'] = decrypted_result
+                    else:
                         data['results'] = []
-                    
-                    del data['result']
+
+                    if 'result' in data:
+                        del data['result']
                     return data
                 return None
         except Exception as e:
@@ -615,11 +639,10 @@ class Database:
     def _vulnerability_from_row(self, row: Dict[str, Any]) -> Dict[str, Any]:
         """Преобразует строку таблицы vulnerabilities в словарь для UI."""
         data = dict(row)
-        try:
-            data['url'] = decrypt_sensitive_data(str(data.get('url', '')))
-        except Exception as e:
-            logger.warning(f"Failed to decrypt vulnerability URL: {e}")
-            data['url'] = str(data.get('url', ''))
+        data['url'] = decrypt_sensitive_data_safe(
+            str(data.get('url', '')),
+            '[URL недоступен: ключ шифрования]',
+        )
 
         data['details'] = self._parse_json_field(data.get('details'), {})
         data['request_params'] = self._parse_json_field(data.get('request_params'), {})

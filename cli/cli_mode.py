@@ -195,16 +195,16 @@ class CLIMode:
         except Exception as e:
             print(f"\n⚠️ Предупреждение: не удалось сохранить результаты в базу данных: {e}")
 
-    async def scan_url(self, url: str, scan_type: str = "standard", max_depth: int = 3, max_concurrent: int = 5, timeout: int = 30) -> bool:
-        """Запуск сканирования указанного URL с настраиваемыми параметрами
-        
-        Args:
-            url: URL для сканирования
-            scan_type: Тип сканирования (standard, deep, quick)
-            max_depth: Максимальная глубина сканирования
-            max_concurrent: Максимальное количество одновременных запросов
-            timeout: Таймаут запроса в секундах
+    async def scan_url(self, url: str, scan_type: str = "standard", max_depth: int = 10, max_concurrent: int = 5, timeout: int = 30) -> bool:
+        """Запуск сканирования указанного URL.
+
+        Сайт всегда сканируется полностью: глубина и параллельность
+        фиксированы и не являются настройками пользователя.
         """
+        # Полное сканирование независимо от переданных аргументов.
+        max_depth = 10
+        max_concurrent = 5
+
         if not self.current_user_id:
             print("❌ Ошибка: не выполнен вход в систему")
             return False
@@ -214,8 +214,7 @@ class CLIMode:
             self.scan_controller = ScanController(url, [scan_type], self.current_user_id, max_depth=max_depth, max_concurrent=max_concurrent, timeout=timeout)
             print(f"🔍 Запуск сканирования: {url}")
             print(f"   Тип сканирования: {scan_type}")
-            print(f"   Максимальная глубина: {max_depth}")
-            print(f"   Макс. одновременных запросов: {max_concurrent}")
+            print("   Режим: полное сканирование")
             print(f"   Таймаут запроса: {timeout} сек")
 
             # Реальная логика сканирования
@@ -357,10 +356,8 @@ class CLIMode:
 
         print(f"\n🚀 Запуск интерактивного режима для пользователя: {self.current_username}")
         print("Доступные команды:")
-        print("  scan <url> [type] [depth] [concurrent] [timeout] - Запустить сканирование URL")
+        print("  scan <url> [type] [timeout] - Запустить полное сканирование URL")
         print("    type: тип сканирования (1=quick, 2=standard, 3=deep), по умолчанию: 2")
-        print("    depth: максимальная глубина сканирования (1-10), по умолчанию: 3")
-        print("    concurrent: макс. количество одновременных запросов (1-20), по умолчанию: 5")
         print("    timeout: таймаут запроса в секундах (5-300), по умолчанию: 30")
         print("  list - Показать список сканирований")
         print("  results <id> - Показать результаты сканирования")
@@ -382,10 +379,8 @@ class CLIMode:
                     break
                 elif cmd == "help":
                     print("Доступные команды:")
-                    print("  scan <url> [type] [depth] [concurrent] [timeout] - Запустить сканирование URL")
+                    print("  scan <url> [type] [timeout] - Запустить полное сканирование URL")
                     print("    type: тип сканирования (1=quick, 2=standard, 3=deep), по умолчанию: 2")
-                    print("    depth: максимальная глубина сканирования (1-10), по умолчанию: 3")
-                    print("    concurrent: макс. количество одновременных запросов (1-20), по умолчанию: 5")
                     print("    timeout: таймаут запроса в секундах (5-300), по умолчанию: 30")
                     print("  list - Показать список сканирований")
                     print("  results <id> - Показать результаты сканирования")
@@ -395,10 +390,11 @@ class CLIMode:
                 elif cmd == "scan" and len(parts) >= 2:
                     url = parts[1]
                     scan_type = parts[2] if len(parts) > 2 else "standard"
-                    max_depth = int(parts[3]) if len(parts) > 3 else 3
-                    max_concurrent = int(parts[4]) if len(parts) > 4 else 5
-                    timeout = int(parts[5]) if len(parts) > 5 else 30
-                    
+                    timeout = int(parts[3]) if len(parts) > 3 else 30
+                    # Сайт всегда сканируется полностью.
+                    max_depth = 10
+                    max_concurrent = 5
+
                     # Преобразуем тип сканирования в правильный формат
                     if scan_type.isdigit():
                         scan_type_map = {
@@ -437,18 +433,11 @@ class CLIMode:
 
 
 def run_cli_mode(url: Optional[str] = None, username: Optional[str] = None, 
-                  scan_type: str = "2", max_depth: int = 3, max_concurrent: int = 5, timeout: int = 30) -> int:
-    """Запуск CLI режима
-    
-    Args:
-        url: URL для сканирования (опционально)
-        username: Имя пользователя для входа (опционально)
-        scan_type: Тип сканирования (1=quick, 2=standard, 3=deep)
-        max_depth: Максимальная глубина сканирования
-        max_concurrent: Максимальное количество одновременных запросов
-        timeout: Таймаут запроса в секундах
+                  scan_type: str = "2", max_depth: int = 10, max_concurrent: int = 5, timeout: int = 30) -> int:
+    """Запуск CLI режима.
+
+    Глубина и параллельность зафиксированы: сайт сканируется полностью.
     """
-    
     # Преобразуем числовой тип сканирования в строковый
     scan_type_map = {
         "1": "quick",
@@ -486,13 +475,10 @@ if __name__ == "__main__":
     parser.add_argument("--username", help="Имя пользователя для входа")
     parser.add_argument("--type", choices=["1", "2", "3"], default="2", 
                        help="Тип сканирования (1=quick, 2=standard, 3=deep)")
-    parser.add_argument("--depth", type=int, default=3, 
-                       help="Максимальная глубина сканирования")
-    parser.add_argument("--concurrent", type=int, default=5, 
-                       help="Максимальное количество одновременных запросов")
     parser.add_argument("--timeout", type=int, default=30, 
                        help="Таймаут запроса в секундах")
 
     args = parser.parse_args()
-    exit_code = run_cli_mode(args.url, args.username, args.type, args.depth, args.concurrent, args.timeout)
+    # Глубина и параллельность не настраиваются: сайт всегда сканируется полностью.
+    exit_code = run_cli_mode(args.url, args.username, args.type, 10, 5, args.timeout)
     _sys_utils.exit_process(exit_code)

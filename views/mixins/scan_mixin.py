@@ -12,6 +12,10 @@ from controllers.scan_controller import ScanController
 from policies.policy_manager import PolicyManager
 from utils.logger import logger
 
+# Сканирование всегда выполняется полностью.
+FULL_SCAN_MAX_DEPTH = 10
+SCAN_CONCURRENCY = 5
+
 
 def _validate_scan_parameters(params: Dict[str, Any]) -> tuple[bool, str]:
     """
@@ -73,8 +77,6 @@ class ScanMixin:
         self.sql_checkbox = QCheckBox("SQL Injection")
         self.xss_checkbox = QCheckBox("XSS")
         self.csrf_checkbox = QCheckBox("CSRF")
-        self.depth_spinbox = QSpinBox()
-        self.concurrent_spinbox = QSpinBox()
         self.timeout_spinbox = QSpinBox()
         self.max_coverage_checkbox = QCheckBox("Максимальное покрытие")
         self.turbo_checkbox = QCheckBox("Турбо режим")
@@ -110,8 +112,8 @@ class ScanMixin:
                 url=url,
                 scan_types=scan_types,
                 user_id=self.user_id if self.user_id is not None else 0,
-                max_depth=self.depth_spinbox.value() if hasattr(self, 'depth_spinbox') else 3,
-                max_concurrent=self.concurrent_spinbox.value() if hasattr(self, 'concurrent_spinbox') else 5,
+                max_depth=FULL_SCAN_MAX_DEPTH,
+                max_concurrent=SCAN_CONCURRENCY,
                 timeout=self.timeout_spinbox.value() if hasattr(self, 'timeout_spinbox') else 30
             )
 
@@ -146,8 +148,8 @@ class ScanMixin:
                     ('csrf', self.csrf_checkbox)
                 ] if cb.isChecked()
             ],
-            'depth': self.depth_spinbox.value(),
-            'concurrent': self.concurrent_spinbox.value(),
+            'depth': FULL_SCAN_MAX_DEPTH,
+            'concurrent': SCAN_CONCURRENCY,
             'timeout': self.timeout_spinbox.value(),
             'max_coverage': self.max_coverage_checkbox.isChecked(),
             'turbo_mode': self.turbo_checkbox.isChecked()
@@ -221,10 +223,10 @@ class ScanMixin:
                 if self.scan_controller is None:
                     raise RuntimeError("Scan controller should be initialized")
                 scan_id = await self.scan_controller.start_scan(
-                    scan_url, 
+                    scan_url,
                     scan_types,
-                    max_depth=self.depth_spinbox.value() if hasattr(self, 'depth_spinbox') else 3,
-                    max_concurrent=self.concurrent_spinbox.value() if hasattr(self, 'concurrent_spinbox') else 5,
+                    max_depth=FULL_SCAN_MAX_DEPTH,
+                    max_concurrent=SCAN_CONCURRENCY,
                     timeout=self.timeout_spinbox.value() if hasattr(self, 'timeout_spinbox') else 30
                 )
 

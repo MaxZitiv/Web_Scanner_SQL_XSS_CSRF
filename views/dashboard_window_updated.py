@@ -6,7 +6,7 @@ views/dashboard_window_optimized.py
 import asyncio
 from typing import Optional, Dict, Any, List, cast
 from PyQt6.QtWidgets import (
-        QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLineEdit, QSpinBox,
+        QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLineEdit,
         QCheckBox, QPushButton, QTableWidget, QTableWidgetItem, QTextEdit,
         QLabel, QMessageBox
     )
@@ -25,6 +25,10 @@ from views.statistics_widget import StatisticsWidget
 from utils.logger import logger
 from utils.security import is_safe_url, validate_input_length
 from utils.error_handler import error_handler
+
+# Сканирование всегда выполняется полностью.
+FULL_SCAN_MAX_DEPTH = 10
+SCAN_CONCURRENCY = 5
 
 class DashboardWindow(QMainWindow):
     """Главное окно дашборда для пользователя"""
@@ -113,27 +117,11 @@ class DashboardWindow(QMainWindow):
             self.url_input.setPlaceholderText("Введите URL (https://example.com)")
             scan_options_layout.addWidget(self.url_input)
 
-            # Глубина сканирования
-            depth_label = QLabel("📊 Глубина:")
-            scan_options_layout.addWidget(depth_label)
-
-            self.max_depth_spinbox = QSpinBox()
-            self.max_depth_spinbox.setMinimum(1)
-            self.max_depth_spinbox.setMaximum(10)
-            self.max_depth_spinbox.setValue(3)
-            self.max_depth_spinbox.setMaximumWidth(60)
-            scan_options_layout.addWidget(self.max_depth_spinbox)
-
-            # Параллельные запросы
-            concurrent_label = QLabel("⚡ Параллельно:")
-            scan_options_layout.addWidget(concurrent_label)
-
-            self.max_concurrent_spinbox = QSpinBox()
-            self.max_concurrent_spinbox.setMinimum(1)
-            self.max_concurrent_spinbox.setMaximum(20)
-            self.max_concurrent_spinbox.setValue(5)
-            self.max_concurrent_spinbox.setMaximumWidth(60)
-            scan_options_layout.addWidget(self.max_concurrent_spinbox)
+            # Сканирование выполняется всегда полностью: глубина и параллельность
+            # не настраиваются пользователем (см. FULL_SCAN_MAX_DEPTH/SCAN_CONCURRENCY).
+            full_scan_hint = QLabel("🔎 Сканирование выполняется полностью")
+            scan_options_layout.addWidget(full_scan_hint)
+            scan_options_layout.addStretch()
 
             main_layout.addLayout(scan_options_layout)
 
@@ -563,25 +551,11 @@ class DashboardWindow(QMainWindow):
 
             logger.info(f"Выбранные типы сканирования: {', '.join(scan_types)}")
 
-            # Получаем параметры
-            max_depth = self.max_depth_spinbox.value()
-            max_concurrent = self.max_concurrent_spinbox.value()
-
-            if max_depth < 1 or max_depth > 10:
-                error_handler.show_error_message(
-                    "Ошибка",
-                    "Глубина сканирования должна быть от 1 до 10"
-                )
-                return
-
-            if max_concurrent < 1 or max_concurrent > 20:
-                error_handler.show_error_message(
-                    "Ошибка",
-                    "Количество параллельных запросов должно быть от 1 до 20"
-                )
-                return
-
-            logger.info(f"Параметры сканирования: глубина={max_depth}, параллельные={max_concurrent}")
+            # Параметры полного сканирования. Глубина и параллельность больше
+            # не настраиваются пользователем — сайт сканируется целиком.
+            max_depth = FULL_SCAN_MAX_DEPTH
+            max_concurrent = SCAN_CONCURRENCY
+            logger.info("Полное сканирование: без ограничения глубины")
 
             # ===== СБРОС ПРЕДЫДУЩИХ ДАННЫХ =====
 
@@ -646,8 +620,6 @@ class DashboardWindow(QMainWindow):
 
             # Отключаем поля ввода (нельзя менять параметры во время сканирования)
             self.url_input.setEnabled(False)
-            self.max_depth_spinbox.setEnabled(False)
-            self.max_concurrent_spinbox.setEnabled(False)
             self.sql_checkbox.setEnabled(False)
             self.xss_checkbox.setEnabled(False)
             self.csrf_checkbox.setEnabled(False)
@@ -662,8 +634,6 @@ class DashboardWindow(QMainWindow):
             self.log_text.append("=" * 70)
             self.log_text.append(f"📍 URL: {url}")
             self.log_text.append(f"🔍 Типы сканирования: {', '.join(scan_types)}")
-            self.log_text.append(f"📊 Глубина: {max_depth}")
-            self.log_text.append(f"⚡ Параллельные запросы: {max_concurrent}")
             self.log_text.append(f"👤 Пользователь: {self.username}")
             self.log_text.append(f"🕐 Время начала: {self._get_current_time()}")
             self.log_text.append("=" * 70)
@@ -724,8 +694,6 @@ class DashboardWindow(QMainWindow):
                 self.pause_scan_btn.setEnabled(False)
                 self.stop_scan_btn.setEnabled(False)
                 self.url_input.setEnabled(True)
-                self.max_depth_spinbox.setEnabled(True)
-                self.max_concurrent_spinbox.setEnabled(True)
                 self.sql_checkbox.setEnabled(True)
                 self.xss_checkbox.setEnabled(True)
                 self.csrf_checkbox.setEnabled(True)
@@ -749,8 +717,6 @@ class DashboardWindow(QMainWindow):
                 self.pause_scan_btn.setEnabled(False)
                 self.stop_scan_btn.setEnabled(False)
                 self.url_input.setEnabled(True)
-                self.max_depth_spinbox.setEnabled(True)
-                self.max_concurrent_spinbox.setEnabled(True)
                 self.sql_checkbox.setEnabled(True)
                 self.xss_checkbox.setEnabled(True)
                 self.csrf_checkbox.setEnabled(True)
@@ -806,8 +772,6 @@ class DashboardWindow(QMainWindow):
                     self.resume_scan_btn.setEnabled(False)
                     self.stop_scan_btn.setEnabled(False)
                     self.url_input.setEnabled(True)
-                    self.max_depth_spinbox.setEnabled(True)
-                    self.max_concurrent_spinbox.setEnabled(True)
                     self.log_text.append("⏹ Сканирование остановлено пользователем")
                     logger.info("Сканирование остановлено пользователем")
         except Exception as e:
@@ -1012,8 +976,6 @@ class DashboardWindow(QMainWindow):
             self.resume_scan_btn.setEnabled(False)
             self.stop_scan_btn.setEnabled(False)
             self.url_input.setEnabled(True)
-            self.max_depth_spinbox.setEnabled(True)
-            self.max_concurrent_spinbox.setEnabled(True)
             self.sql_checkbox.setEnabled(True)
             self.xss_checkbox.setEnabled(True)
             self.csrf_checkbox.setEnabled(True)
@@ -1029,8 +991,6 @@ class DashboardWindow(QMainWindow):
             self.resume_scan_btn.setEnabled(False)
             self.stop_scan_btn.setEnabled(False)
             self.url_input.setEnabled(True)
-            self.max_depth_spinbox.setEnabled(True)
-            self.max_concurrent_spinbox.setEnabled(True)
 
             # Выводим результаты
             total_vulns = result.get('total_vulnerabilities', 0)

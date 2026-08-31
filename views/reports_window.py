@@ -14,7 +14,7 @@ from PyQt6.QtCore import (
 from PyQt6.QtGui import QFont
 from typing import Any, Dict, List, Optional, cast
 from utils.database import db
-from utils.encryption import decrypt_sensitive_data
+from utils.encryption import decrypt_sensitive_data_safe
 from utils.logger import logger
 from utils.export_utils import ExportUtils
 
@@ -148,10 +148,9 @@ class ReportsWindow(QMainWindow):
 
             for i, row in enumerate(rows):
                 scan_id = str(row[0])
-                try:
-                    url = str(decrypt_sensitive_data(row[1])) if row[1] else "N/A"
-                except Exception:
-                    url = str(row[1]) if row[1] else "N/A"
+                url = str(decrypt_sensitive_data_safe(row[1], None)) if row[1] else "N/A"
+                if not url:
+                    url = "N/A"
                 timestamp = row[2] if row[2] else "N/A"
                 vuln_type = row[3] if row[3] else "N/A"
                 parameter = row[4] if row[4] else "N/A"

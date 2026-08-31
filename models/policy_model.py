@@ -11,7 +11,8 @@ class SecurityPolicy:
     enabled_vulns: List[str] = field(default_factory=lambda: ["sql", "xss", "csrf"])
     sql_payloads: str = "standard"
     xss_payloads: str = "standard"
-    max_depth: int = 3
+    # Сайт всегда сканируется полностью: глубина и параллельность не настраиваются.
+    max_depth: int = 10
     max_concurrent: int = 5
     timeout: int = 30
     exclude_urls: List[str] = field(default_factory=lambda: [])
@@ -45,7 +46,7 @@ class SecurityPolicy:
             enabled_vulns=data.get("enabled_vulns", ["sql", "xss", "csrf"]),
             sql_payloads=data.get("sql_payloads", "standard"),
             xss_payloads=data.get("xss_payloads", "standard"),
-            max_depth=data.get("max_depth", 3),
+            max_depth=data.get("max_depth", 10),
             max_concurrent=data.get("max_concurrent", 5),
             timeout=data.get("timeout", 30),
             exclude_urls=data.get("exclude_urls", []),

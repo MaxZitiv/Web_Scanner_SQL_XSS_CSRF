@@ -46,7 +46,8 @@ MAX_RETRIES = 3
 REQUEST_TIMEOUT = 30
 MAX_CONCURRENT_REQUESTS = 5
 MAX_PAYLOADS_PER_URL = 40
-MAX_DEPTH = 3
+# Сканирование выполняется полностью: без ограничения глубины пользователем.
+MAX_DEPTH = 10
 
 # Оптимизированные настройки HTTP
 HTTP_OPTIMIZATIONS: Dict[str, Any] = {
@@ -347,7 +348,7 @@ class ScanWorker:
     """
 
     def __init__(self, url: str, scan_types: List[str], user_id: int, username: Optional[str] = None,
-                 max_depth: int = MAX_DEPTH, max_concurrent: int = 10, timeout: int = 10):
+                 max_depth: int = MAX_DEPTH, max_concurrent: int = 5, timeout: int = 10):
         """
         Инициализирует ScanWorker с указанными параметрами.
         """
@@ -788,18 +789,16 @@ class ScanWorker:
             self.signals.progress.emit(progress, current_url)
             self.signals.progress_updated.emit(progress)
             
-            # Проверяем максимальную глубину
+            # Глубина — внутренний предохранитель, в интерфейсе она не показывается.
             if current_depth is not None and current_depth >= self.max_depth:
                 self.max_depth_reached = True
             
             # Формируем информацию о прогрессе
-            depth_info = f"{current_depth if current_depth is not None else self.current_depth}/{self.max_depth}"
             url_info = f"{len(self.all_scanned_urls)}/{self.total_links_count}"
             form_info = f"{self.scanned_forms_count}/{len(self.all_found_forms)}"
             
             progress_info = (
                 f"Progress: {progress}% | "
-                f"Depth: {depth_info} | "
                 f"URL: {url_info} | "
                 f"Forms: {form_info}"
             )
@@ -1558,7 +1557,7 @@ class ScanWorker:
             self.scan_start_time = datetime.now()
             self.start_time = time.time()
             
-            self.signals.log_event.emit(f"🚀 Начинаем сканирование: {self.base_url} (глубина: {self.max_depth})")
+            self.signals.log_event.emit(f"🚀 Начинаем полное сканирование: {self.base_url}")
             
             # Инициализация (полный сброс состояния между запусками)
             self.visited_urls.clear()

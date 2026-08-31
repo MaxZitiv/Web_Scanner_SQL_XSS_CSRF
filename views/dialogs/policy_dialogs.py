@@ -1,7 +1,7 @@
 from typing import Optional, Dict, Any
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QLineEdit, QTextEdit, QComboBox, QCheckBox,
-    QMessageBox, QFormLayout, QSpinBox, QGroupBox
+    QMessageBox, QFormLayout, QLabel, QGroupBox
 )
 
 from utils.logger import logger
@@ -29,9 +29,7 @@ class PolicyEditDialog(QDialog):
 
         self.name_edit = QLineEdit()
         self.description_edit = QTextEdit()
-        self.max_depth_spin = QSpinBox()
-        self.max_depth_spin.setRange(1, 10)
-        self.max_depth_spin.setValue(3)
+        self.full_scan_label = QLabel("🔎 Сканирование выполняется полностью")
         
         self.check_xss = QCheckBox("Проверять XSS уязвимости")
         self.check_sql = QCheckBox("Проверять SQL-инъекции")
@@ -41,7 +39,7 @@ class PolicyEditDialog(QDialog):
         form_layout = QFormLayout()
         form_layout.addRow("Название:", self.name_edit)
         form_layout.addRow("Описание:", self.description_edit)
-        form_layout.addRow("Макс. глубина:", self.max_depth_spin)
+        form_layout.addRow("Глубина сканирования:", self.full_scan_label)
         
         checks_group = QGroupBox("Параметры сканирования")
         checks_layout = QVBoxLayout()
@@ -62,7 +60,6 @@ class PolicyEditDialog(QDialog):
                 if policy:
                     self.name_edit.setText(policy.get('name', ''))
                     self.description_edit.setText(policy.get('description', ''))
-                    self.max_depth_spin.setValue(policy.get('max_depth', 3))
                     
                     settings = policy.get('settings', {})
                     self.check_xss.setChecked(settings.get('check_xss', True))
@@ -78,7 +75,8 @@ class PolicyEditDialog(QDialog):
         return {
             'name': self.name_edit.text(),
             'description': self.description_edit.toPlainText(),
-            'max_depth': self.max_depth_spin.value(),
+            # Глубина не настраивается: сайт всегда сканируется полностью.
+            'max_depth': 10,
             'settings': {
                 'check_xss': self.check_xss.isChecked(),
                 'check_sql': self.check_sql.isChecked(),
@@ -105,13 +103,11 @@ class ScanSettingsDialog(QDialog):
         self.policy_combo = QComboBox()
         self._load_policies()
 
-        self.max_depth_spin = QSpinBox()
-        self.max_depth_spin.setRange(1, 10)
-        self.max_depth_spin.setValue(3)
+        self.full_scan_label = QLabel("🔎 Сканирование выполняется полностью")
 
         form_layout = QFormLayout()
         form_layout.addRow("Политика безопасности:", self.policy_combo)
-        form_layout.addRow("Макс. глубина сканирования:", self.max_depth_spin)
+        form_layout.addRow("Глубина сканирования:", self.full_scan_label)
         
         layout.addLayout(form_layout)
 
@@ -131,5 +127,6 @@ class ScanSettingsDialog(QDialog):
         """Получение настроек сканирования"""
         return {
             'policy_id': self.policy_combo.currentData(),
-            'max_depth': self.max_depth_spin.value()
+            # Глубина не настраивается: сайт всегда сканируется полностью.
+            'max_depth': 10
         }

@@ -18,7 +18,7 @@ from PyQt6.QtGui import (
 from typing import Any, List, Optional, cast
 from utils import logger
 from utils.database import db
-from utils.encryption import decrypt_sensitive_data
+from utils.encryption import decrypt_sensitive_data_safe
 from PyQt6.QtCharts import (
     QChart, QChartView, QPieSeries, QHorizontalBarSeries, QBarSet
 )
@@ -86,6 +86,20 @@ class StatisticsWindow(QMainWindow):
         """Закрытие окна"""
         self.close()
 
+    @staticmethod
+    def _clear_layout(layout: Any) -> None:
+        """Удаляет все виджеты из layout перед повторным заполнением."""
+        if layout is None:
+            return
+        while layout.count():
+            item = layout.takeAt(0)
+            widget = item.widget() if item else None
+            if widget is not None:
+                widget.deleteLater()
+            child = item.layout() if item else None
+            if child is not None:
+                StatisticsWindow._clear_layout(child)
+
     def load_statistics(self):
         """Загрузка статистики из базы данных"""
         try:
@@ -124,10 +138,9 @@ class StatisticsWindow(QMainWindow):
 
             for i, row in enumerate(rows):
                 scan_id = str(row[0])
-                try:
-                    url = str(decrypt_sensitive_data(row[1])) if row[1] else "N/A"
-                except Exception:
-                    url = str(row[1]) if row[1] else "N/A"
+                url = str(decrypt_sensitive_data_safe(row[1], None)) if row[1] else "N/A"
+                if not url:
+                    url = "N/A"
                 start_time = row[2] if row[2] else "N/A"
                 vulns_found = str(row[3]) if row[3] is not None else "0"
                 duration = f"{row[4]}с" if row[4] else "N/A"
@@ -327,8 +340,11 @@ class StatisticsWindow(QMainWindow):
 
             conn.close()
 
-            # Отображаем общую статистику
-            stats_layout = QVBoxLayout()
+            # Отображаем общую статистику.
+            # Используем уже существующий layout из setup_ui; создание нового
+            # layout и вызов setLayout поверх занятого разметчика приводило к
+            # пустой вкладке «Общая статистика».
+            self._clear_layout(self.stats_layout)
 
             # Заголовок
             general_title = QLabel("Общая статистика")
@@ -336,7 +352,7 @@ class StatisticsWindow(QMainWindow):
             title_font.setPointSize(12)
             title_font.setBold(True)
             general_title.setFont(title_font)
-            stats_layout.addWidget(general_title)
+            self.stats_layout.addWidget(general_title)
 
             # Общие показатели
             general_stats_widget = QWidget()
@@ -354,14 +370,16 @@ class StatisticsWindow(QMainWindow):
                 general_stats_layout.addWidget(scans_label)
                 general_stats_layout.addWidget(vulns_label)
                 general_stats_layout.addWidget(urls_label)
+            else:
+                general_stats_layout.addWidget(QLabel("Нет данных о сканированиях"))
 
             general_stats_widget.setLayout(general_stats_layout)
-            stats_layout.addWidget(general_stats_widget)
+            self.stats_layout.addWidget(general_stats_widget)
 
             # Статистика по типам уязвимостей
             vuln_title = QLabel("Статистика по типам уязвимостей")
             vuln_title.setFont(title_font)
-            stats_layout.addWidget(vuln_title)
+            self.stats_layout.addWidget(vuln_title)
 
             vuln_stats_widget = QWidget()
             vuln_stats_layout = QHBoxLayout()
@@ -370,13 +388,14 @@ class StatisticsWindow(QMainWindow):
                 type_label = QLabel(f"{vuln_type}: {count}")
                 vuln_stats_layout.addWidget(type_label)
 
+            if not vuln_stats:
+                vuln_stats_layout.addWidget(QLabel("Уязвимости пока не обнаружены"))
+
             vuln_stats_widget.setLayout(vuln_stats_layout)
-            stats_layout.addWidget(vuln_stats_widget)
+            self.stats_layout.addWidget(vuln_stats_widget)
 
             # Добавляем растягивающееся пространство
-            stats_layout.addStretch()
-
-            self.stats_widget.setLayout(stats_layout)
+            self.stats_layout.addStretch()
 
         except Exception as e:
             logger.error(f"Ошибка при загрузке общей статистики: {e}")

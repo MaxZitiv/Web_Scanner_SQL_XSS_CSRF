@@ -223,7 +223,8 @@ class DatabaseEncryption:
         decrypted = self.decrypt_data(encrypted_url)
         return str(decrypted)
     
-    def is_encrypted(self, data: str) -> bool:
+    @staticmethod
+    def is_encrypted(data: str) -> bool:
         """
         Проверяет, зашифрованы ли данные.
         
@@ -233,12 +234,7 @@ class DatabaseEncryption:
         Returns:
             bool: True, если данные зашифрованы
         """
-        try:
-            # Пытаемся декодировать как base64
-            base64.urlsafe_b64decode(data.encode())
-            return True
-        except Exception:
-            return False
+        return looks_like_encrypted(data)
 
 # Глобальный экземпляр шифрования
 _encryption_instance: Optional[DatabaseEncryption] = None
@@ -277,4 +273,59 @@ def decrypt_sensitive_data(encrypted_data: str) -> Union[str, Dict[str, Any], Li
     Returns:
         Union[str, dict, list]: Расшифрованные данные
     """
-    return get_encryption().decrypt_data(encrypted_data) 
+    return get_encryption().decrypt_data(encrypted_data)
+
+
+def looks_like_encrypted(data: Any) -> bool:
+    """Проверяет, похоже ли значение на зашифрованные данные.
+
+    Старые записи могут храниться в открытом виде (например, URL или JSON).
+    Такие значения не нужно пытаться расшифровать — это вызывает ошибки
+    при открытии старых сканирований.
+    """
+    if data is None:
+        return False
+    text = str(data).strip()
+    if not text:
+        return False
+    # Открытые URL/JSON/пути сразу не считаем зашифрованными.
+    if text.startswith(("http://", "https://", "ftp://", "/", ".", "{", "[")):
+        return False
+    # Fernet-токены обычно начинаются с gAAAAA.
+    if text.startswith("gAAAA"):
+        return True
+    try:
+        padded = text + "=" * (-len(text) % 4)
+        base64.urlsafe_b64decode(padded)
+    except Exception:
+        return False
+    return True
+
+
+def decrypt_sensitive_data_safe(
+    data: Any,
+    default: Any = None,
+) -> Union[str, Dict[str, Any], List[Any], Any]:
+    """Безопасно расшифровывает значение.
+
+    Если значение не выглядит зашифрованным, возвращает его как есть.
+    Если расшифровка невозможна (сменился ключ/перенесена БД без .db_key),
+    возвращает ``default`` (или исходное открытое значение), не перебрасывая
+    исключение в место, которое открывает список уязвимостей. Это устраняет
+    задержку и ошибки при просмотре старых сканирований.
+    """
+    if data is None:
+        return default
+    text = str(data)
+    if not looks_like_encrypted(text):
+        return text
+    try:
+        return get_encryption().decrypt_data(text)
+    except Exception as e:
+        logger.debug(f"Safe decrypt skipped for old/incompatible value: {e}")
+        if default is not None:
+            return default
+        # Для URL-подобных значений возвращаем исходное значение.
+        if text.startswith(("http://", "https://")):
+            return text
+        return "[значение недоступно — требуется .db_key]"

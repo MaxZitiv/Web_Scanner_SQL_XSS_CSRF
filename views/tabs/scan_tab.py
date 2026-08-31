@@ -14,6 +14,11 @@ from utils.error_handler import error_handler
 from utils.performance import get_local_timestamp
 from views.tabs.scan_tab_optimized import ScanTabStatsMixin
 
+# Сканирование всегда выполняется полностью: глубина и параллельность
+# больше не настраиваются пользователем.
+FULL_SCAN_MAX_DEPTH = 10
+SCAN_CONCURRENCY = 5
+
 class ScanTabWidget(ScanTabStatsMixin, QWidget):
     def __init__(self, user_id: int, parent: Optional[QWidget] = None):
         # Инициализация родительского класса QWidget
@@ -28,8 +33,8 @@ class ScanTabWidget(ScanTabStatsMixin, QWidget):
             url="",  # Empty URL initially
             scan_types=["sql", "xss", "csrf"],  # Default scan types
             user_id=user_id,
-            max_depth=2,  # Default depth
-            max_concurrent=5  # Default concurrent scans
+            max_depth=FULL_SCAN_MAX_DEPTH,
+            max_concurrent=SCAN_CONCURRENCY
         )
         self._scan_start_time = None
         self._total_urls = 0
@@ -72,8 +77,6 @@ class ScanTabWidget(ScanTabStatsMixin, QWidget):
             self.csrf_checkbox = QCheckBox("CSRF")
 
             # Компоненты настроек производительности
-            self.depth_spinbox = QSpinBox()
-            self.concurrent_spinbox = QSpinBox()
             self.timeout_spinbox = QSpinBox()
 
             # Кнопки управления
@@ -98,7 +101,7 @@ class ScanTabWidget(ScanTabStatsMixin, QWidget):
             required_components = [
                 'url_input', 'scan_button', 'results_table',
                 'sql_checkbox', 'xss_checkbox', 'csrf_checkbox',
-                'depth_spinbox', 'concurrent_spinbox', 'timeout_spinbox',
+                'timeout_spinbox',
                 'pause_button', 'stop_button',
                 'scan_status',
                 'site_tree', 'detailed_log',
@@ -178,25 +181,8 @@ class ScanTabWidget(ScanTabStatsMixin, QWidget):
             perf_group = QGroupBox("Настройки производительности")
             perf_layout = QVBoxLayout()
 
-            # Глубина обхода
-            depth_layout = QHBoxLayout()
-            depth_layout.addWidget(QLabel("Глубина обхода:"))
-            self.depth_spinbox = QSpinBox()
-            self.depth_spinbox.setRange(0, 10)
-            self.depth_spinbox.setValue(3)
-            depth_layout.addWidget(self.depth_spinbox)
-            depth_layout.addStretch()
-            perf_layout.addLayout(depth_layout)
-
-            # Параллельные запросы
-            concurrent_layout = QHBoxLayout()
-            concurrent_layout.addWidget(QLabel("Параллельные запросы:"))
-            self.concurrent_spinbox = QSpinBox()
-            self.concurrent_spinbox.setRange(1, 20)
-            self.concurrent_spinbox.setValue(5)
-            concurrent_layout.addWidget(self.concurrent_spinbox)
-            concurrent_layout.addStretch()
-            perf_layout.addLayout(concurrent_layout)
+            # Сайт сканируется полностью; глубину и параллельность не показываем.
+            perf_layout.addWidget(QLabel("🔎 Сканирование выполняется полностью"))
 
             # Таймаут
             timeout_layout = QHBoxLayout()
@@ -571,9 +557,10 @@ class ScanTabWidget(ScanTabStatsMixin, QWidget):
                 QMessageBox.warning(self, "Ошибка", "Выберите хотя бы один тип уязвимостей для сканирования")
                 return
 
-            # Получаем настройки
-            depth = self.depth_spinbox.value()
-            concurrent = self.concurrent_spinbox.value()
+            # Получаем настройки. Глубина и параллельность фиксированы,
+            # сайт сканируется полностью.
+            depth = FULL_SCAN_MAX_DEPTH
+            concurrent = SCAN_CONCURRENCY
             timeout = self.timeout_spinbox.value()
 
             # Обновляем UI
@@ -584,7 +571,7 @@ class ScanTabWidget(ScanTabStatsMixin, QWidget):
             self.scan_status.setText("Подготовка к сканированию...")
             self.add_log_entry(f"Начало сканирования: {url}", "Информация")
             self.add_log_entry(f"Типы уязвимостей: {', '.join(vuln_types)}", "Информация")
-            self.add_log_entry(f"Глубина обхода: {depth}, Параллельных запросов: {concurrent}, Таймаут: {timeout}с", "Информация")
+            self.add_log_entry(f"Таймаут: {timeout}с, сканирование полное", "Информация")
 
             # Сбрасываем статистику
             self.reset_stats()

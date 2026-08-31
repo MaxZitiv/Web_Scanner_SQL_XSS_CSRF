@@ -87,14 +87,11 @@ class ScanManagerStatsMixin:
         if hasattr(dashboard, 'csrf_checkbox') and dashboard.csrf_checkbox.isChecked():
             scan_types.append('csrf')
         
-        # Получаем параметры сканирования из UI
-        max_depth = 3
+        # Сайт сканируется всегда полностью: глубина и параллельность
+        # больше не берутся из UI.
+        max_depth = 10
         max_concurrent = 5
         timeout = 30
-        if hasattr(dashboard, 'depth_spinbox'):
-            max_depth = dashboard.depth_spinbox.value()
-        if hasattr(dashboard, 'concurrent_spinbox'):
-            max_concurrent = dashboard.concurrent_spinbox.value()
         if hasattr(dashboard, 'timeout_spinbox'):
             timeout = dashboard.timeout_spinbox.value()
         

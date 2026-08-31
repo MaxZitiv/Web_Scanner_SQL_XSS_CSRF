@@ -6,6 +6,7 @@ from fpdf import FPDF
 
 from .export import find_unicode_font
 from utils.database import db
+from utils.encryption import decrypt_sensitive_data_safe
 from utils.logger import logger, log_and_notify
 from utils.performance import format_duration
 
@@ -55,12 +56,14 @@ class ScanReportGenerator:
             return "Отчет не может быть сгенерирован: данные сканирования не найдены."
 
         # Извлекаем данные
-        target_url = self.scan_data.get('url', 'N/A')
+        target_url = decrypt_sensitive_data_safe(
+            self.scan_data.get('url', 'N/A'), 'N/A'
+        )
+        if not isinstance(target_url, str):
+            target_url = str(target_url)
         duration_sec = self.scan_data.get('duration', 0)
         
         settings = self.scan_data.get('settings', {})
-        depth = settings.get('max_depth', 0)
-        concurrent = settings.get('max_concurrent', 'N/A')
         timeout = settings.get('timeout', 'N/A')
         
         vulns = self.scan_data.get('vulnerabilities', {})
@@ -74,8 +77,6 @@ class ScanReportGenerator:
         total_urls = self.scan_data.get('total_urls_scanned', 0)
         total_forms = self.scan_data.get('total_forms_scanned', 0)
         total_checks = total_urls + total_forms
-        
-        perf_per_level = (duration_sec / depth) if depth > 0 else duration_sec
 
         # Определение уровня безопасности
         if total_vulns == 0:
@@ -110,8 +111,8 @@ class ScanReportGenerator:
             "============================================================",
             f"🎯 Цель: {target_url}",
             f"⏱️ Время выполнения: {format_duration(duration_sec)}",
-            f"🚀 Производительность: {perf_per_level:.2f} сек/уровень",
-            f"⚙️ Настройки: глубина={depth}, параллельные={concurrent}, таймаут={timeout}с",
+            f"🔎 Режим: полное сканирование",
+            f"⚙️ Настройки: таймаут={timeout}с",
             "============================================================\n",
             "📊 ОБЩАЯ СТАТИСТИКА",
             "----------------------------------------",

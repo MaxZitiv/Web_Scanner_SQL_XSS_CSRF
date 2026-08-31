@@ -63,7 +63,7 @@ class PolicyManager:
             enabled_vulns=["sql", "xss", "csrf"],
             sql_payloads="standard",
             xss_payloads="standard",
-            max_depth=3,
+            max_depth=10,
             max_concurrent=5,
             timeout=30,
             exclude_urls=[],

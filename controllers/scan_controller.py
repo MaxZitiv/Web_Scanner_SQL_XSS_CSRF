@@ -36,9 +36,14 @@ class ScanControllerSignals(QObject):
 
 class ScanController(QObject):
     """Контроллер для управления сканированием веб-сайтов"""
-    
-    def __init__(self, url: str, scan_types: List[str], user_id: int, max_depth: int = 2,
-                 max_concurrent: int = 5, timeout: int = 30, username: Optional[str] = None):
+
+    # Сайт всегда сканируется полностью. Глубина и параллельность не являются
+    # настройками пользователя, поэтому контроллер держит фиксированные значения.
+    FULL_SCAN_MAX_DEPTH = 10
+    SCAN_CONCURRENCY = 5
+
+    def __init__(self, url: str, scan_types: List[str], user_id: int, max_depth: int = FULL_SCAN_MAX_DEPTH,
+                 max_concurrent: int = SCAN_CONCURRENCY, timeout: int = 30, username: Optional[str] = None):
         """
         Инициализация контроллера сканирования
         
@@ -46,8 +51,8 @@ class ScanController(QObject):
             url: URL для сканирования
             scan_types: Список типов сканирования (sql, xss, csrf)
             user_id: ID пользователя
-            max_depth: Максимальная глубина сканирования
-            max_concurrent: Максимальное количество параллельных запросов
+            max_depth: Внутренний предохранитель по глубине; всегда 10 (полное сканирование).
+            max_concurrent: Внутренний лимит параллельных запросов; всегда 5.
             timeout: Таймаут в секундах
             username: Имя пользователя
         """
@@ -56,12 +61,12 @@ class ScanController(QObject):
         self.url: str = url
         self.scan_types: List[str] = scan_types
         self.user_id: int = user_id
-        self.max_depth: int = max_depth
-        self.max_concurrent: int = max_concurrent
+        self.max_depth: int = ScanController.FULL_SCAN_MAX_DEPTH
+        self.max_concurrent: int = ScanController.SCAN_CONCURRENCY
         self.timeout: int = timeout
         self.username: Optional[str] = username
         self.active_scans: Dict[str, ScanWorker] = {}
-        self.max_active_scans: int = max_concurrent
+        self.max_active_scans: int = ScanController.SCAN_CONCURRENCY
         
         # ===== СОЗДАЁМ SIGNALS ОБЪЕКТ =====
         self.signals = ScanControllerSignals()
@@ -112,14 +117,14 @@ class ScanController(QObject):
             if not scan_types:
                 return False, "Должен быть указан хотя бы один тип сканирования"
             
-            # Проверка max_depth
+            # Глубина и параллельность не настраиваются пользователем:
+            # сайт всегда сканируется полностью. Приводим значения к
+            # внутренним фиксированным константам, а не отклоняем запрос.
             if max_depth < 1 or max_depth > 10:
-                return False, "Глубина сканирования должна быть от 1 до 10"
-            
-            # Проверка max_concurrent
+                max_depth = self.FULL_SCAN_MAX_DEPTH
             if max_concurrent < 1 or max_concurrent > 20:
-                return False, "Количество параллельных запросов должно быть от 1 до 20"
-            
+                max_concurrent = self.SCAN_CONCURRENCY
+
             # Проверка timeout
             if timeout < 5 or timeout > 300:
                 return False, "Таймаут должен быть от 5 до 300 секунд"
@@ -154,8 +159,8 @@ class ScanController(QObject):
         self,
         url: str,
         scan_types: List[str],
-        max_depth: int = 3,
-        max_concurrent: int = 5,
+        max_depth: int = FULL_SCAN_MAX_DEPTH,
+        max_concurrent: int = SCAN_CONCURRENCY,
         timeout: int = 30,
         on_progress: Optional[Callable[[int, str], None]] = None,
         on_log: Optional[Callable[[str], None]] = None,
@@ -164,13 +169,16 @@ class ScanController(QObject):
         on_status: Optional[Callable[[str], None]] = None,
         max_coverage_mode: bool = False) -> None:
         """
-        Запускает сканирование веб-сайта
-        
+        Запускает сканирование веб-сайта.
+
+        Сайт всегда сканируется полностью: глубина и параллельность
+        фиксированы внутри контроллера.
+
         Args:
             url: URL для сканирования
             scan_types: Список типов сканирования
-            max_depth: Максимальная глубина
-            max_concurrent: Максимум параллельных запросов
+            max_depth: Внутренний предохранитель по глубине; всегда 10.
+            max_concurrent: Внутренний лимит параллельных запросов; всегда 5.
             timeout: Таймаут в секундах
             on_progress: Callback для обновления прогресса
             on_log: Callback для логирования событий
@@ -179,6 +187,9 @@ class ScanController(QObject):
             on_status: Callback для обновления статуса
             max_coverage_mode: Режим максимального покрытия
         """
+        # Сайт всегда сканируется полностью.
+        max_depth = ScanController.FULL_SCAN_MAX_DEPTH
+        max_concurrent = ScanController.SCAN_CONCURRENCY
         try:
             # Очищаем завершённые сканирования
             self._cleanup_completed_scans()
