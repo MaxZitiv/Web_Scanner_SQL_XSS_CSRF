@@ -345,7 +345,7 @@ class ScanTabWidget(ScanTabStatsMixin, QWidget):
 
             # Настраиваем таблицу
             self.results_table.setColumnCount(5)
-            cast(Any, self.results_table).setHorizontalHeaderLabels(["URL", "Тип уязвимости", "Параметр", "Статус", "Действия"])
+            cast(Any, self.results_table).setHorizontalHeaderLabels(["URL", "Тип уязвимости", "Место в коде", "Статус", "Действия"])
 
             header = self.results_table.horizontalHeader()
             if header is not None:

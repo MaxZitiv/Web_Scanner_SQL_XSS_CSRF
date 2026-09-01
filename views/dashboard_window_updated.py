@@ -25,6 +25,7 @@ from views.statistics_widget import StatisticsWidget
 from utils.logger import logger
 from utils.security import is_safe_url, validate_input_length
 from utils.error_handler import error_handler
+from utils.vulnerability_info import extract_location_from_details
 
 # Сканирование всегда выполняется полностью.
 FULL_SCAN_MAX_DEPTH = 10
@@ -232,7 +233,7 @@ class DashboardWindow(QMainWindow):
             cast(Any, self.results_table).setHorizontalHeaderLabels([
                 "Тип уязвимости",
                 "URL",
-                "Параметр",
+                "Место в коде",
                 "Серьёзность",
                 "Время обнаружения"
             ])
@@ -950,9 +951,11 @@ class DashboardWindow(QMainWindow):
             url_item.setBackground(color)
             self.results_table.setItem(row, 1, url_item)
 
-            details_item = QTableWidgetItem(details)
-            details_item.setBackground(color)
-            self.results_table.setItem(row, 2, details_item)
+            location = extract_location_from_details(str(details)) or str(details)
+            location_item = QTableWidgetItem(location)
+            location_item.setBackground(color)
+            location_item.setToolTip(str(details))
+            self.results_table.setItem(row, 2, location_item)
 
             severity_item = QTableWidgetItem("Высокая")
             severity_item.setBackground(color)

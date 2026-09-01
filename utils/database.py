@@ -10,6 +10,10 @@ from utils.encryption import (
     decrypt_sensitive_data,
     decrypt_sensitive_data_safe,
 )
+from utils.vulnerability_info import (
+    location_for_database,
+    vulnerability_dict_to_details,
+)
 # Добавляем аннотации типов для функций шифрования
 encrypt_sensitive_data: Callable[[Union[str, Dict[str, Any], List[Any]]], str] = encrypt_sensitive_data
 decrypt_sensitive_data: Callable[[str], Union[str, Dict[str, Any], List[Any]]] = decrypt_sensitive_data
@@ -554,13 +558,42 @@ class Database:
                 scan_id = cursor.lastrowid
                 
                 for vuln in results:
-                    if 'type' in vuln and 'details' in vuln:
+                    if 'type' in vuln and ('details' in vuln or 'description' in vuln):
                         vuln_url = vuln.get('url', url)
                         encrypted_vuln_url: str = encrypt_sensitive_data(vuln_url)
+
+                        # Сохраняем подробное описание и отдельно — компактное
+                        # место в коде (параметр/поле/метод/форма).
+                        raw_details: Any = vuln.get('details', vuln.get('description', ''))
+                        full_details: str
+                        if isinstance(raw_details, dict):
+                            full_details = vulnerability_dict_to_details(
+                                cast(Dict[str, Any], raw_details)
+                            )
+                        elif isinstance(raw_details, list):
+                            detail_items = cast(List[Any], raw_details)
+                            full_details = ' | '.join(str(item) for item in detail_items)
+                        else:
+                            full_details = str(raw_details)
+                        request_params = location_for_database(full_details) or full_details
+
                         cursor.execute('''
-                            INSERT INTO vulnerabilities (scan_id, url, type, details)
-                            VALUES (?, ?, ?, ?)
-                        ''', (scan_id, encrypted_vuln_url, vuln['type'], str(vuln['details'])))
+                            INSERT INTO vulnerabilities (
+                                scan_id, url, type, details, status, severity,
+                                description, response, request_params
+                            )
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ''', (
+                            scan_id,
+                            encrypted_vuln_url,
+                            vuln['type'],
+                            full_details,
+                            str(vuln.get('status', 'Новая')),
+                            str(vuln.get('severity', 'Средний')),
+                            full_details,
+                            str(vuln.get('test_url', vuln.get('response', ''))),
+                            request_params,
+                        ))
             return True
         except Exception as e:
             log_and_notify('error', f"Error saving scan: {e}")
@@ -626,15 +659,25 @@ class Database:
 
     @staticmethod
     def _parse_json_field(value: Any, default: Any) -> Any:
-        """Безопасно разбирает JSON-поле из БД."""
+        """Безопасно разбирает JSON-поле из БД.
+
+        Старые записи могут содержать обычный текст вместо JSON — в этом
+        случае значение возвращается как есть, чтобы подробности и место
+        найденной уязвимости не терялись.
+        """
         if value is None:
             return default
         if isinstance(value, (dict, list)):
             return cast(Any, value)
-        try:
-            return json.loads(str(value))
-        except (json.JSONDecodeError, TypeError):
+        text = str(value).strip()
+        if not text:
             return default
+        if text.startswith(("{", "[")):
+            try:
+                return json.loads(text)
+            except (json.JSONDecodeError, TypeError):
+                return text
+        return text
 
     def _vulnerability_from_row(self, row: Dict[str, Any]) -> Dict[str, Any]:
         """Преобразует строку таблицы vulnerabilities в словарь для UI."""

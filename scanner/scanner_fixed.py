@@ -28,6 +28,10 @@ from utils.database import db
 from utils.unified_error_handler import log_and_notify
 from utils.performance import get_local_timestamp
 from utils.security import is_safe_url, validate_input_length
+from utils.vulnerability_info import (
+    format_vulnerability_details,
+    vulnerability_dict_to_details,
+)
 
 __all__ = ['cache_manager', 'TTLCache', 'Scanner', 'ScanWorker', 'SQL_ERROR_PATTERNS', 'XSS_REFLECTED_PATTERNS', 'SAFE_SQL_PAYLOADS', 'SAFE_XSS_PAYLOADS']
 
@@ -149,6 +153,12 @@ class VulnerabilityResult(TypedDict, total=False):
     severity: str
     details: str
     timestamp: str
+    parameter: str
+    method: str
+    action: str
+    field: str
+    test_url: str
+    location: str
 
 class ScanCompletionMetrics(TypedDict):
     errors_encountered: int
@@ -469,11 +479,22 @@ class ScanWorker:
             await asyncio.sleep(0.1)  # Имитация работы
             
             if any(keyword in url.lower() for keyword in ['login', 'search', 'id=', 'user=']):
+                parameter = ', '.join(self._query_parameter_names(url)) or "параметры URL"
                 vulnerability = {
                     'type': 'sql',
                     'url': url,
                     'severity': 'high',
-                    'description': 'Возможная SQL-инъекция в параметрах запроса'
+                    'parameter': parameter,
+                    'method': 'GET',
+                    'field': 'query-parameter',
+                    'location': f"параметры запроса: {parameter}",
+                    'description': format_vulnerability_details(
+                        url=url,
+                        parameter=parameter,
+                        method='GET',
+                        field='query-parameter',
+                        note='Возможная SQL-инъекция в параметрах запроса',
+                    ),
                 }
                 
                 self.vulnerabilities['sql'].append(vulnerability)
@@ -490,11 +511,22 @@ class ScanWorker:
             await asyncio.sleep(0.1)  # Имитация работы
             
             if any(keyword in url.lower() for keyword in ['comment', 'message', 'search', 'q=']):
+                parameter = ', '.join(self._query_parameter_names(url)) or "параметры URL"
                 vulnerability = {
                     'type': 'xss',
                     'url': url,
                     'severity': 'medium',
-                    'description': 'Потенциальная XSS-уязвимость в форме или параметрах'
+                    'parameter': parameter,
+                    'method': 'GET',
+                    'field': 'query-parameter',
+                    'location': f"параметры запроса: {parameter}",
+                    'description': format_vulnerability_details(
+                        url=url,
+                        parameter=parameter,
+                        method='GET',
+                        field='query-parameter',
+                        note='Потенциальная XSS-уязвимость в форме или параметрах',
+                    ),
                 }
                 
                 self.vulnerabilities['xss'].append(vulnerability)
@@ -515,7 +547,18 @@ class ScanWorker:
                     'type': 'csrf',
                     'url': url,
                     'severity': 'medium',
-                    'description': 'Отсутствует CSRF-токен в форме'
+                    'parameter': 'CSRF-токен',
+                    'method': 'POST',
+                    'field': 'скрытые поля формы',
+                    'location': f"форма на {url}",
+                    'description': format_vulnerability_details(
+                        url=url,
+                        parameter='CSRF-токен',
+                        method='POST',
+                        field='скрытые поля формы',
+                        location=f"форма на {url}",
+                        note='Отсутствует CSRF-токен в форме',
+                    ),
                 }
                 
                 self.vulnerabilities['csrf'].append(vulnerability)
@@ -1350,101 +1393,166 @@ class ScanWorker:
         except Exception as e:
             log_and_notify('error', f"Failed to scan URL {url}: {e}")
 
-    def _process_scan_results(self, url: str, results: List[Dict[str, Any]], 
+    def _process_scan_results(self, url: str, results: List[Any],
                             scan_types_used: List[str], results_by_type: Dict[str, List[Dict[str, Any]]]):
-        """Обрабатывает результаты сканирования."""
+        """Обрабатывает результаты сканирования и сохраняет место уязвимости."""
         try:
             for scan_type in scan_types_used:
-                if scan_type in results_by_type:
-                    results_by_type[scan_type].append({
-                        'url': url,
-                        'details': str(results),
-                        'timestamp': datetime.now().isoformat()
-                    })
-                    
-                    if scan_type not in self.vulnerabilities:
-                        self.vulnerabilities[scan_type] = []
-                    
-                    details = str(results)
-                    self.vulnerabilities[scan_type].append({
+                if scan_type not in results_by_type:
+                    continue
+
+                if scan_type not in self.vulnerabilities:
+                    self.vulnerabilities[scan_type] = []
+
+                for raw_result in results:
+                    if isinstance(raw_result, dict):
+                        result = cast(Dict[str, Any], raw_result)
+                    else:
+                        result = {'details': str(raw_result)}
+
+                    # Формируем единое, понятное описание места уязвимости.
+                    details = vulnerability_dict_to_details(result)
+                    if result.get('details') and not details:
+                        details = str(result['details'])
+
+                    location = {
                         'url': url,
                         'details': details,
-                        'timestamp': datetime.now().isoformat()
-                    })
+                        'parameter': str(result.get('parameter', result.get('param', ''))),
+                        'method': str(result.get('method', '')),
+                        'action': str(result.get('action', '')),
+                        'field': str(result.get('field', '')),
+                        'payload': str(result.get('payload', '')),
+                        'test_url': str(result.get('test_url', '')),
+                        'location': str(result.get('location', '')),
+                        'timestamp': datetime.now().isoformat(),
+                    }
+                    results_by_type[scan_type].append(location)
+                    self.vulnerabilities[scan_type].append(location)
                     self.signals.vulnerability_found.emit(url, scan_type, details)
-                    
+
         except Exception as e:
             logger.error(f"Error processing scan results: {e}")
 
+    def _vulnerability_result(
+        self,
+        url: str,
+        *,
+        param: str = "",
+        method: str = "GET",
+        action: str = "",
+        field: str = "",
+        payload: str = "",
+        test_url: str = "",
+        note: str = "",
+    ) -> Dict[str, Any]:
+        """Собирает словарь с точным местом обнаруженной уязвимости."""
+        details = format_vulnerability_details(
+            url=url,
+            parameter=param,
+            method=method,
+            action=action,
+            field=field,
+            payload=payload,
+            test_url=test_url,
+            note=note,
+        )
+        return {
+            'url': url,
+            'details': details,
+            'parameter': param,
+            'method': method,
+            'action': action,
+            'field': field,
+            'payload': payload,
+            'test_url': test_url,
+            'location': field or action,
+        }
+
     async def check_sql_injection(self, session: aiohttp.ClientSession, url: str, 
-                            forms: Optional[List[Tag]] = None) -> Optional[str]:
-        """Проверка на SQL-инъекции."""
+                            forms: Optional[List[Tag]] = None) -> Optional[Dict[str, Any]]:
+        """Проверка на SQL-инъекции.
+
+        Возвращает словарь с точным параметром/полем, где найдена уязвимость.
+        """
         if forms is None:
             forms = []
         try:
-            # Тестируем параметры URL
-            if '?' in url:
-                for payload in SAFE_SQL_PAYLOADS[:5]:  # Уменьшено до 5 для повышения производительности
-                    if self.should_stop:
-                        return None
-                        
-                    test_url = self._inject_payload_into_url(url, payload)
+            # --- Тестируем параметры URL по одному ---
+            parameter_names = self._query_parameter_names(url)
+            for payload in SAFE_SQL_PAYLOADS[:5]:
+                if self.should_stop:
+                    return None
+                for param_name in parameter_names:
+                    test_url = self._inject_payload_into_param(url, param_name, payload)
                     result = await self.smart_request(session, 'GET', test_url)
-                    
                     if result:
                         _, content = result
                         if any(pattern.search(content) for pattern in SQL_ERROR_PATTERNS):
-                            return f"SQL injection vulnerability detected with payload: {payload}"
-            
-            # Тестируем формы
+                            return self._vulnerability_result(
+                                url,
+                                param=param_name,
+                                method='GET',
+                                field=f"query-parameter '{param_name}'",
+                                payload=payload,
+                                test_url=test_url,
+                                note="SQL injection vulnerability detected",
+                            )
+
+            # --- Тестируем поля формы по одному ---
             for form in forms:
                 if self.should_stop:
                     return None
-                    
                 action = urljoin(url, str(form.get('action', '')))
                 method = str(form.get('method', 'get')).upper()
-                
-                # Создаем тестовые данные для формы
-                form_data: Dict[str, str] = {}
-                # Ограничиваем количество полей формы для тестирования
-                input_elements = form.find_all('input')[:3]  # Максимум 3 поля
+                input_elements = form.find_all('input')[:3]
                 for input_elem in input_elements:
                     input_name = str(input_elem.get('name', ''))
                     if input_name and input_elem.get('type') in ['text', 'password', 'email', 'search', 'url']:
-                        form_data[input_name] = SAFE_SQL_PAYLOADS[0]  # Используем первый пэйлоад
-                
-                if form_data:
-                    if method == 'POST':
-                        result = await self.smart_request(session, 'POST', action, data=form_data)
-                    else:
-                        test_url = f"{action}?{urlencode(form_data)}"
-                        result = await self.smart_request(session, 'GET', test_url)
-                    
-                    if result:
-                        _, content = result
-                        if any(pattern.search(content) for pattern in SQL_ERROR_PATTERNS):
-                            return f"SQL injection vulnerability detected in form to {action}"
-            
+                        form_data = {input_name: SAFE_SQL_PAYLOADS[0]}
+                        payload = SAFE_SQL_PAYLOADS[0]
+                        if method == 'POST':
+                            result = await self.smart_request(session, 'POST', action, data=form_data)
+                            test_url = action
+                        else:
+                            test_url = f"{action}?{urlencode(form_data)}"
+                            result = await self.smart_request(session, 'GET', test_url)
+                        if result:
+                            _, content = result
+                            if any(pattern.search(content) for pattern in SQL_ERROR_PATTERNS):
+                                field = self._form_field_name(input_elem)
+                                return self._vulnerability_result(
+                                    url,
+                                    param=input_name,
+                                    method=method,
+                                    action=action,
+                                    field=field,
+                                    payload=payload,
+                                    test_url=test_url,
+                                    note="SQL injection vulnerability detected in form",
+                                )
             return None
-            
+
         except Exception as e:
             logger.error(f"Error in SQL injection check: {e}")
             return None
 
 
     async def check_xss(self, session: aiohttp.ClientSession, url: str, 
-                       forms: List[Tag]) -> Optional[str]:
-        """Проверка на XSS-уязвимости."""
+                       forms: List[Tag]) -> Optional[Dict[str, Any]]:
+        """Проверка на XSS-уязвимости.
+
+        Возвращает словарь с точным параметром/полем, где найдена уязвимость.
+        """
         try:
-            # Тестируем параметры URL
-            if '?' in url:
-                for payload in SAFE_XSS_PAYLOADS[:3]:  # Уменьшено до 3 для повышения производительности
-                    if self.should_stop:
-                        return None
-                        
-                    test_url = self._inject_payload_into_url(url, payload)
+            # --- Тестируем параметры URL по одному ---
+            parameter_names = self._query_parameter_names(url)
+            for payload in SAFE_XSS_PAYLOADS[:3]:
+                if self.should_stop:
+                    return None
+                for param_name in parameter_names:
+                    test_url = self._inject_payload_into_param(url, param_name, payload)
                     result = await self.smart_request(session, 'GET', test_url)
-                    
                     if result:
                         _, content = result
                         if payload in content:
@@ -1452,55 +1560,72 @@ class ScanWorker:
                             from bs4 import BeautifulSoup as BS
                             soup = BS(content, 'html.parser')
                             scripts = soup.find_all('script')
-                            for script in scripts:
-                                if script.string and payload in script.string:
-                                    return f"XSS vulnerability detected with payload: {payload}"
-            
-            # Тестируем формы
+                            reflected = any(
+                                script.string and payload in script.string
+                                for script in scripts
+                            )
+                            if reflected:
+                                return self._vulnerability_result(
+                                    url,
+                                    param=param_name,
+                                    method='GET',
+                                    field=f"query-parameter '{param_name}'",
+                                    payload=payload,
+                                    test_url=test_url,
+                                    note="Reflected XSS vulnerability detected",
+                                )
+
+            # --- Тестируем поля формы по одному ---
             for form in forms:
                 if self.should_stop:
                     return None
-                    
                 action = urljoin(url, str(form.get('action', '')))
                 method = str(form.get('method', 'get')).upper()
-                
-                # Создаем тестовые данные для формы
-                form_data: Dict[str, str] = {}
-                # Ограничиваем количество полей формы для тестирования
-                input_elements = form.find_all('input')[:3]  # Максимум 3 поля
+                input_elements = form.find_all('input')[:3]
                 for input_elem in input_elements:
                     input_name = str(input_elem.get('name', ''))
                     if input_name and input_elem.get('type') in ['text', 'password', 'email', 'search', 'url']:
-                        form_data[input_name] = SAFE_XSS_PAYLOADS[0]  # Используем первый пэйлоад
-                
-                if form_data:
-                    if method == 'POST':
-                        result = await self.smart_request(session, 'POST', action, data=form_data)
-                    else:
-                        test_url = f"{action}?{urlencode(form_data)}"
-                        result = await self.smart_request(session, 'GET', test_url)
-                    
-                    if result:
-                        _, content = result
-                        if SAFE_XSS_PAYLOADS[0] in content:
-                            return f"XSS vulnerability detected in form to {action}"
-            
+                        payload = SAFE_XSS_PAYLOADS[0]
+                        form_data = {input_name: payload}
+                        if method == 'POST':
+                            result = await self.smart_request(session, 'POST', action, data=form_data)
+                            test_url = action
+                        else:
+                            test_url = f"{action}?{urlencode(form_data)}"
+                            result = await self.smart_request(session, 'GET', test_url)
+                        if result:
+                            _, content = result
+                            if payload in content:
+                                field = self._form_field_name(input_elem)
+                                return self._vulnerability_result(
+                                    url,
+                                    param=input_name,
+                                    method=method,
+                                    action=action,
+                                    field=field,
+                                    payload=payload,
+                                    test_url=test_url,
+                                    note="XSS vulnerability detected in form",
+                                )
             return None
-            
+
         except Exception as e:
             logger.error(f"Error in XSS check: {e}")
             return None
 
-    async def check_csrf(self, url: str, forms: List[Tag]) -> Optional[str]:
-        """Проверка на CSRF-уязвимости."""
+    async def check_csrf(self, url: str, forms: List[Tag]) -> Optional[Dict[str, Any]]:
+        """Проверка на CSRF-уязвимости.
+
+        Возвращает словарь с URL формы и полем, где отсутствует CSRF-токен.
+        """
         try:
             known_csrf_token_names = {
                 'csrf_token', 'csrfmiddlewaretoken', 'authenticity_token',
                 '_csrf', '_token', '__requestverificationtoken', 'xsrf_token'
             }
 
-            vulnerable_form_actions: List[str] = []
-            
+            vulnerable_forms: List[Dict[str, str]] = []
+
             for form in forms:
                 try:
                     action = urljoin(url, str(form.get('action', '')))
@@ -1508,37 +1633,53 @@ class ScanWorker:
 
                     # Проверяем только POST формы
                     if form_method == 'POST':
-                        # Ищем скрытые поля в форме
                         hidden_fields = form.find_all('input', type='hidden')
                         form_has_csrf_token = False
-                        
+                        hidden_names: List[str] = []
                         for field in hidden_fields:
                             field_name = str(field.get('name', '')).lower()
+                            if field_name:
+                                hidden_names.append(field_name)
                             if field_name in known_csrf_token_names:
                                 form_has_csrf_token = True
                                 break
 
-                        # Если форма не имеет CSRF токена, считаем её уязвимой
                         if not form_has_csrf_token:
-                            vulnerable_form_actions.append(action)
-                            
+                            vulnerable_forms.append({
+                                'action': action,
+                                'method': 'POST',
+                                'location': (
+                                    f"форма {action} (скрытые поля: "
+                                    + (', '.join(hidden_names) if hidden_names else "не найдены")
+                                    + ")"
+                                ),
+                            })
+
                 except Exception as e:
                     logger.warning(f"Error processing form in CSRF check: {e}")
                     continue
 
-            if vulnerable_form_actions:
-                unique_actions = sorted(list(set(vulnerable_form_actions)))
-                result = f"Potential CSRF in POST forms to: {', '.join(unique_actions[:3])}"  # Ограничиваем вывод
-                return result
-            
+            if vulnerable_forms:
+                first = vulnerable_forms[0]
+                all_actions = sorted({v['action'] for v in vulnerable_forms})
+                return self._vulnerability_result(
+                    url,
+                    param='CSRF-токен',
+                    method=first['method'],
+                    action=first['action'],
+                    field='скрытые поля формы',
+                    payload='отсутствует CSRF-токен',
+                    test_url=first['action'],
+                    note="Potential CSRF in POST forms to: " + ", ".join(all_actions[:3]),
+                )
             return None
-            
+
         except Exception as e:
             log_and_notify('error', f"Error in check_csrf: {e}")
             return None
 
     def _inject_payload_into_url(self, url: str, payload: str) -> str:
-        """Внедряет пэйлоад в параметры URL."""
+        """Внедряет пэйлоад во все параметры URL."""
         parsed = urlparse(url)
         query_params = parse_qs(parsed.query)
         
@@ -1549,6 +1690,41 @@ class ScanWorker:
         
         new_query = urlencode(injected_params, doseq=True)
         return parsed._replace(query=new_query).geturl()
+
+    @staticmethod
+    def _query_parameter_names(url: str) -> List[str]:
+        """Возвращает имена параметров в query-строке URL."""
+        try:
+            parsed = urlparse(url)
+            return [name for name in parse_qs(parsed.query).keys() if name]
+        except Exception:
+            return []
+
+    def _inject_payload_into_param(self, url: str, param_name: str, payload: str) -> str:
+        """Внедряет пэйлоад в конкретный параметр URL.
+
+        Это позволяет точно указать, какой именно параметр уязвим.
+        """
+        parsed = urlparse(url)
+        query_params = parse_qs(parsed.query, keep_blank_values=True)
+        injected_params: Dict[str, List[str]] = {}
+        for key, values in query_params.items():
+            if key == param_name:
+                injected_params[key] = [f"{value}{payload}" for value in values]
+            else:
+                injected_params[key] = values
+        new_query = urlencode(injected_params, doseq=True)
+        return parsed._replace(query=new_query).geturl()
+
+    @staticmethod
+    def _form_field_name(field: Tag) -> str:
+        """Человекочитаемое имя поля формы, например input[name='q']."""
+        try:
+            name = str(field.get('name', ''))
+            field_type = str(field.get('type', 'text'))
+            return f"{field.name}[name='{name}', type='{field_type}']"
+        except Exception:
+            return str(field)
 
     async def scan(self) -> Dict[str, Any]:
         """Основной метод для запуска сканирования."""

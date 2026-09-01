@@ -91,7 +91,7 @@ class ReportsWindow(QMainWindow):
         self.reports_table.setColumnCount(7)
         cast(Any, self.reports_table).setHorizontalHeaderLabels([
             "ID сканирования", "URL", "Дата", "Тип уязвимости", 
-            "Параметр", "Серьезность", "Подробности"
+            "Место в коде", "Серьезность", "Подробности"
         ])
         self.reports_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         main_layout.addWidget(self.reports_table)

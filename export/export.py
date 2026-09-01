@@ -7,6 +7,7 @@ from typing import List, Dict, Any, Optional, Set, cast
 from fpdf import FPDF
 
 from utils.encryption import decrypt_sensitive_data_safe
+from utils.vulnerability_info import extract_location_fields
 from utils.logger import logger, log_and_notify
 from utils.performance import get_local_timestamp
 
@@ -54,13 +55,21 @@ def format_scan_data_for_export(scans: List[Dict[str, Any]], user_id: Optional[i
 
         if is_vulnerability_row:
             severity = str(scan.get('severity', scan.get('Серьёзность', 'Средний')))
+            location_fields = extract_location_fields(str(scan.get('details', '')))
             vuln_row: Dict[str, Any] = {
                 'type': str(scan.get('vulnerability_type', scan.get('Тип уязвимости', 'Unknown'))),
                 'status': str(scan.get('status', 'Vulnerable' if severity.lower() in ('high', 'высокий') else 'Проверено')),
                 'url': str(scan.get('url', scan.get('URL', ''))),
-                'parameter': str(scan.get('parameter', scan.get('Параметр', ''))),
+                'parameter': str(
+                    scan.get('parameter', scan.get('Параметр', scan.get('request_params', '')))
+                ),
                 'severity': severity,
                 'details': str(scan.get('details', '')),
+                'method': str(scan.get('method', location_fields.get('method', ''))),
+                'field': str(scan.get('field', location_fields.get('field', ''))),
+                'action': str(scan.get('action', location_fields.get('action', ''))),
+                'payload': str(scan.get('payload', '')),
+                'test_url': str(scan.get('test_url', location_fields.get('test_url', scan.get('response', '')))),
             }
             results = [vuln_row]
 
@@ -84,7 +93,14 @@ def format_scan_data_for_export(scans: List[Dict[str, Any]], user_id: Optional[i
         vuln_summary: Dict[str, Dict[str, Any]] = {}
         vulnerable_count = 0
 
-        for result in results:
+        for raw_result in results:
+            result = dict(raw_result)
+            # Если структурированные поля не сохранены, извлекаем их из текста.
+            location_fields = extract_location_fields(str(result.get('details', '')) or '')
+            for key in ('parameter', 'method', 'field', 'action', 'test_url'):
+                if not result.get(key):
+                    result[key] = location_fields.get(key, '')
+
             vuln_type: str = str(result.get('type', 'Unknown'))
             status: str = str(result.get('status', 'Unknown'))
             severity: str = str(result.get('severity', ''))
@@ -122,6 +138,11 @@ def format_scan_data_for_export(scans: List[Dict[str, Any]], user_id: Optional[i
             vuln_summary[vuln_type]['details'].append({
                 'url': url,
                 'parameter': param,
+                'method': str(result.get('method', '')),
+                'field': str(result.get('field', '')),
+                'action': str(result.get('action', '')),
+                'payload': str(result.get('payload', '')),
+                'test_url': str(result.get('test_url', '')),
                 'status': status,
                 'severity': severity_value,
             })
@@ -394,12 +415,26 @@ def export_to_pdf(data: List[Dict[str, Any]], filename: str = "report.pdf", user
                     for vuln_type, vuln_data in scan['vulnerabilities'].items():
                         pdf.add_text(f"  • {vuln_type}: {vuln_data['vulnerable']} уязвимостей из {vuln_data['total']} проверок")
                         
-                        # Показываем детали уязвимостей
+                        # Показываем детали уязвимостей с точным местом в коде
                         if vuln_data['vulnerable'] > 0:
-                            pdf.add_text("    Уязвимые URL:")
+                            pdf.add_text("    Уязвимые места:")
                             for detail in vuln_data['details']:
                                 if detail['severity'] == 'HIGH':
-                                    pdf.add_text(f"      - {detail['url']}: {detail['status']}", url_mode=True)
+                                    location_parts = [detail.get('url', '')]
+                                    if detail.get('parameter'):
+                                        location_parts.append(f"параметр: {detail['parameter']}")
+                                    if detail.get('method'):
+                                        location_parts.append(f"метод: {detail['method']}")
+                                    if detail.get('field'):
+                                        location_parts.append(f"поле: {detail['field']}")
+                                    if detail.get('action'):
+                                        location_parts.append(f"форма: {detail['action']}")
+                                    if detail.get('test_url'):
+                                        location_parts.append(f"тестовый URL: {detail['test_url']}")
+                                    pdf.add_text(
+                                        "      - " + ", ".join(part for part in location_parts if part),
+                                        url_mode=True,
+                                    )
                 
                 pdf.ln(5)
                 
@@ -483,6 +518,40 @@ def export_to_html(data: List[Dict[str, Any]], filename: str = "report.html", us
                     <p><strong>Безопасно:</strong> {scan['summary']['safe_count']}</p>
                 </div>
             """
+            if scan['vulnerabilities']:
+                html_content += '<h4>Места найденных уязвимостей</h4>'
+                for vuln_type, vuln_data in scan['vulnerabilities'].items():
+                    if not vuln_data['details']:
+                        continue
+                    html_content += f"""
+                        <table>
+                            <tr>
+                                <th>Тип</th>
+                                <th>URL</th>
+                                <th>Параметр</th>
+                                <th>Метод</th>
+                                <th>Поле</th>
+                                <th>Форма / действие</th>
+                                <th>Пейлоад</th>
+                                <th>Тестовый URL</th>
+                            </tr>
+                    """
+                    for detail in vuln_data['details']:
+                        if detail['severity'] != 'HIGH':
+                            continue
+                        html_content += f"""
+                            <tr>
+                                <td>{vuln_type}</td>
+                                <td>{detail.get('url', '')}</td>
+                                <td>{detail.get('parameter', '')}</td>
+                                <td>{detail.get('method', '')}</td>
+                                <td>{detail.get('field', '')}</td>
+                                <td>{detail.get('action', '')}</td>
+                                <td>{detail.get('payload', '')}</td>
+                                <td>{detail.get('test_url', '')}</td>
+                            </tr>
+                        """
+                    html_content += '</table><br>'
         
         html_content += """
         </body>
@@ -544,8 +613,23 @@ def export_to_txt(data: List[Dict[str, Any]], filename: str = "report.txt", user
                 f"  Всего проверок: {scan['summary']['total_checks']}",
                 f"  Уязвимостей: {scan['summary']['vulnerable_count']}",
                 f"  Безопасно: {scan['summary']['safe_count']}",
-                ""
             ])
+            if scan['vulnerabilities']:
+                report_lines.append("  Места найденных уязвимостей:")
+                for vuln_type, vuln_data in scan['vulnerabilities'].items():
+                    for detail in vuln_data['details']:
+                        if detail['severity'] != 'HIGH':
+                            continue
+                        report_lines.append(
+                            f"    - {vuln_type}: {detail.get('url', '')} | "
+                            f"параметр: {detail.get('parameter', '-')} | "
+                            f"метод: {detail.get('method', '-')} | "
+                            f"поле: {detail.get('field', '-')} | "
+                            f"форма: {detail.get('action', '-')} | "
+                            f"пейлоад: {detail.get('payload', '-')} | "
+                            f"тестовый URL: {detail.get('test_url', '-')}"
+                        )
+            report_lines.append("")
         
         report_lines.extend([
             "=" * 80,
@@ -674,6 +758,12 @@ def export_single_scan_to_csv(scan: Dict[str, Any], filename: str = "single_scan
                 'Scan ID': scan.get('id', 'N/A'),
                 'Vulnerability Type': result.get('type', 'N/A'),
                 'URL': result.get('url', 'N/A'),
+                'Parameter / Location': result.get('parameter', result.get('request_params', 'N/A')),
+                'Method': result.get('method', 'N/A'),
+                'Field': result.get('field', 'N/A'),
+                'Form / Action': result.get('action', 'N/A'),
+                'Payload': result.get('payload', 'N/A'),
+                'Test URL': result.get('test_url', result.get('response', 'N/A')),
                 'Status': result.get('status', 'N/A'),
                 'Details': result.get('details', 'N/A')
             }
@@ -744,6 +834,18 @@ def export_single_scan_to_pdf(scan: Dict[str, Any], filename: str = "single_scan
             
             for i, result in enumerate(results, 1):
                 pdf.add_text(f"{i}. {result.get('type', 'Unknown')} - {result.get('url', 'Unknown')}", 10, url_mode=True)
+                if result.get('parameter'):
+                    pdf.add_text(f"   Место в коде: {result.get('parameter', '')}", 9)
+                if result.get('method'):
+                    pdf.add_text(f"   Метод: {result.get('method', '')}", 9)
+                if result.get('field'):
+                    pdf.add_text(f"   Поле: {result.get('field', '')}", 9)
+                if result.get('action'):
+                    pdf.add_text(f"   Форма/действие: {result.get('action', '')}", 9)
+                if result.get('payload'):
+                    pdf.add_text(f"   Пейлоад: {result.get('payload', '')}", 9)
+                if result.get('test_url') or result.get('response'):
+                    pdf.add_text(f"   Тестовый URL: {result.get('test_url', result.get('response', ''))}", 9)
                 pdf.add_text(f"   Статус: {result.get('status', 'Unknown')}", 9)
                 if result.get('details'):
                     pdf.add_text(f"   Детали: {result.get('details', '')}", 9)
@@ -820,11 +922,16 @@ def export_single_scan_to_html(scan: Dict[str, Any], filename: str = "single_sca
                 <div class="result-item {status_class}">
                     <h3>{i}. {result.get('type', 'Unknown')}</h3>
                     <p><strong>URL:</strong> {result.get('url', 'Unknown')}</p>
+                    <p><strong>Место в коде:</strong> {result.get('parameter', '')}</p>
+                    <p><strong>Метод:</strong> {result.get('method', '')}</p>
+                    <p><strong>Поле:</strong> {result.get('field', '')}</p>
+                    <p><strong>Форма / действие:</strong> {result.get('action', '')}</p>
+                    <p><strong>Пейлоад:</strong> {result.get('payload', '')}</p>
+                    <p><strong>Тестовый URL:</strong> {result.get('test_url', result.get('response', ''))}</p>
                     <p><strong>Статус:</strong> {result.get('status', 'Unknown')}</p>
                     {f'<p><strong>Детали:</strong> {result.get("details", "")}</p>' if result.get('details') else ''}
                 </div>
             """
-        
         html_content += """
             </div>
         </body>
@@ -880,6 +987,12 @@ def export_single_scan_to_txt(scan: Dict[str, Any], filename: str = "single_scan
             report_lines.extend([
                 f"{i}. {result.get('type', 'Unknown')}",
                 f"   URL: {result.get('url', 'Unknown')}",
+                f"   Место в коде: {result.get('parameter', '')}",
+                f"   Метод: {result.get('method', '')}",
+                f"   Поле: {result.get('field', '')}",
+                f"   Форма/действие: {result.get('action', '')}",
+                f"   Пейлоад: {result.get('payload', '')}",
+                f"   Тестовый URL: {result.get('test_url', result.get('response', ''))}",
                 f"   Статус: {result.get('status', 'Unknown')}"
             ])
             if result.get('details'):
