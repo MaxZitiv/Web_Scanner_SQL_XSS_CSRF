@@ -1,40 +1,32 @@
 # ui/edit_credentials_window.py
 
 import re
-import bcrypt
-from PyQt6.QtWidgets import (
-    QDialog, QLabel, QLineEdit, QPushButton,
-    QVBoxLayout, QHBoxLayout, QMessageBox
-)
-from PyQt6.QtCore import (
-    pyqtSignal, Qt
-)
-from PyQt6.QtGui import QCloseEvent
-from utils.database import db
-from utils.logger import logger, log_and_notify
 import sqlite3
-from typing import Any, Optional, cast
-from PyQt6.QtWidgets import QWidget
+from typing import Any, cast
+
+import bcrypt
+from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtGui import QCloseEvent
+from PyQt6.QtWidgets import QDialog, QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPushButton, QVBoxLayout, QWidget
+
+from utils.database import db
+from utils.logger import log_and_notify, logger
 
 
 class EditCredentialsWindow(QDialog):
     # Сигнал для безопасного закрытия
     closed = pyqtSignal()
 
-    def __init__(self, user_id: int, parent: Optional[QWidget] = None):
+    def __init__(self, user_id: int, parent: QWidget | None = None):
         super().__init__(parent)
-        self.confirm_input: Optional[QLineEdit] = None
-        self.password_input: Optional[QLineEdit] = None
-        self.email_input: Optional[QLineEdit] = None
-        self.username_input: Optional[QLineEdit] = None
-        self.old_password_input: Optional[QLineEdit] = None
-        self.setWindowFlags(
-            Qt.WindowType.Window
-            | Qt.WindowType.WindowTitleHint
-            | Qt.WindowType.CustomizeWindowHint
-        )
+        self.confirm_input: QLineEdit | None = None
+        self.password_input: QLineEdit | None = None
+        self.email_input: QLineEdit | None = None
+        self.username_input: QLineEdit | None = None
+        self.old_password_input: QLineEdit | None = None
+        self.setWindowFlags(Qt.WindowType.Window | Qt.WindowType.WindowTitleHint | Qt.WindowType.CustomizeWindowHint)
         self.user_id = user_id
-        self.parent_dashboard: Optional[QWidget] = parent
+        self.parent_dashboard: QWidget | None = parent
         self.setup_ui()
         self.load_current_data()
         logger.info("EditCredentialsWindow initialized")
@@ -47,13 +39,12 @@ class EditCredentialsWindow(QDialog):
         layout = QVBoxLayout()
 
         # Поля ввода
-        from typing import List, Tuple
-        fields: List[Tuple[str, QLineEdit]] = [
+        fields: list[tuple[str, QLineEdit]] = [
             ("Новое имя пользователя:", QLineEdit()),
             ("Новый Email:", QLineEdit()),
             ("Текущий пароль:", QLineEdit()),
             ("Новый пароль:", QLineEdit()),
-            ("Повторите пароль:", QLineEdit())
+            ("Повторите пароль:", QLineEdit()),
         ]
 
         # Добавляем поля в layout
@@ -107,16 +98,17 @@ class EditCredentialsWindow(QDialog):
                 self.email_input.setText(user_info.get("email", ""))
                 logger.info("Current data loaded successfully")
         except (ValueError, sqlite3.Error, KeyError, AttributeError) as e:
-            QMessageBox.critical(self, "Ошибка", f"Не удалось загрузить данные: {str(e)}")
-            log_and_notify('error', f"Failed to load current data: {str(e)}")
+            QMessageBox.critical(self, "Ошибка", f"Не удалось загрузить данные: {e!s}")
+            log_and_notify("error", f"Failed to load current data: {e!s}")
             self.hide()
 
     def save_changes(self):
-        if not all([self.username_input, self.email_input, self.old_password_input, 
-                   self.password_input, self.confirm_input]):
+        if not all(
+            [self.username_input, self.email_input, self.old_password_input, self.password_input, self.confirm_input]
+        ):
             QMessageBox.warning(self, "Ошибка", "Не удалось инициализировать поля ввода.")
             return
-            
+
         new_username = self.username_input.text().strip() if self.username_input else ""
         new_email = self.email_input.text().strip() if self.email_input else ""
         old_password = self.old_password_input.text().strip() if self.old_password_input else ""
@@ -136,7 +128,7 @@ class EditCredentialsWindow(QDialog):
             cursor = conn.cursor()
 
             # Получаем хеш старого пароля
-            cursor.execute('SELECT password_hash FROM users WHERE id = ?', (self.user_id,))
+            cursor.execute("SELECT password_hash FROM users WHERE id = ?", (self.user_id,))
             result = cursor.fetchone()
             if not result:
                 QMessageBox.warning(self, "Ошибка", "Пользователь не найден.")
@@ -144,13 +136,13 @@ class EditCredentialsWindow(QDialog):
                 return
 
             stored_hash = result[0]
-            if not bcrypt.checkpw(old_password.encode('utf-8'), stored_hash.encode('utf-8')):
+            if not bcrypt.checkpw(old_password.encode("utf-8"), stored_hash.encode("utf-8")):
                 QMessageBox.warning(self, "Ошибка", "Текущий пароль неверен.")
                 conn.close()
                 return
 
             # Хешируем новый пароль
-            new_hash = bcrypt.hashpw(new_password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+            new_hash = bcrypt.hashpw(new_password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
             # Используем новую функцию для обновления
             if db.update_user_credentials(self.user_id, new_username, new_email, new_hash):
@@ -159,23 +151,23 @@ class EditCredentialsWindow(QDialog):
 
                 # Обновляем информацию в родительском окне, если оно существует
                 if self.parent_dashboard is not None:
-                    if hasattr(self.parent_dashboard, 'username'):
-                        setattr(self.parent_dashboard, 'username', new_username)
-                    if hasattr(self.parent_dashboard, 'update_profile_info'):
+                    if hasattr(self.parent_dashboard, "username"):
+                        self.parent_dashboard.username = new_username
+                    if hasattr(self.parent_dashboard, "update_profile_info"):
                         # Проверяем, что update_profile_info является вызываемым объектом
-                        update_method = getattr(self.parent_dashboard, 'update_profile_info')
+                        update_method = self.parent_dashboard.update_profile_info
                         if callable(update_method):
                             update_method()
-                
+
                 self.close()
             else:
                 QMessageBox.warning(self, "Ошибка", "Не удалось обновить профиль.")
 
         except (ValueError, sqlite3.Error, KeyError, AttributeError) as e:
-            log_and_notify('error', f"Ошибка обновления профиля: {e}")
+            log_and_notify("error", f"Ошибка обновления профиля: {e}")
             QMessageBox.warning(self, "Ошибка", "Не удалось обновить профиль.")
 
-    def closeEvent(self, a0: Optional[QCloseEvent]) -> None:
+    def closeEvent(self, a0: QCloseEvent | None) -> None:
         """Безопасное закрытие окна"""
         self.closed.emit()
         super().closeEvent(a0)
@@ -183,5 +175,5 @@ class EditCredentialsWindow(QDialog):
     @staticmethod
     def is_valid_email(email: str) -> bool:
         """Проверка валидности email"""
-        pattern = r'^[\w\.-]+@[\w\.-]+\.\w+$'
+        pattern = r"^[\w\.-]+@[\w\.-]+\.\w+$"
         return re.match(pattern, email) is not None

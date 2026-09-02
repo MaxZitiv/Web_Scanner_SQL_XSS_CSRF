@@ -1,5 +1,6 @@
 from dataclasses import dataclass, field
-from typing import List, Dict, Any
+from typing import Any
+
 
 @dataclass
 class SecurityPolicy:
@@ -7,21 +8,22 @@ class SecurityPolicy:
     Датакласс для представления политики безопасности.
     Содержит все настройки для сканирования уязвимостей.
     """
+
     name: str
-    enabled_vulns: List[str] = field(default_factory=lambda: ["sql", "xss", "csrf"])
+    enabled_vulns: list[str] = field(default_factory=lambda: ["sql", "xss", "csrf"])
     sql_payloads: str = "standard"
     xss_payloads: str = "standard"
     # Сайт всегда сканируется полностью: глубина и параллельность не настраиваются.
     max_depth: int = 10
     max_concurrent: int = 5
     timeout: int = 30
-    exclude_urls: List[str] = field(default_factory=lambda: [])
-    custom_headers: Dict[str, str] = field(default_factory=lambda: {})
+    exclude_urls: list[str] = field(default_factory=list)
+    custom_headers: dict[str, str] = field(default_factory=dict)
     respect_robots_txt: bool = True
     rate_limit: int = 0
     stop_on_first_vuln: bool = False
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Преобразование датакласса в словарь для сохранения в JSON."""
         return {
             "name": self.name,
@@ -35,11 +37,11 @@ class SecurityPolicy:
             "custom_headers": self.custom_headers,
             "respect_robots_txt": self.respect_robots_txt,
             "rate_limit": self.rate_limit,
-            "stop_on_first_vuln": self.stop_on_first_vuln
+            "stop_on_first_vuln": self.stop_on_first_vuln,
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'SecurityPolicy':
+    def from_dict(cls, data: dict[str, Any]) -> SecurityPolicy:
         """Создание датакласса из словаря."""
         return cls(
             name=data.get("name", "Default"),
@@ -53,5 +55,5 @@ class SecurityPolicy:
             custom_headers=data.get("custom_headers", {}),
             respect_robots_txt=data.get("respect_robots_txt", True),
             rate_limit=data.get("rate_limit", 0),
-            stop_on_first_vuln=data.get("stop_on_first_vuln", False)
+            stop_on_first_vuln=data.get("stop_on_first_vuln", False),
         )

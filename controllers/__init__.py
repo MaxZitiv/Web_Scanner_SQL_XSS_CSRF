@@ -9,4 +9,4 @@
 from .auth_controller import AuthController
 from .scan_controller import ScanController
 
-__all__ = ['AuthController', 'ScanController'] 
+__all__ = ["AuthController", "ScanController"]

@@ -1,16 +1,31 @@
 import asyncio
+from typing import Any, cast
 
-from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QGroupBox,
-    QLineEdit, QCheckBox, QSpinBox, QPushButton, QTreeWidget,
-    QTextEdit, QComboBox,
-    QSplitter, QTableWidget, 
-    QHeaderView, QScrollArea, QMessageBox, QProgressBar)
 from PyQt6.QtCore import Qt
-from typing import Optional, Dict, Any, List, cast
+from PyQt6.QtWidgets import (
+    QCheckBox,
+    QComboBox,
+    QGroupBox,
+    QHBoxLayout,
+    QHeaderView,
+    QLabel,
+    QLineEdit,
+    QMessageBox,
+    QProgressBar,
+    QPushButton,
+    QScrollArea,
+    QSpinBox,
+    QSplitter,
+    QTableWidget,
+    QTextEdit,
+    QTreeWidget,
+    QVBoxLayout,
+    QWidget,
+)
+
 from controllers.scan_controller import ScanController
-from utils.logger import logger
 from utils.error_handler import error_handler
+from utils.logger import logger
 from utils.performance import get_local_timestamp
 from views.tabs.scan_tab_optimized import ScanTabStatsMixin
 
@@ -19,8 +34,9 @@ from views.tabs.scan_tab_optimized import ScanTabStatsMixin
 FULL_SCAN_MAX_DEPTH = 10
 SCAN_CONCURRENCY = 5
 
+
 class ScanTabWidget(ScanTabStatsMixin, QWidget):
-    def __init__(self, user_id: int, parent: Optional[QWidget] = None):
+    def __init__(self, user_id: int, parent: QWidget | None = None):
         # Инициализация родительского класса QWidget
         QWidget.__init__(self, parent)
 
@@ -34,27 +50,28 @@ class ScanTabWidget(ScanTabStatsMixin, QWidget):
             scan_types=["sql", "xss", "csrf"],  # Default scan types
             user_id=user_id,
             max_depth=FULL_SCAN_MAX_DEPTH,
-            max_concurrent=SCAN_CONCURRENCY
+            max_concurrent=SCAN_CONCURRENCY,
         )
         self._scan_start_time = None
         self._total_urls = 0
         self._completed_urls = 0
         self._total_progress = 0
         self._active_workers = 0
+        self._active_scan_task: asyncio.Task[Any] | None = None
         self._worker_progress = {}
         self._is_paused = False
-        self._log_entries: List[Dict[str, Any]] = []
-        self._filtered_log_entries: List[Dict[str, Any]] = []
+        self._log_entries: list[dict[str, Any]] = []
+        self._filtered_log_entries: list[dict[str, Any]] = []
         self._current_filter = "Все"
         self._search_text = ""
         self._stats = {
-            'urls_found': 0,
-            'urls_scanned': 0,
-            'forms_found': 0,
-            'forms_scanned': 0,
-            'vulnerabilities': 0,
-            'requests_sent': 0,
-            'errors': 0,
+            "urls_found": 0,
+            "urls_scanned": 0,
+            "forms_found": 0,
+            "forms_scanned": 0,
+            "vulnerabilities": 0,
+            "requests_sent": 0,
+            "errors": 0,
         }
         try:
             self.init_components()
@@ -99,21 +116,29 @@ class ScanTabWidget(ScanTabStatsMixin, QWidget):
 
             # Проверка наличия всех необходимых компонентов
             required_components = [
-                'url_input', 'scan_button', 'results_table',
-                'sql_checkbox', 'xss_checkbox', 'csrf_checkbox',
-                'timeout_spinbox',
-                'pause_button', 'stop_button',
-                'scan_status',
-                'site_tree', 'detailed_log',
-                'log_filter', 'log_search', 'clear_search_button',
-                'stats_labels'
+                "url_input",
+                "scan_button",
+                "results_table",
+                "sql_checkbox",
+                "xss_checkbox",
+                "csrf_checkbox",
+                "timeout_spinbox",
+                "pause_button",
+                "stop_button",
+                "scan_status",
+                "site_tree",
+                "detailed_log",
+                "log_filter",
+                "log_search",
+                "clear_search_button",
+                "stats_labels",
             ]
-            
+
             self.site_tree = QTreeWidget()
             cast(Any, self.site_tree).setHeaderLabels(["URL", "Status", "Type"])
 
             # Подключаем сигналы и слоты
-            if hasattr(self.scan_controller, 'signals') and hasattr(self.scan_controller, 'stats_updated'):
+            if hasattr(self.scan_controller, "signals") and hasattr(self.scan_controller, "stats_updated"):
                 cast(Any, self.scan_controller.signals.stats_updated).connect(self.update_stats)
 
             for component in required_components:
@@ -123,7 +148,7 @@ class ScanTabWidget(ScanTabStatsMixin, QWidget):
         except Exception as e:
             logger.error(f"Failed to initialize scan tab components: {e}")
             raise
-        
+
     async def on_scan_button_clicked(self):
         """Обработчик нажатия кнопки сканирования"""
         try:
@@ -134,17 +159,17 @@ class ScanTabWidget(ScanTabStatsMixin, QWidget):
 
     def on_scan_button_clicked_wrapper(self):
         """Обертка для запуска асинхронного обработчика кнопки сканирования."""
-        asyncio.create_task(self.on_scan_button_clicked())
+        self._active_scan_task = asyncio.create_task(self.on_scan_button_clicked())
 
     def setup_ui(self):
         """Настройка пользовательского интерфейса вкладки сканирования"""
         try:
             # Проверяем, что все компоненты инициализированы
-            if not hasattr(self, 'url_input'):
+            if not hasattr(self, "url_input"):
                 raise ValueError("url_input not initialized")
-            if not hasattr(self, 'scan_button'):
+            if not hasattr(self, "scan_button"):
                 raise ValueError("scan_button not initialized")
-            if not hasattr(self, 'results_table'):
+            if not hasattr(self, "results_table"):
                 raise ValueError("results_table not initialized")
 
             # Создаем основной контейнер с прокруткой
@@ -267,7 +292,7 @@ class ScanTabWidget(ScanTabStatsMixin, QWidget):
                 ("vulnerabilities", "Уязвимостей:", "0"),
                 ("requests_sent", "Запросов отправлено:", "0"),
                 ("errors", "Ошибок:", "0"),
-                ("scan_time", "Время сканирования:", "00:00:00")
+                ("scan_time", "Время сканирования:", "00:00:00"),
             ]
 
             for key, label_text, default_value in stats_items:
@@ -344,12 +369,14 @@ class ScanTabWidget(ScanTabStatsMixin, QWidget):
         """Инициализация таблицы результатов сканирования"""
         try:
             # Проверяем, что таблица инициализирована
-            if not hasattr(self, 'results_table'):
+            if not hasattr(self, "results_table"):
                 raise ValueError("results_table not initialized")
 
             # Настраиваем таблицу
             self.results_table.setColumnCount(5)
-            cast(Any, self.results_table).setHorizontalHeaderLabels(["URL", "Тип уязвимости", "Место в коде", "Статус", "Действия"])
+            cast(Any, self.results_table).setHorizontalHeaderLabels(
+                ["URL", "Тип уязвимости", "Место в коде", "Статус", "Действия"]
+            )
 
             header = self.results_table.horizontalHeader()
             if header is not None:
@@ -402,11 +429,11 @@ class ScanTabWidget(ScanTabStatsMixin, QWidget):
             self._filtered_log_entries = []
             for entry in self._log_entries:
                 # Фильтр по типу
-                if self._current_filter != "Все" and entry.get('type', '') != self._current_filter:
+                if self._current_filter != "Все" and entry.get("type", "") != self._current_filter:
                     continue
 
                 # Фильтр по тексту поиска
-                if self._search_text and self._search_text not in entry.get('message', '').lower():
+                if self._search_text and self._search_text not in entry.get("message", "").lower():
                     continue
 
                 self._filtered_log_entries.append(entry)
@@ -415,9 +442,9 @@ class ScanTabWidget(ScanTabStatsMixin, QWidget):
             self.detailed_log.clear()
             for entry in self._filtered_log_entries:
                 # Форматируем запись
-                timestamp = entry.get('timestamp', '')
-                message_type = entry.get('type', '')
-                message = entry.get('message', '')
+                timestamp = entry.get("timestamp", "")
+                message_type = entry.get("type", "")
+                message = entry.get("message", "")
 
                 # Определяем цвет в зависимости от типа сообщения
                 color = "black"
@@ -444,11 +471,7 @@ class ScanTabWidget(ScanTabStatsMixin, QWidget):
             timestamp = get_local_timestamp()
 
             # Создаем запись
-            entry: Dict[str, str] = {
-                'timestamp': timestamp,
-                'type': message_type,
-                'message': message
-            }
+            entry: dict[str, str] = {"timestamp": timestamp, "type": message_type, "message": message}
 
             # Добавляем в общий список
             self._log_entries.append(entry)
@@ -464,7 +487,7 @@ class ScanTabWidget(ScanTabStatsMixin, QWidget):
         try:
             from ui.vulnerability_viewer import ZapStyleVulnerabilityViewer
 
-            viewer = getattr(self, 'zap_viewer', None)
+            viewer = getattr(self, "zap_viewer", None)
             if viewer is None:
                 viewer = ZapStyleVulnerabilityViewer(self.user_id, self)
                 self.zap_viewer = viewer
@@ -474,7 +497,7 @@ class ScanTabWidget(ScanTabStatsMixin, QWidget):
             viewer.activateWindow()
         except Exception as e:
             logger.error(f"Ошибка при открытии просмотра уязвимостей: {e}")
-            QMessageBox.critical(self, "Ошибка", f"Не удалось открыть просмотр уязвимостей: {str(e)}")
+            QMessageBox.critical(self, "Ошибка", f"Не удалось открыть просмотр уязвимостей: {e!s}")
 
     def pause_scan(self):
         """Приостановка/возобновление сканирования"""
@@ -528,7 +551,7 @@ class ScanTabWidget(ScanTabStatsMixin, QWidget):
         """Обновление прогресса сканирования"""
         try:
             # Обновляем прогресс-бар
-            if hasattr(self, 'scan_progress'):
+            if hasattr(self, "scan_progress"):
                 self.scan_progress.setValue(int(progress))
         except Exception as e:
             logger.error(f"Error updating scan progress: {e}")
@@ -552,10 +575,11 @@ class ScanTabWidget(ScanTabStatsMixin, QWidget):
                     self.stats_labels[key].setText("0")
 
             # Особый случай для времени сканирования
-            if 'scan_time' in self.stats_labels:
-                self.stats_labels['scan_time'].setText("00:00:00")
+            if "scan_time" in self.stats_labels:
+                self.stats_labels["scan_time"].setText("00:00:00")
         except Exception as e:
             logger.error(f"Error resetting stats: {e}")
+
     async def scan_website_sync(self):
         """Синхронная обертка для асинхронного сканирования"""
         try:
@@ -566,7 +590,7 @@ class ScanTabWidget(ScanTabStatsMixin, QWidget):
                 return
 
             # Проверяем, что выбран хотя бы один тип уязвимостей
-            vuln_types: List[str] = []
+            vuln_types: list[str] = []
             if self.sql_checkbox.isChecked():
                 vuln_types.append("sql")
             if self.xss_checkbox.isChecked():
@@ -600,7 +624,7 @@ class ScanTabWidget(ScanTabStatsMixin, QWidget):
             # Запускаем сканирование
             self._scan_start_time = get_local_timestamp()
             self.scan_status.setText("Сканирование...")
-            try:  
+            try:
                 await self.scan_controller.start_scan(
                     url=url,
                     scan_types=vuln_types,
@@ -612,11 +636,11 @@ class ScanTabWidget(ScanTabStatsMixin, QWidget):
                     on_vulnerability=lambda url, vuln_type, description, severity: self.update_stats(
                         "vulnerability_found", 1
                     ),
-                    on_status=lambda status: self.scan_status.setText(status)
+                    on_status=lambda status: self.scan_status.setText(status),
                 )
             except Exception as e:
                 logger.error(f"Error during website scan: {e}")
-                self.scan_status.setText(f"Ошибка: {str(e)}")
+                self.scan_status.setText(f"Ошибка: {e!s}")
 
             # Обновляем UI после завершения
             self.scan_button.setEnabled(True)
@@ -628,7 +652,7 @@ class ScanTabWidget(ScanTabStatsMixin, QWidget):
         except Exception as e:
             logger.error(f"Error during website scan: {e}")
             self.scan_status.setText("Ошибка при сканировании")
-            self.add_log_entry(f"Ошибка при сканировании: {str(e)}", "Ошибка")
+            self.add_log_entry(f"Ошибка при сканировании: {e!s}", "Ошибка")
             self.scan_button.setEnabled(True)
             self.pause_button.setEnabled(False)
             self.stop_button.setEnabled(False)

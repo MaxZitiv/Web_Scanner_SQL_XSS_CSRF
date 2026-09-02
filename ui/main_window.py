@@ -1,5 +1,5 @@
-from typing import Any, Optional, cast
 import os
+from typing import Any, cast
 
 from utils.sys_utils import (
     add_to_path,
@@ -13,31 +13,25 @@ from utils.sys_utils import (
 # Добавляем корневую директорию проекта в sys.path
 add_to_path(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from PyQt6.QtWidgets import (
-    QMainWindow, QStackedWidget, QGraphicsOpacityEffect, QApplication, QCheckBox
-)
-from PyQt6.QtWidgets import QWidget
-from PyQt6.QtCore import (
-    QPropertyAnimation, QEasingCurve, QThread
-)
-from PyQt6.QtGui import (
-    QIcon, QCloseEvent, QScreen
-)
+from PyQt6.QtCore import QEasingCurve, QPropertyAnimation, QThread
+from PyQt6.QtGui import QCloseEvent, QIcon, QScreen
+from PyQt6.QtWidgets import QApplication, QCheckBox, QGraphicsOpacityEffect, QMainWindow, QStackedWidget, QWidget
 
 from models.user_model import UserModel
-from utils import error_handler
-from utils.performance import measure_time
-from views.login_window import LoginWindow
 from ui.registration_window import RegistrationWindow
+from utils import error_handler
+from utils.cache_cleanup import cleanup_on_exit
+from utils.database import db
+from utils.logger import log_and_notify, logger
+from utils.performance import measure_time
 from views.dashboard_window_updated import DashboardWindow
 from views.dashboard_window_wrapper import DashboardWindowWrapper
+from views.login_window import LoginWindow
 from views.mode_selection_window import ModeSelectionWindow
-from utils.cache_cleanup import cleanup_on_exit
-from utils.logger import logger, log_and_notify
-from utils.database import db
+
 
 class MainWindow(QMainWindow):
-    def __init__(self, user_model: UserModel, parent: Optional[QMainWindow] = None) -> None:
+    def __init__(self, user_model: UserModel, parent: QMainWindow | None = None) -> None:
         super().__init__(parent)
         self.user_model = user_model
         self.setWindowTitle("Web Scanner")
@@ -50,13 +44,13 @@ class MainWindow(QMainWindow):
         # Создаем объекты окон
         self.login_window = LoginWindow(self.user_model, self)
         self.registration_window = RegistrationWindow(self.login_window)
-        self.dashboard_window: Optional[QWidget] = None
-        self.mode_selection_window: Optional[ModeSelectionWindow] = None
+        self.dashboard_window: QWidget | None = None
+        self.mode_selection_window: ModeSelectionWindow | None = None
 
         # Подключаем сигналы
         cast(Any, self.login_window.login_successful).connect(self.show_mode_selection)
 
-        self._current_animation: Optional[QPropertyAnimation] = None
+        self._current_animation: QPropertyAnimation | None = None
         self.stack.addWidget(self.login_window)
         self.stack.addWidget(self.registration_window)
         self.stack.setCurrentWidget(self.login_window)
@@ -74,22 +68,22 @@ class MainWindow(QMainWindow):
         """Инициализация всех необходимых UI компонентов"""
         try:
             # Проверяем stack
-            if not hasattr(self, 'stack'):
+            if not hasattr(self, "stack"):
                 raise ValueError("Stack widget not properly initialized")
 
             # Проверяем login_window
-            if not hasattr(self, 'login_window'):
+            if not hasattr(self, "login_window"):
                 raise ValueError("Login window not properly initialized")
 
             # Проверяем registration_window
-            if not hasattr(self, 'registration_window'):
+            if not hasattr(self, "registration_window"):
                 raise ValueError("Registration window not properly initialized")
 
             # Проверяем dashboard_window (может быть None, это нормально)
             # Никакой проверки не требуется, так как dashboard_window может быть None
 
             # Проверяем подключение сигналов
-            if not hasattr(self, 'login_window') or not self.login_window.receivers(self.login_window.login_successful):
+            if not hasattr(self, "login_window") or not self.login_window.receivers(self.login_window.login_successful):
                 raise ValueError("Login signal not properly connected")
 
             logger.info("All UI components initialized successfully")
@@ -106,7 +100,7 @@ class MainWindow(QMainWindow):
                 return
 
             # Получаем доступную геометрию экрана
-            screen: Optional[QScreen] = self.screen()
+            screen: QScreen | None = self.screen()
             if screen is None:
                 logger.warning("Screen is None, cannot resize window")
                 return
@@ -133,13 +127,13 @@ class MainWindow(QMainWindow):
         except (ValueError, TypeError, AttributeError, OSError) as e:
             logger.warning(f"Error resizing window: {e}")
         except Exception as e:
-            log_and_notify('error', f"Unexpected error resizing window: {e}")
+            log_and_notify("error", f"Unexpected error resizing window: {e}")
 
     def center_window(self):
         """Центрирует окно на экране"""
         try:
             frame_geometry = self.frameGeometry()
-            screen: Optional[QScreen] = self.screen()
+            screen: QScreen | None = self.screen()
             if screen is None:
                 logger.warning("Screen is None, cannot center window")
                 return
@@ -150,7 +144,7 @@ class MainWindow(QMainWindow):
         except (ValueError, TypeError, AttributeError, OSError) as e:
             logger.warning(f"Error centering window: {e}")
         except Exception as e:
-            log_and_notify('error', f"Unexpected error centering window: {e}")
+            log_and_notify("error", f"Unexpected error centering window: {e}")
 
     def fade_to_widget(self, widget: QWidget) -> None:
         opacity_effect = QGraphicsOpacityEffect()
@@ -181,7 +175,7 @@ class MainWindow(QMainWindow):
     def go_to_registration(self):
         try:
             # Проверка инициализации компонентов
-            if not hasattr(self, 'stack') or not hasattr(self, 'registration_window'):
+            if not hasattr(self, "stack") or not hasattr(self, "registration_window"):
                 logger.error("Stack or registration window not initialized")
                 return
 
@@ -219,7 +213,7 @@ class MainWindow(QMainWindow):
                 return
 
             # Очищаем старый экземпляр окна выбора режима
-            if hasattr(self, 'mode_selection_window') and self.mode_selection_window is not None:
+            if hasattr(self, "mode_selection_window") and self.mode_selection_window is not None:
                 self.mode_selection_window.deleteLater()
                 self.mode_selection_window = None
 
@@ -255,6 +249,7 @@ class MainWindow(QMainWindow):
 
             # Запускаем CLI режим в новом процессе с правильным перенаправлением стандартного ввода/вывода
             import subprocess  # nosec B404  # subprocess нужен для запуска headless CLI
+
             script_dir = os.path.dirname(os.path.abspath(__file__))
             project_dir = os.path.dirname(script_dir)
             main_script = os.path.join(project_dir, "main.py")
@@ -263,23 +258,21 @@ class MainWindow(QMainWindow):
             # Аргументы передаются списком без shell=True, поэтому команда не
             # интерпретируется оболочкой и инъекция команд невозможна.
             if get_platform() == "win32":
-                create_new_console: Any = getattr(subprocess, "CREATE_NEW_CONSOLE")
+                create_new_console: Any = subprocess.CREATE_NEW_CONSOLE
                 subprocess.Popen(  # nosec B603  # list argv, no shell
-                    [get_executable(), main_script, "--cli", "--username", username],
-                    creationflags=create_new_console
+                    [get_executable(), main_script, "--cli", "--username", username], creationflags=create_new_console
                 )
             else:
                 subprocess.Popen(  # nosec B603  # list argv, no shell
                     [get_executable(), main_script, "--cli", "--username", username],
                     stdout=get_stdout(),
                     stderr=get_stderr(),
-                    stdin=get_stdin()
+                    stdin=get_stdin(),
                 )
 
         except Exception as e:
             logger.error(f"Error switching to CLI mode: {e}")
             error_handler.show_error_message("Ошибка", f"Не удалось переключиться в CLI режим: {e}")
-
 
     @measure_time
     def go_to_dashboard(self, user_id: int, username: str):
@@ -315,14 +308,13 @@ class MainWindow(QMainWindow):
             logger.error(f"Error navigating to dashboard: {e}")
             error_handler.show_error_message("Ошибка", f"Не удалось перейти к панели управления: {e}")
 
-
     def safe_maximize_window(self):
         """Безопасно максимизирует окно с учетом ограничений экрана"""
         try:
             # Проверяем, что окно не уже максимизировано
             if not self.isMaximized():
                 # Получаем доступную геометрию экрана
-                screen: Optional[QScreen] = self.screen()
+                screen: QScreen | None = self.screen()
                 if screen is None:
                     logger.warning("Screen is None, cannot maximize window")
                     return
@@ -331,8 +323,10 @@ class MainWindow(QMainWindow):
 
                 # Проверяем, что окно помещается на экране
                 current_geometry = self.geometry()
-                if (current_geometry.width() <= screen_geometry.width() and
-                    current_geometry.height() <= screen_geometry.height()):
+                if (
+                    current_geometry.width() <= screen_geometry.width()
+                    and current_geometry.height() <= screen_geometry.height()
+                ):
                     self.showMaximized()
                     logger.debug("Window maximized successfully")
                 else:
@@ -343,25 +337,27 @@ class MainWindow(QMainWindow):
             # В случае ошибки просто показываем окно в нормальном размере
             self.showNormal()
         except Exception as e:
-            log_and_notify('error', f"Unexpected error maximizing window: {e}")
+            log_and_notify("error", f"Unexpected error maximizing window: {e}")
             # В случае ошибки просто показываем окно в нормальном размере
             self.showNormal()
 
-    def closeEvent(self, a0: Optional[QCloseEvent]) -> None:
+    def closeEvent(self, a0: QCloseEvent | None) -> None:
         """Обработчик закрытия главного окна: очищает кэши перед выходом"""
         try:
             # Инициализация переменной со значением по умолчанию
             should_clear_cache: bool = True
 
             # Если есть dashboard_window, проверяем настройку
-            if hasattr(self, 'dashboard_window') and self.dashboard_window:
-                if hasattr(self.dashboard_window, 'clear_cache_checkbox'):
+            if hasattr(self, "dashboard_window") and self.dashboard_window:
+                if hasattr(self.dashboard_window, "clear_cache_checkbox"):
                     # Используем getattr для безопасного получения атрибута
-                    clear_cache_checkbox: Optional[QCheckBox] = getattr(self.dashboard_window, 'clear_cache_checkbox', None)
+                    clear_cache_checkbox: QCheckBox | None = getattr(
+                        self.dashboard_window, "clear_cache_checkbox", None
+                    )
                     if isinstance(clear_cache_checkbox, QCheckBox):
                         checkbox_value: bool = clear_cache_checkbox.isChecked()
                         should_clear_cache = checkbox_value
-                
+
                     else:
                         should_clear_cache = True
             else:
@@ -373,24 +369,26 @@ class MainWindow(QMainWindow):
                 # Очищаем кэши перед закрытием
                 cleanup_result = cleanup_on_exit(safe_mode=True)
 
-                if cleanup_result.get('all_successful', False):
+                if cleanup_result.get("all_successful", False):
                     logger.info("Cache cleanup completed successfully before window close")
                 else:
                     logger.warning("Cache cleanup completed with some errors before window close")
 
                 # Логируем статистику очистки
-                duration = cleanup_result.get('duration_seconds', 0)
-                entries_freed = cleanup_result.get('entries_freed', 0)
-                memory_freed = cleanup_result.get('memory_freed_mb', 0)
+                duration = cleanup_result.get("duration_seconds", 0)
+                entries_freed = cleanup_result.get("entries_freed", 0)
+                memory_freed = cleanup_result.get("memory_freed_mb", 0)
 
-                logger.info(f"Pre-close cleanup stats: {duration:.3f}s, {entries_freed} entries, {memory_freed:.2f}MB memory")
+                logger.info(
+                    f"Pre-close cleanup stats: {duration:.3f}s, {entries_freed} entries, {memory_freed:.2f}MB memory"
+                )
             else:
                 logger.info("Cache cleanup skipped due to user settings")
 
         except (ValueError, TypeError, AttributeError, OSError) as e:
-            log_and_notify('error', f"Error during cache cleanup on window close: {e}")
+            log_and_notify("error", f"Error during cache cleanup on window close: {e}")
         except Exception as e:
-            log_and_notify('error', f"Unexpected error during cache cleanup on window close: {e}")
+            log_and_notify("error", f"Unexpected error during cache cleanup on window close: {e}")
 
         # Принимаем событие закрытия
         if a0 is not None:
@@ -403,23 +401,24 @@ class MainWindow(QMainWindow):
             if not user_id:
                 logger.error("Cannot show dashboard: user_id is missing")
                 return
-                
+
             if not username:
                 logger.error("Cannot show dashboard: username is missing")
                 return
 
             # Создаем экземпляр UserModel, если его нет
-            if not hasattr(self, 'user_model'):
+            if not hasattr(self, "user_model"):
                 from models.user_model import UserModel
+
                 self.user_model = UserModel()
 
             # Проверка инициализации компонентов
-            if not hasattr(self, 'stack'):
+            if not hasattr(self, "stack"):
                 logger.error("Stack not initialized")
                 return
-                
+
             # Очищаем старый экземпляр dashboard если есть
-            dashboard_widget: Optional[QWidget] = self.dashboard_window
+            dashboard_widget: QWidget | None = self.dashboard_window
             if dashboard_widget is not None:
                 self.stack.removeWidget(dashboard_widget)
                 self.dashboard_window = None
@@ -427,10 +426,7 @@ class MainWindow(QMainWindow):
 
             # Создаем новый экземпляр dashboard
             dashboard: QWidget = DashboardWindowWrapper(
-                user_id=user_id,
-                username=username,
-                user_model=self.user_model,
-                parent=self
+                user_id=user_id, username=username, user_model=self.user_model, parent=self
             )
 
             # Добавляем в стек и показываем

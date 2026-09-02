@@ -1,17 +1,19 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 
-import traceback
-from types import TracebackType
-from typing import Optional, Callable, Any, Dict, TypedDict
-from collections import deque
 import time
-from utils.logger import logger, log_and_notify
+import traceback
+from collections import deque
+from collections.abc import Callable
+from types import TracebackType
+from typing import Any, TypedDict
+
+from utils.logger import log_and_notify, logger
 from utils.sys_utils import get_original_excepthook, set_excepthook
 
 
 class ErrorEntry(TypedDict):
     """Структура записи об ошибке в кэше"""
+
     type: str
     message: str
     context: str
@@ -22,16 +24,17 @@ class ErrorHandler:
     """Централизованный обработчик ошибок"""
 
     def __init__(self):
-        self.error_callbacks: Dict[str, Callable[..., Any]] = {}
+        self.error_callbacks: dict[str, Callable[..., Any]] = {}
         self.error_cache: deque[ErrorEntry] = deque(maxlen=100)  # Кэш последних 100 ошибок
         self.max_message_length = 1000  # Максимальная длина сообщения об ошибке
         self.setup_global_exception_handler()
 
     def setup_global_exception_handler(self):
         """Устанавливает глобальный обработчик исключений"""
+
         def global_exception_handler(exctype: type[BaseException], value: BaseException, tb: TracebackType | None):
-            error_msg = ''.join(traceback.format_exception(exctype, value, tb))
-            log_and_notify('error', f"Unhandled exception: {error_msg}")
+            error_msg = "".join(traceback.format_exception(exctype, value, tb))
+            log_and_notify("error", f"Unhandled exception: {error_msg}")
             self.show_error_message("Критическая ошибка", str(value))
             get_original_excepthook()(exctype, value, tb)
 
@@ -43,42 +46,44 @@ class ErrorHandler:
 
     def _truncate_message(self, message: str) -> str:
         """Обрезает сообщение до максимальной длины"""
-        return message[:self.max_message_length] + "..." if len(message) > self.max_message_length else message
+        return message[: self.max_message_length] + "..." if len(message) > self.max_message_length else message
 
     def _add_to_cache(self, error_type: str, message: str, context: str = ""):
         """Добавляет ошибку в кэш"""
-        self.error_cache.append({
-            'type': error_type,
-            'message': self._truncate_message(message),
-            'context': context,
-            'timestamp': time.time()
-        })
+        self.error_cache.append(
+            {
+                "type": error_type,
+                "message": self._truncate_message(message),
+                "context": context,
+                "timestamp": time.time(),
+            }
+        )
 
     def clear_error_cache(self) -> None:
         """Очищает кэш ошибок"""
         self.error_cache.clear()
         logger.info("Error cache cleared")
 
-    def get_error_statistics(self) -> Dict[str, int | Dict[str, int] | float]:
+    def get_error_statistics(self) -> dict[str, int | dict[str, int] | float]:
         """Возвращает статистику ошибок"""
         if not self.error_cache:
-            return {'total_errors': 0, 'error_types': {}}
+            return {"total_errors": 0, "error_types": {}}
 
-        error_types: Dict[str, int] = {}
+        error_types: dict[str, int] = {}
         for error in self.error_cache:
-            error_types[error['type']] = error_types.get(error['type'], 0) + 1
+            error_types[error["type"]] = error_types.get(error["type"], 0) + 1
 
         return {
-            'total_errors': len(self.error_cache),
-            'error_types': error_types,
-            'oldest_error': min(self.error_cache, key=lambda x: x['timestamp'])['timestamp'],
-            'newest_error': max(self.error_cache, key=lambda x: x['timestamp'])['timestamp']
+            "total_errors": len(self.error_cache),
+            "error_types": error_types,
+            "oldest_error": min(self.error_cache, key=lambda x: x["timestamp"])["timestamp"],
+            "newest_error": max(self.error_cache, key=lambda x: x["timestamp"])["timestamp"],
         }
 
     def handle_database_error(self, error: Exception, context: str = "") -> bool:
         """Обрабатывает ошибки базы данных"""
-        msg = f"Database error in {context}: {str(error)}"
-        log_and_notify('error', msg)
+        msg = f"Database error in {context}: {error!s}"
+        log_and_notify("error", msg)
 
         err_str = str(error).lower()
         if "database is locked" in err_str:
@@ -108,8 +113,8 @@ class ErrorHandler:
 
     def handle_network_error(self, error: Exception, context: str = "") -> bool:
         """Обрабатывает сетевые ошибки"""
-        msg = f"Network error in {context}: {str(error)}"
-        log_and_notify('error', msg)
+        msg = f"Network error in {context}: {error!s}"
+        log_and_notify("error", msg)
 
         err_str = str(error).lower()
         if "timeout" in err_str:
@@ -136,19 +141,19 @@ class ErrorHandler:
 
     def handle_validation_error(self, error: Exception, context: str = "") -> bool:
         """Обрабатывает ошибки валидации"""
-        logger.warning(f"Validation error in {context}: {str(error)}")
+        logger.warning(f"Validation error in {context}: {error!s}")
         self.show_error_message("Ошибка валидации", str(error))
         return True
 
     def handle_permission_error(self, error: Exception, context: str = "") -> bool:
         """Обрабатывает ошибки прав доступа"""
-        log_and_notify('error', f"Permission error in {context}: {str(error)}")
+        log_and_notify("error", f"Permission error in {context}: {error!s}")
         self.show_error_message("Ошибка прав доступа", "Недостаточно прав для выполнения операции.")
         return True
 
     def handle_file_error(self, error: Exception, context: str = "") -> bool:
         """Обрабатывает ошибки файловой системы"""
-        log_and_notify('error', f"File error in {context}: {str(error)}")
+        log_and_notify("error", f"File error in {context}: {error!s}")
 
         err_str = str(error).lower()
         if "no such file" in err_str:
@@ -163,10 +168,10 @@ class ErrorHandler:
 
         self.show_error_message("Ошибка файла", "Произошла ошибка при работе с файлом.")
         return False
-    
+
     def handle_error(self, error: Exception, context: str = "") -> bool:
         """Обрабатывает общие ошибки"""
-        log_and_notify('error', f"Error in {context}: {str(error)}")
+        log_and_notify("error", f"Error in {context}: {error!s}")
         self.show_error_message("Ошибка", str(error))
         return True
 
@@ -177,9 +182,9 @@ class ErrorHandler:
 
             app = QApplication.instance()
             if app is None:
-                log_and_notify('error', f"{title}: {message}")
+                log_and_notify("error", f"{title}: {message}")
                 if details:
-                    log_and_notify('error', f"Details: {details}")
+                    log_and_notify("error", f"Details: {details}")
                 return
 
             msg: QMessageBox = QMessageBox()
@@ -190,7 +195,7 @@ class ErrorHandler:
                 msg.setDetailedText(details)
             msg.exec()
         except Exception as e:
-            log_and_notify('error', f"Unexpected error showing error message: {e}")
+            log_and_notify("error", f"Unexpected error showing error message: {e}")
 
     def show_warning_message(self, title: str, message: str):
         """Показывает предупреждение пользователю"""
@@ -200,25 +205,29 @@ class ErrorHandler:
         """Показывает информационное сообщение пользователю"""
         logger.info(f"{title}: {message}")
 
-    def safe_execute(self, func: Callable[..., Any], *args: Any, **kwargs: Any) -> Optional[Any]:
+    def safe_execute(self, func: Callable[..., Any], *args: Any, **kwargs: Any) -> Any | None:
         """Безопасно выполняет функцию с обработкой ошибок"""
         try:
             return func(*args, **kwargs)
         except Exception as e:
-            log_and_notify('error', f"Error in safe_execute for {func.__name__}: {e}")
+            log_and_notify("error", f"Error in safe_execute for {func.__name__}: {e}")
             logger.warning(f"{func.__name__} returned None due to exception.")
             return None
+
 
 # Глобальный экземпляр обработчика ошибок
 error_handler = ErrorHandler()
 
+
 def handle_exception(func: Callable[..., Any]) -> Callable[..., Any]:
     """Декоратор для обработки исключений в функциях"""
+
     def wrapper(*args: Any, **kwargs: Any):
         try:
             return func(*args, **kwargs)
         except Exception as e:
-            log_and_notify('error', f"Exception in {func.__name__}: {e}")
+            log_and_notify("error", f"Exception in {func.__name__}: {e}")
             error_handler.show_error_message("Ошибка", f"Произошла ошибка в {func.__name__}")
             return None
+
     return wrapper

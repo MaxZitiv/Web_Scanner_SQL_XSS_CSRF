@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 
-import os
-import faulthandler
-import traceback
-import signal
 import argparse
-import importlib
-from typing import Optional, Type, Any
-import types
-from PyQt6.QtWidgets import QApplication
 import asyncio
+import faulthandler
+import importlib
 import logging
+import os
+import signal
+import traceback
+import types
+from typing import Any
+
+from PyQt6.QtWidgets import QApplication
 
 # Добавляем корневую директорию проекта в sys.path
 from utils.sys_utils import (
@@ -25,26 +25,28 @@ from utils.sys_utils import (
     set_excepthook,
     set_stream,
 )
+
 add_to_path(0, os.path.dirname(os.path.abspath(__file__)))
 
-from ui.main_window import MainWindow
-from utils.logger import logger, log_and_notify
-from utils.performance import performance_monitor, resource_manager
-from utils.error_handler import error_handler
 from models.user_model import UserModel
+from ui.main_window import MainWindow
+from utils.error_handler import error_handler
+from utils.logger import log_and_notify, logger
+from utils.performance import performance_monitor, resource_manager
 
-# Перенаправление stdout/stderr если они None
-for stream_name, stream in [('stdout', get_stdout()), ('stderr', get_stderr())]:
+# Перенаправление stdout/stderr если они None.
+# Поток должен оставаться открытым на протяжении всего приложения.
+for stream_name, stream in [("stdout", get_stdout()), ("stderr", get_stderr())]:
     if stream is None:
-        set_stream(stream_name, open(os.devnull, 'w', encoding='utf-8'))
+        set_stream(stream_name, open(os.devnull, "w", encoding="utf-8"))  # noqa: SIM115
 
 faulthandler.enable()
-logger.info('FAULTHANDLER ENABLED, MAIN.PY START')
+logger.info("FAULTHANDLER ENABLED, MAIN.PY START")
 
 # Глобальные переменные
-app_instance: Optional[QApplication] = None
-main_window_instance: Optional[MainWindow] = None
-event_loop: Optional[asyncio.AbstractEventLoop] = None
+app_instance: QApplication | None = None
+main_window_instance: MainWindow | None = None
+event_loop: asyncio.AbstractEventLoop | None = None
 
 
 def resource_path(relative_path: str) -> str:
@@ -58,7 +60,7 @@ def load_styles(app: QApplication) -> None:
     style_path = resource_path("styles.qss")
     if os.path.exists(style_path):
         try:
-            with open(style_path, "r", encoding="utf-8") as f:
+            with open(style_path, encoding="utf-8") as f:
                 app.setStyleSheet(f.read())
             logger.info(f"Стили успешно загружены из: {style_path}")
         except Exception as e:
@@ -75,30 +77,31 @@ def create_qasync_event_loop(app: QApplication) -> asyncio.AbstractEventLoop:
     and expose it through the standard :class:`asyncio.AbstractEventLoop` API.
     """
     qasync_module: Any = importlib.import_module("qasync")
-    loop_class: Any = getattr(qasync_module, "QEventLoop")
+    loop_class: Any = qasync_module.QEventLoop
     return loop_class(app)
 
 
 def parse_arguments() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description='Web Scanner')
-    parser.add_argument('--debug', action='store_true', help='Enable debug mode')
-    parser.add_argument('--log-level', choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'],
-                        default='INFO', help='Set logging level')
-    parser.add_argument('--profile', action='store_true', help='Enable performance profiling')
-    parser.add_argument('--url', type=str, help='URL to scan (CLI mode)')
-    parser.add_argument('--username', type=str, help='Username for login (CLI mode)')
-    parser.add_argument('--cli', action='store_true', help='Start in CLI mode after login')
+    parser = argparse.ArgumentParser(description="Web Scanner")
+    parser.add_argument("--debug", action="store_true", help="Enable debug mode")
+    parser.add_argument(
+        "--log-level", choices=["DEBUG", "INFO", "WARNING", "ERROR"], default="INFO", help="Set logging level"
+    )
+    parser.add_argument("--profile", action="store_true", help="Enable performance profiling")
+    parser.add_argument("--url", type=str, help="URL to scan (CLI mode)")
+    parser.add_argument("--username", type=str, help="Username for login (CLI mode)")
+    parser.add_argument("--cli", action="store_true", help="Start in CLI mode after login")
     return parser.parse_args()
 
 
-def excepthook(exc_type: Type[BaseException], exc_value: BaseException, exc_tb: Optional[types.TracebackType]) -> None:
+def excepthook(exc_type: type[BaseException], exc_value: BaseException, exc_tb: types.TracebackType | None) -> None:
     """Глобальный обработчик необработанных исключений."""
     try:
         with open("fatal_error.log", "a", encoding="utf-8") as f:
             f.write("\n--- Unhandled Exception ---\n")
             traceback.print_exception(exc_type, exc_value, exc_tb, file=f)
     except Exception as e:
-        log_and_notify('error', f"Failed to write fatal_error.log: {e}")
+        log_and_notify("error", f"Failed to write fatal_error.log: {e}")
 
     logger.critical(f"Unhandled exception: {exc_type.__name__}: {exc_value}", exc_info=True)
     get_original_excepthook()(exc_type, exc_value, exc_tb)
@@ -111,13 +114,11 @@ def graceful_shutdown(exit_code: int) -> int:
     global event_loop, app_instance
 
     logger.info("Starting graceful shutdown...")
-    
+
     if event_loop is not None:
         try:
             # Простая проверка на существование методов
-            if (hasattr(event_loop, 'is_closed') and 
-                hasattr(event_loop, 'stop') and 
-                not event_loop.is_closed()):
+            if hasattr(event_loop, "is_closed") and hasattr(event_loop, "stop") and not event_loop.is_closed():
                 event_loop.stop()
                 logger.info("Event loop stopped gracefully")
         except Exception as e:
@@ -134,6 +135,7 @@ def graceful_shutdown(exit_code: int) -> int:
     # Освобождение ресурсов
     try:
         from utils.database import db
+
         db.close_connection()
         logger.info("Database connection closed")
     except Exception as e:
@@ -155,32 +157,34 @@ def setup_signal_handlers() -> None:
         signal.signal(signal.SIGTERM, signal_handler)
         # SIGBREAK is only available on Windows; on other platforms
         # getattr() returns None and no handler is registered.
-        sigbreak: Optional[int] = getattr(signal, 'SIGBREAK', None)
+        sigbreak: int | None = getattr(signal, "SIGBREAK", None)
         if sigbreak is not None:
             signal.signal(sigbreak, signal_handler)
         logger.info("Signal handlers set up")
     except Exception as e:
-        log_and_notify('error', f"Failed to set up signal handlers: {e}")
+        log_and_notify("error", f"Failed to set up signal handlers: {e}")
 
 
 def setup_performance_monitoring(enable_profiling: bool = False) -> None:
     try:
         if enable_profiling:
             import cProfile
+
             profiler = cProfile.Profile()
             profiler.enable()
-            resource_manager.register_resource('profiler', profiler, lambda p: p.disable())
+            resource_manager.register_resource("profiler", profiler, lambda p: p.disable())
             logger.info("Performance profiling enabled")
         else:
             logger.info("Performance monitoring enabled (basic)")
     except Exception as e:
-        log_and_notify('error', f"Failed to enable profiling: {e}")
+        log_and_notify("error", f"Failed to enable profiling: {e}")
 
 
-def run_cli_mode(url: Optional[str] = None, username: Optional[str] = None) -> int:
+def run_cli_mode(url: str | None = None, username: str | None = None) -> int:
     """Запуск CLI режима"""
     try:
         from cli.cli_mode import run_cli_mode as cli_run
+
         return cli_run(url, username)
     except ImportError as e:
         logger.error(f"Failed to import CLI mode: {e}")
@@ -253,14 +257,14 @@ def main() -> int:
 
     except SystemExit as e:
         logger.info(f"SystemExit with code: {getattr(e, 'code', None)}")
-        exit_code = int(getattr(e, 'code', 0) or 0)
+        exit_code = int(getattr(e, "code", 0) or 0)
     except Exception as e:
         logger.critical(f"Exception in main loop: {e}", exc_info=True)
         if app_instance:
             try:
                 error_handler.show_error_message("Критическая ошибка", str(e))
             except Exception as e_msg:
-                log_and_notify('error', f"Failed to show error dialog: {e_msg}")
+                log_and_notify("error", f"Failed to show error dialog: {e_msg}")
         exit_code = 1
     finally:
         exit_code = graceful_shutdown(exit_code)

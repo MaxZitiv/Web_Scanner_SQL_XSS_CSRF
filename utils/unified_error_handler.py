@@ -1,41 +1,43 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 
 """
 Универсальный обработчик ошибок и исключений для веб-сканера
 """
 
 import time
-from types import TracebackType
-from typing import Optional, Callable, Any, Dict, Tuple, Type
-from functools import wraps
-from contextlib import contextmanager
 from collections import deque
+from collections.abc import Callable
+from contextlib import contextmanager
+from functools import wraps
+from types import TracebackType
+from typing import Any
+
 from PyQt6.QtWidgets import QApplication, QMessageBox
-from utils.logger import logger, log_and_notify
+
+from utils.logger import log_and_notify, logger
 from utils.sys_utils import get_original_excepthook, set_excepthook
 
 
 class UnifiedErrorHandler:
     """Централизованный обработчик ошибок с GUI и стратегиями восстановления"""
-    
+
     def __init__(self, max_cache: int = 100, max_retries: int = 3):
-        self.error_cache: deque[Dict[str, Any]] = deque(maxlen=max_cache)  # последние N ошибок
-        self.error_counts: Dict[str, int] = {}
-        self.recovery_strategies: Dict[str, Callable[..., bool]] = {}
+        self.error_cache: deque[dict[str, Any]] = deque(maxlen=max_cache)  # последние N ошибок
+        self.error_counts: dict[str, int] = {}
+        self.recovery_strategies: dict[str, Callable[..., bool]] = {}
         self.max_retries = max_retries
         self.max_message_length = 1000
         self.setup_default_strategies()
         self.setup_global_exception_handler()
-    
+
     # -------------------- GUI сообщения -------------------- #
     def show_error_message(self, title: str, message: str, details: str = ""):
         try:
             app = QApplication.instance()
             if app is None:
-                log_and_notify('error', f"{title}: {message}")
+                log_and_notify("error", f"{title}: {message}")
                 if details:
-                    log_and_notify('error', f"Details: {details}")
+                    log_and_notify("error", f"Details: {details}")
                 return
             msg = QMessageBox()
             msg.setIcon(QMessageBox.Icon.Critical)
@@ -45,37 +47,39 @@ class UnifiedErrorHandler:
                 msg.setDetailedText(details)
             msg.exec()
         except Exception as e:
-            log_and_notify('error', f"Failed to show error message: {e}")
+            log_and_notify("error", f"Failed to show error message: {e}")
 
     def show_warning_message(self, title: str, message: str):
-        log_and_notify('warning', f"{title}: {message}")
+        log_and_notify("warning", f"{title}: {message}")
 
     def show_info_message(self, title: str, message: str):
-        log_and_notify('info', f"{title}: {message}")
-    
+        log_and_notify("info", f"{title}: {message}")
+
     # -------------------- Стратегии восстановления -------------------- #
     def setup_default_strategies(self):
-        self.recovery_strategies.update({
-            'ConnectionError': self._retry_strategy,
-            'TimeoutError': self._retry_strategy,
-            'OSError': self._retry_strategy,
-            'IOError': self._retry_strategy,
-            'FileNotFoundError': self._create_file_if_missing,
-            'PermissionError': self._log_permission_error,
-            'ValueError': self._log_and_continue,
-            'TypeError': self._log_and_continue,
-            'AttributeError': self._log_and_continue,
-            'KeyError': self._log_and_continue,
-            'IndexError': self._log_and_continue,
-        })
-    
+        self.recovery_strategies.update(
+            {
+                "ConnectionError": self._retry_strategy,
+                "TimeoutError": self._retry_strategy,
+                "OSError": self._retry_strategy,
+                "IOError": self._retry_strategy,
+                "FileNotFoundError": self._create_file_if_missing,
+                "PermissionError": self._log_permission_error,
+                "ValueError": self._log_and_continue,
+                "TypeError": self._log_and_continue,
+                "AttributeError": self._log_and_continue,
+                "KeyError": self._log_and_continue,
+                "IndexError": self._log_and_continue,
+            }
+        )
+
     def _retry_strategy(self, context: str, attempt: int) -> bool:
         if attempt < self.max_retries:
-            delay = min(2 ** attempt, 10)
-            logger.info(f"Retrying {context} after {delay}s (attempt {attempt+1})")
+            delay = min(2**attempt, 10)
+            logger.info(f"Retrying {context} after {delay}s (attempt {attempt + 1})")
             time.sleep(delay)
             return True
-        log_and_notify('error', f"Max retries exceeded for {context}")
+        log_and_notify("error", f"Max retries exceeded for {context}")
         return False
 
     def _log_and_continue(self, exc: Exception, context: str, attempt: int) -> bool:
@@ -84,6 +88,7 @@ class UnifiedErrorHandler:
 
     def _create_file_if_missing(self, exc: Exception, context: str) -> bool:
         import os
+
         if "No such file" in str(exc):
             try:
                 file_path = str(exc).split("'")[1] if "'" in str(exc) else ""
@@ -92,63 +97,67 @@ class UnifiedErrorHandler:
                     logger.info(f"Created missing directory for {file_path}")
                     return True
             except Exception as e:
-                log_and_notify('error', f"Failed to create missing file in context {context}: {e}")
+                log_and_notify("error", f"Failed to create missing file in context {context}: {e}")
         return False
 
     def _log_permission_error(self, exc: Exception, context: str) -> bool:
-        log_and_notify('error', f"Permission denied in {context}: {exc}")
+        log_and_notify("error", f"Permission denied in {context}: {exc}")
         return False
-    
+
     # -------------------- Обработка исключений -------------------- #
     def handle_exception(self, exc: Exception, context: str = "", attempt: int = 0) -> bool:
         exc_type = type(exc).__name__
         self.error_counts[exc_type] = self.error_counts.get(exc_type, 0) + 1
         self._add_to_cache(exc_type, str(exc), context)
-        log_and_notify('error', f"Exception in {context}: {exc_type}: {exc}")
+        log_and_notify("error", f"Exception in {context}: {exc_type}: {exc}")
 
         strategy = self.recovery_strategies.get(exc_type, self._default_strategy)
         try:
             return strategy(exc, context, attempt)
         except Exception as e:
-            log_and_notify('error', f"Error in recovery strategy for {exc_type}: {e}")
+            log_and_notify("error", f"Error in recovery strategy for {exc_type}: {e}")
             return False
 
     def _default_strategy(self, exc: Exception, context: str) -> bool:
-        log_and_notify('error', f"Unhandled exception type {type(exc).__name__} in {context}")
+        log_and_notify("error", f"Unhandled exception type {type(exc).__name__} in {context}")
         return False
-    
+
     # -------------------- Кэш ошибок -------------------- #
     def _add_to_cache(self, exc_type: str, message: str, context: str):
-        self.error_cache.append({
-            'type': exc_type,
-            'message': message[:self.max_message_length],
-            'context': context,
-            'timestamp': time.time()
-        })
+        self.error_cache.append(
+            {
+                "type": exc_type,
+                "message": message[: self.max_message_length],
+                "context": context,
+                "timestamp": time.time(),
+            }
+        )
 
-    def get_error_statistics(self) -> Dict[str, Any]:
+    def get_error_statistics(self) -> dict[str, Any]:
         most_common = max(self.error_counts.items(), key=lambda x: x[1]) if self.error_counts else None
         return {
-            'total_errors': sum(self.error_counts.values()),
-            'error_counts': self.error_counts.copy(),
-            'most_common': most_common,
-            'cached_errors': list(self.error_cache)
+            "total_errors": sum(self.error_counts.values()),
+            "error_counts": self.error_counts.copy(),
+            "most_common": most_common,
+            "cached_errors": list(self.error_cache),
         }
 
     def clear_statistics(self):
         self.error_counts.clear()
         self.error_cache.clear()
         logger.info("Error statistics cleared")
-    
+
     # -------------------- Контекстные менеджеры / декораторы -------------------- #
-    def safe_execute(self, func: Callable[..., Any], *args: Any, **kwargs: Any) -> Optional[Any]:
+    def safe_execute(self, func: Callable[..., Any], *args: Any, **kwargs: Any) -> Any | None:
         try:
             return func(*args, **kwargs)
         except Exception as e:
             self.handle_exception(e, f"safe_execute({func.__name__})")
             return None
 
-    def retry_on_exception(self, max_retries: int = 3, exceptions: Tuple[Type[Exception], ...] = (Exception,)) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+    def retry_on_exception(
+        self, max_retries: int = 3, exceptions: tuple[type[Exception], ...] = (Exception,)
+    ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
         def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
             @wraps(func)
             def wrapper(*args: Any, **kwargs: Any) -> Any:
@@ -160,7 +169,9 @@ class UnifiedErrorHandler:
                         if attempt == max_retries or not handled:
                             raise
                 return None
+
             return wrapper
+
         return decorator
 
     @contextmanager
@@ -178,8 +189,9 @@ class UnifiedErrorHandler:
             except Exception as e:
                 self.handle_exception(e, f"async_{coro.__name__}")
                 return None
+
         return wrapper
-    
+
     # -------------------- Глобальный обработчик -------------------- #
     def setup_global_exception_handler(self):
         def global_handler(exctype: type[BaseException], value: BaseException, tb: TracebackType | None):
@@ -187,26 +199,28 @@ class UnifiedErrorHandler:
             if isinstance(value, Exception):
                 self.handle_exception(value, "global_handler")
             get_original_excepthook()(exctype, value, tb)
+
         set_excepthook(global_handler)
         logger.info("Global exception handler configured")
 
     def handle_validation_error(self, error: Exception, context: str = "") -> bool:
         """Обрабатывает ошибки валидации"""
-        logger.warning(f"Validation error in {context}: {str(error)}")
+        logger.warning(f"Validation error in {context}: {error!s}")
         self.show_error_message("Ошибка валидации", str(error))
         return True
-        
+
     def handle_permission_error(self, error: Exception, context: str = "") -> bool:
         """Обрабатывает ошибки прав доступа"""
-        log_and_notify('error', f"Permission error in {context}: {str(error)}")
+        log_and_notify("error", f"Permission error in {context}: {error!s}")
         self.show_error_message("Ошибка прав доступа", "Недостаточно прав для выполнения операции.")
         return True
-        
+
     def handle_general_error(self, error: Exception, context: str = "") -> bool:
         """Обрабатывает общие ошибки"""
-        log_and_notify('error', f"General error in {context}: {str(error)}")
+        log_and_notify("error", f"General error in {context}: {error!s}")
         self.show_error_message("Ошибка", str(error))
         return True
+
 
 # -------------------- Глобальный экземпляр -------------------- #
 error_handler: UnifiedErrorHandler = UnifiedErrorHandler()

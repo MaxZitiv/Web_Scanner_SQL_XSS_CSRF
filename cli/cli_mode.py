@@ -1,12 +1,13 @@
 """
 Интерфейс командной строки для сканера веб-уязвимостей
 """
-import os
+
 import argparse
 import asyncio
-import importlib.util
-from typing import List, Dict, Any, Optional
 import getpass
+import importlib.util
+import os
+from typing import Any
 
 # Загружаем sys_utils по абсолютному пути, чтобы не обращаться к sys.path
 # до добавления корня проекта в пути поиска модулей.
@@ -29,9 +30,9 @@ _sys_utils = _load_sys_utils()
 # Добавляем корневую директорию проекта в sys.path
 _sys_utils.add_to_path(0, _PROJECT_ROOT)
 
-from models.user_model import UserModel
 from controllers.auth_controller import AuthController
 from controllers.scan_controller import ScanController
+from models.user_model import UserModel
 from utils.logger import logger
 
 
@@ -75,10 +76,10 @@ class CLIMode:
     def _log_message(self, message: str) -> None:
         """Обработчик сообщений лога для CLI режима"""
         print(message)
-        
+
     def _update_progress(self, progress: int, current_url: str = "", total_urls: int = 0, found_vulns: int = 0) -> None:
         """Обработчик обновления прогресса для CLI режима
-        
+
         Args:
             progress: Процент выполнения (0-100)
             current_url: Текущий обрабатываемый URL
@@ -88,22 +89,22 @@ class CLIMode:
         progress_bar_length = 40
         filled_length = int(progress_bar_length * progress / 100)
         bar = "█" * filled_length + "-" * (progress_bar_length - filled_length)
-        
+
         # Формируем строку прогресса
         progress_str = f"\rПрогресс: |{bar}| {progress}%"
-        
+
         # Добавляем дополнительную информацию если доступна
         if current_url:
             # Ограничиваем длину URL для отображения
             display_url = current_url[:60] + "..." if len(current_url) > 60 else current_url
             progress_str += f"\nТекущий URL: {display_url}"
-        
+
         if total_urls > 0:
             progress_str += f"\nОбработано URL: {int(total_urls * progress / 100)}/{total_urls}"
-        
+
         if found_vulns > 0:
             progress_str += f"\nНайдено уязвимостей: {found_vulns}"
-        
+
         # Очищаем предыдущие строки и выводим новую информацию
         print("\033[K", end="")  # Очищаем текущую строку
         if current_url:
@@ -112,22 +113,22 @@ class CLIMode:
             print("\033[K", end="")  # Очищаем строку с количеством URL
         if found_vulns > 0:
             print("\033[K", end="")  # Очищаем строку с уязвимостями
-            
+
         # Возвращаем курсор в начало и выводим обновленную информацию
         print("\033[3F", end="")  # Перемещаем курсор на 3 строки вверх
         print(progress_str, flush=True)
-        
-    def _process_results(self, results: Dict[str, Any], scan_type: str = "standard") -> None:
+
+    def _process_results(self, results: dict[str, Any], scan_type: str = "standard") -> None:
         """Обработчик результатов сканирования для CLI режима"""
         if "error" in results:
             print(f"\n❌ Ошибка сканирования: {results['error']}")
             return
-            
+
         url = results.get("url", "неизвестно")
         vulnerabilities = results.get("vulnerabilities", {})
-        
+
         print(f"\n📄 Результаты сканирования для {url}:")
-        
+
         # Вывод результатов по каждому типу уязвимостей
         for vuln_type, vuln_list in vulnerabilities.items():
             if vuln_type == "sql":
@@ -137,7 +138,7 @@ class CLIMode:
                         print(f"     • {vuln.get('description', 'Без описания')}")
                 else:
                     print("   - SQL инъекции: не обнаружены")
-                    
+
             elif vuln_type == "xss":
                 if vuln_list:
                     print(f"   - XSS уязвимости: обнаружено {len(vuln_list)}")
@@ -145,7 +146,7 @@ class CLIMode:
                         print(f"     • {vuln.get('description', 'Без описания')}")
                 else:
                     print("   - XSS уязвимости: не обнаружены")
-                    
+
             elif vuln_type == "csrf":
                 if vuln_list:
                     print(f"   - CSRF уязвимости: обнаружено {len(vuln_list)}")
@@ -153,49 +154,48 @@ class CLIMode:
                         print(f"     • {vuln.get('description', 'Без описания')}")
                 else:
                     print("   - CSRF уязвимости: не обнаружены")
-        
+
         # Дополнительная статистика
         total_urls = results.get("total_urls_scanned", 0)
         total_forms = results.get("total_forms_scanned", 0)
         scan_duration = results.get("scan_duration", 0)
-        
+
         print("\n📊 Статистика сканирования:")
         print(f"   - Обработано URL: {total_urls}")
         print(f"   - Проверено форм: {total_forms}")
         print(f"   - Время выполнения: {scan_duration:.2f} сек")
-        
+
         # Сохранение результатов в базу данных
         try:
             from utils.database import Database
+
             db = Database()
-            
+
             # Подготовка списка уязвимостей для сохранения
-            vulns_list: List[Dict[str, Any]] = []
+            vulns_list: list[dict[str, Any]] = []
             for vuln_type, vuln_items in vulnerabilities.items():
                 if vuln_items:
-                    for vuln in vuln_items:
-                        vulns_list.append({
+                    vulns_list.extend(
+                        {
                             "type": vuln_type,
                             "url": vuln.get("url", url),
-                            "details": vuln.get("description", "")
-                        })
-            
+                            "details": vuln.get("description", ""),
+                        }
+                        for vuln in vuln_items
+                    )
+
             # Сохранение результатов
             if self.current_user_id is not None:
-                success = db.save_scan_async(
-                    self.current_user_id,
-                    url,
-                    vulns_list,
-                    scan_type,
-                    scan_duration
-                )
-                
+                success = db.save_scan_async(self.current_user_id, url, vulns_list, scan_type, scan_duration)
+
                 if success:
                     print("\n💾 Результаты сохранены в базе данных")
         except Exception as e:
             print(f"\n⚠️ Предупреждение: не удалось сохранить результаты в базу данных: {e}")
 
-    async def scan_url(self, url: str, scan_type: str = "standard", max_depth: int = 10, max_concurrent: int = 5, timeout: int = 30) -> bool:
+    async def scan_url(
+        self, url: str, scan_type: str = "standard", max_depth: int = 10, max_concurrent: int = 5, timeout: int = 30
+    ) -> bool:
         """Запуск сканирования указанного URL.
 
         Сайт всегда сканируется полностью: глубина и параллельность
@@ -211,7 +211,14 @@ class CLIMode:
 
         try:
             # Инициализация контроллера сканирования
-            self.scan_controller = ScanController(url, [scan_type], self.current_user_id, max_depth=max_depth, max_concurrent=max_concurrent, timeout=timeout)
+            self.scan_controller = ScanController(
+                url,
+                [scan_type],
+                self.current_user_id,
+                max_depth=max_depth,
+                max_concurrent=max_concurrent,
+                timeout=timeout,
+            )
             print(f"🔍 Запуск сканирования: {url}")
             print(f"   Тип сканирования: {scan_type}")
             print("   Режим: полное сканирование")
@@ -222,29 +229,22 @@ class CLIMode:
 
             # Вызов метода сканирования с указанными параметрами
             # Создаем переменные для отслеживания метрик
-            scan_metrics: Dict[str, Any] = {
-                "current_url": "",
-                "total_urls": 0,
-                "found_vulns": 0
-            }
-            
+            scan_metrics: dict[str, Any] = {"current_url": "", "total_urls": 0, "found_vulns": 0}
+
             # Создаем обертку для обновления прогресса с метриками
             def update_progress_with_metrics(progress: float) -> None:
                 # Преобразуем float в int для совместимости
                 progress_int = int(progress)
-                
+
                 self._update_progress(
-                    progress_int, 
-                    scan_metrics["current_url"],
-                    scan_metrics["total_urls"],
-                    scan_metrics["found_vulns"]
+                    progress_int, scan_metrics["current_url"], scan_metrics["total_urls"], scan_metrics["found_vulns"]
                 )
-            
+
             # Создаем обертку для обработки логов с обновлением метрик
             def log_with_metrics(message: str) -> None:
                 # Выводим сообщение
                 self._log_message(message)
-                
+
                 # Обновляем метрики на основе сообщений
                 if "Найдена уязвимость:" in message:
                     scan_metrics["found_vulns"] += 1
@@ -252,30 +252,31 @@ class CLIMode:
                     # Извлекаем общее количество URL
                     try:
                         import re
-                        match = re.search(r'Обнаружено (\d+) URL', message)
+
+                        match = re.search(r"Обнаружено (\d+) URL", message)
                         if match:
                             scan_metrics["total_urls"] = int(match.group(1))
-                    except (TypeError, ValueError, AttributeError):
+                    except (TypeError, ValueError, AttributeError):  # fmt: skip
                         return
-            
+
             # Создаем специальную обертку для обработки двух параметров из progress.emit
             def progress_wrapper(progress: float, current_url: str = "") -> None:
                 # Обновляем метрики
                 if current_url:
                     scan_metrics["current_url"] = current_url
-                
+
                 # Вызываем наш обработчик прогресса
                 update_progress_with_metrics(progress)
-            
+
             await self.scan_controller.start_scan(
-                url, 
-                [scan_type], 
-                max_depth=max_depth, 
-                max_concurrent=max_concurrent, 
-                timeout=timeout, 
-                on_log=log_with_metrics, 
+                url,
+                [scan_type],
+                max_depth=max_depth,
+                max_concurrent=max_concurrent,
+                timeout=timeout,
+                on_log=log_with_metrics,
                 on_progress=progress_wrapper,
-                on_result=lambda results: self._process_results(results, scan_type)
+                on_result=lambda results: self._process_results(results, scan_type),
             )
 
             # Очищаем строки прогресса
@@ -285,7 +286,7 @@ class CLIMode:
             print("\033[K", end="")  # Очищаем следующую строку
             print("\033[K", end="")  # Очищаем следующую строку
             print("\033[4F", end="")  # Возвращаем курсор на 4 строки вверх
-            
+
             print("\n✅ Сканирование завершено!")
 
             return True
@@ -295,7 +296,7 @@ class CLIMode:
             logger.error(error_msg)
             return False
 
-    def list_scans(self) -> List[Dict[str, Any]]:
+    def list_scans(self) -> list[dict[str, Any]]:
         """Получение списка всех сканирований пользователя"""
         if not self.current_user_id:
             print("❌ Ошибка: не выполнен вход в систему")
@@ -349,10 +350,9 @@ class CLIMode:
 
     def interactive_mode(self) -> None:
         """Интерактивный режим работы"""
-        if not self.current_user_id:
-            if not self.interactive_login():
-                print("❌ Не удалось войти в систему. Выход.")
-                return
+        if not self.current_user_id and not self.interactive_login():
+            print("❌ Не удалось войти в систему. Выход.")
+            return
 
         print(f"\n🚀 Запуск интерактивного режима для пользователя: {self.current_username}")
         print("Доступные команды:")
@@ -397,13 +397,9 @@ class CLIMode:
 
                     # Преобразуем тип сканирования в правильный формат
                     if scan_type.isdigit():
-                        scan_type_map = {
-                            "1": "quick",
-                            "2": "standard",
-                            "3": "deep"
-                        }
+                        scan_type_map = {"1": "quick", "2": "standard", "3": "deep"}
                         scan_type = scan_type_map.get(scan_type, "standard")
-                    
+
                     asyncio.run(self.scan_url(url, scan_type, max_depth, max_concurrent, timeout))
                 elif cmd == "list":
                     self.list_scans()
@@ -432,18 +428,20 @@ class CLIMode:
                 logger.error(error_msg)
 
 
-def run_cli_mode(url: Optional[str] = None, username: Optional[str] = None, 
-                  scan_type: str = "2", max_depth: int = 10, max_concurrent: int = 5, timeout: int = 30) -> int:
+def run_cli_mode(
+    url: str | None = None,
+    username: str | None = None,
+    scan_type: str = "2",
+    max_depth: int = 10,
+    max_concurrent: int = 5,
+    timeout: int = 30,
+) -> int:
     """Запуск CLI режима.
 
     Глубина и параллельность зафиксированы: сайт сканируется полностью.
     """
     # Преобразуем числовой тип сканирования в строковый
-    scan_type_map = {
-        "1": "quick",
-        "2": "standard",
-        "3": "deep"
-    }
+    scan_type_map = {"1": "quick", "2": "standard", "3": "deep"}
     scan_type = scan_type_map.get(scan_type, "standard")
     print("🔧 Web Scanner CLI режим")
     print("=" * 40)
@@ -473,10 +471,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Web Scanner CLI")
     parser.add_argument("--url", help="URL для сканирования")
     parser.add_argument("--username", help="Имя пользователя для входа")
-    parser.add_argument("--type", choices=["1", "2", "3"], default="2", 
-                       help="Тип сканирования (1=quick, 2=standard, 3=deep)")
-    parser.add_argument("--timeout", type=int, default=30, 
-                       help="Таймаут запроса в секундах")
+    parser.add_argument(
+        "--type", choices=["1", "2", "3"], default="2", help="Тип сканирования (1=quick, 2=standard, 3=deep)"
+    )
+    parser.add_argument("--timeout", type=int, default=30, help="Таймаут запроса в секундах")
 
     args = parser.parse_args()
     # Глубина и параллельность не настраиваются: сайт всегда сканируется полностью.

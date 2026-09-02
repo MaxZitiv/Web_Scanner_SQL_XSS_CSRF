@@ -1,23 +1,25 @@
 from dataclasses import dataclass, field
-from typing import List, Dict, Any, Optional
 from datetime import datetime
+from typing import Any
+
 
 @dataclass
 class Vulnerability:
     """
     Датакласс для представления уязвимости.
     """
+
     type: str
     url: str
-    parameter: Optional[str] = None
-    payload: Optional[str] = None
+    parameter: str | None = None
+    payload: str | None = None
     description: str = ""
     severity: str = "medium"  # low, medium, high, critical
     evidence: str = ""
-    request: Optional[str] = None
-    response: Optional[str] = None
+    request: str | None = None
+    response: str | None = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Преобразование датакласса в словарь для сохранения в JSON."""
         return {
             "type": self.type,
@@ -28,11 +30,11 @@ class Vulnerability:
             "severity": self.severity,
             "evidence": self.evidence,
             "request": self.request,
-            "response": self.response
+            "response": self.response,
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'Vulnerability':
+    def from_dict(cls, data: dict[str, Any]) -> Vulnerability:
         """Создание датакласса из словаря."""
         return cls(
             type=data.get("type", ""),
@@ -43,25 +45,28 @@ class Vulnerability:
             severity=data.get("severity", "medium"),
             evidence=data.get("evidence", ""),
             request=data.get("request"),
-            response=data.get("response")
+            response=data.get("response"),
         )
 
-def default_vulnerabilities() -> List[Vulnerability]:
+
+def default_vulnerabilities() -> list[Vulnerability]:
     """Фабрика для создания пустого списка уязвимостей с правильным типом."""
     return []
+
 
 @dataclass
 class ScanResult:
     """
     Датакласс для представления результата сканирования.
     """
-    id: Optional[int] = None
-    user_id: Optional[int] = None
+
+    id: int | None = None
+    user_id: int | None = None
     url: str = ""
     scan_type: str = "general"
     scan_duration: float = 0.0
-    timestamp: Optional[datetime] = None
-    vulnerabilities: List[Vulnerability] = field(default_factory=default_vulnerabilities)
+    timestamp: datetime | None = None
+    vulnerabilities: list[Vulnerability] = field(default_factory=default_vulnerabilities)
     status: str = "completed"  # completed, failed, in_progress
 
     def __post_init__(self):
@@ -69,7 +74,7 @@ class ScanResult:
         if self.timestamp is None:
             self.timestamp = datetime.now()
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Преобразование датакласса в словарь для сохранения в JSON."""
         return {
             "id": self.id,
@@ -79,13 +84,13 @@ class ScanResult:
             "scan_duration": self.scan_duration,
             "timestamp": self.timestamp.isoformat() if self.timestamp else None,
             "vulnerabilities": [vuln.to_dict() for vuln in self.vulnerabilities],
-            "status": self.status
+            "status": self.status,
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'ScanResult':
+    def from_dict(cls, data: dict[str, Any]) -> ScanResult:
         """Создание датакласса из словаря."""
-        vulnerabilities: List[Vulnerability] = []
+        vulnerabilities: list[Vulnerability] = []
         for vuln_data in data.get("vulnerabilities", []):
             vuln = Vulnerability.from_dict(vuln_data)
             vulnerabilities.append(vuln)
@@ -102,5 +107,5 @@ class ScanResult:
             scan_duration=data.get("scan_duration", 0.0),
             timestamp=timestamp,
             vulnerabilities=vulnerabilities,
-            status=data.get("status", "completed")
+            status=data.get("status", "completed"),
         )

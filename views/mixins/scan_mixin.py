@@ -1,33 +1,42 @@
 """
 Миксин для функциональности сканирования
 """
-from typing import Dict, Any, Optional, List
+
 from types import CoroutineType
+from typing import Any
+
 from PyQt6.QtWidgets import (
-    QLabel, QPushButton, QLineEdit, QCheckBox, QSpinBox, QProgressBar,
-    QTreeWidget, QDateTimeEdit
+    QCheckBox,
+    QDateTimeEdit,
+    QLabel,
+    QLineEdit,
+    QProgressBar,
+    QPushButton,
+    QSpinBox,
+    QTreeWidget,
 )
-from utils.security import is_safe_url
+
 from controllers.scan_controller import ScanController
 from policies.policy_manager import PolicyManager
 from utils.logger import logger
+from utils.security import is_safe_url
 
 # Сканирование всегда выполняется полностью.
 FULL_SCAN_MAX_DEPTH = 10
 SCAN_CONCURRENCY = 5
 
 
-def _validate_scan_parameters(params: Dict[str, Any]) -> tuple[bool, str]:
+def _validate_scan_parameters(params: dict[str, Any]) -> tuple[bool, str]:
     """
     Валидация параметров сканирования
 
     Returns:
         tuple: (валидность, сообщение об ошибке)
     """
-    if not params['url']:
+    if not params["url"]:
         return False, "URL не может быть пустым"
 
-    if not params['vuln_types']:
+    if not params["vuln_types"]:
         return False, "Должен быть выбран хотя бы один тип уязвимости"
 
     return True, ""
@@ -36,7 +45,7 @@ def _validate_scan_parameters(params: Dict[str, Any]) -> tuple[bool, str]:
 class ScanMixin:
     """Миксин, предоставляющий функциональность сканирования"""
 
-    def __init__(self, user_id: Optional[int] = None):
+    def __init__(self, user_id: int | None = None):
         """
         Инициализация миксина
 
@@ -44,7 +53,7 @@ class ScanMixin:
             user_id: Идентификатор пользователя
         """
         self.user_id = user_id
-        
+
     def _init_scan_attributes(self) -> None:
         """Инициализация атрибутов, связанных со сканированием"""
         # Состояния сканирования
@@ -58,7 +67,7 @@ class ScanMixin:
         self._is_paused = False
 
         # Менеджеры
-        self.scan_controller: Optional[ScanController] = None  # Инициализируем при старте сканирования
+        self.scan_controller: ScanController | None = None  # Инициализируем при старте сканирования
         self.policy_manager = PolicyManager()
         self.selected_policy = None
 
@@ -99,10 +108,10 @@ class ScanMixin:
         self.date_from = QDateTimeEdit()
         self.date_to = QDateTimeEdit()
 
-    def _ensure_scan_controller(self, url: str, scan_types: List[str]) -> None:
+    def _ensure_scan_controller(self, url: str, scan_types: list[str]) -> None:
         """
         Убедиться, что у нас есть инициализированный ScanController.
-        
+
         Args:
             url: URL для сканирования
             scan_types: Список типов сканирования
@@ -114,7 +123,7 @@ class ScanMixin:
                 user_id=self.user_id if self.user_id is not None else 0,
                 max_depth=FULL_SCAN_MAX_DEPTH,
                 max_concurrent=SCAN_CONCURRENCY,
-                timeout=self.timeout_spinbox.value() if hasattr(self, 'timeout_spinbox') else 30
+                timeout=self.timeout_spinbox.value() if hasattr(self, "timeout_spinbox") else 30,
             )
 
     def _reset_scan_state(self) -> None:
@@ -130,29 +139,27 @@ class ScanMixin:
         self._scanned_forms.clear()
 
         # Сброс UI элементов
-        if hasattr(self, 'scan_progress'):
+        if hasattr(self, "scan_progress"):
             self.scan_progress.setValue(0)
-        if hasattr(self, 'progress_label'):
+        if hasattr(self, "progress_label"):
             self.progress_label.setText("0%")
-        if hasattr(self, 'scan_status'):
+        if hasattr(self, "scan_status"):
             self.scan_status.setText("Готов к сканированию")
 
-    def _get_scan_parameters(self) -> Dict[str, Any]:
+    def _get_scan_parameters(self) -> dict[str, Any]:
         """Получить параметры сканирования из UI элементов"""
-        params: Dict[str, Any] = {
-            'url': self.url_input.text().strip(),
-            'vuln_types': [
-                vt for vt, cb in [
-                    ('sql', self.sql_checkbox),
-                    ('xss', self.xss_checkbox),
-                    ('csrf', self.csrf_checkbox)
-                ] if cb.isChecked()
+        params: dict[str, Any] = {
+            "url": self.url_input.text().strip(),
+            "vuln_types": [
+                vt
+                for vt, cb in [("sql", self.sql_checkbox), ("xss", self.xss_checkbox), ("csrf", self.csrf_checkbox)]
+                if cb.isChecked()
             ],
-            'depth': FULL_SCAN_MAX_DEPTH,
-            'concurrent': SCAN_CONCURRENCY,
-            'timeout': self.timeout_spinbox.value(),
-            'max_coverage': self.max_coverage_checkbox.isChecked(),
-            'turbo_mode': self.turbo_checkbox.isChecked()
+            "depth": FULL_SCAN_MAX_DEPTH,
+            "concurrent": SCAN_CONCURRENCY,
+            "timeout": self.timeout_spinbox.value(),
+            "max_coverage": self.max_coverage_checkbox.isChecked(),
+            "turbo_mode": self.turbo_checkbox.isChecked(),
         }
 
         # Валидация параметров
@@ -162,21 +169,22 @@ class ScanMixin:
 
         return params
 
-    def start_scan(self, url: Optional[str] = None) -> CoroutineType[Any, Any, None]:
+    def start_scan(self, url: str | None = None) -> CoroutineType[Any, Any, None]:
         """
         Начать сканирование
-        
+
         Args:
             url: URL для сканирования (опционально, если не указан, берется из UI)
-            
+
         Returns:
             CoroutineType: Корутина для выполнения сканирования
         """
+
         async def _start_scan_impl() -> None:
             try:
                 # Проверяем наличие URL
                 if url is None:
-                    if not hasattr(self, 'url_input'):
+                    if not hasattr(self, "url_input"):
                         error_msg = "Компонент ввода URL не найден"
                         logger.error(error_msg)
                         self._handle_error(error_msg)
@@ -184,7 +192,7 @@ class ScanMixin:
                     scan_url = self.url_input.text().strip()
                 else:
                     scan_url = url
-                    
+
                 if not scan_url:
                     error_msg = "URL не может быть пустым"
                     logger.error(error_msg)
@@ -196,14 +204,14 @@ class ScanMixin:
                     logger.error(error_msg)
                     self._handle_error(error_msg)
                     return
-                    
+
                 # Определяем типы сканирования
-                scan_types: List[str] = []
-                if hasattr(self, 'sql_checkbox') and self.sql_checkbox.isChecked():
+                scan_types: list[str] = []
+                if hasattr(self, "sql_checkbox") and self.sql_checkbox.isChecked():
                     scan_types.append("sql")
-                if hasattr(self, 'xss_checkbox') and self.xss_checkbox.isChecked():
+                if hasattr(self, "xss_checkbox") and self.xss_checkbox.isChecked():
                     scan_types.append("xss")
-                if hasattr(self, 'csrf_checkbox') and self.csrf_checkbox.isChecked():
+                if hasattr(self, "csrf_checkbox") and self.csrf_checkbox.isChecked():
                     scan_types.append("csrf")
 
                 # Проверяем наличие хотя бы одного типа сканирования
@@ -218,7 +226,7 @@ class ScanMixin:
 
                 # Создаем контроллер если нужно
                 self._ensure_scan_controller(scan_url, scan_types)
-                
+
                 # Запускаем сканирование через контроллер
                 if self.scan_controller is None:
                     raise RuntimeError("Scan controller should be initialized")
@@ -227,25 +235,25 @@ class ScanMixin:
                     scan_types,
                     max_depth=FULL_SCAN_MAX_DEPTH,
                     max_concurrent=SCAN_CONCURRENCY,
-                    timeout=self.timeout_spinbox.value() if hasattr(self, 'timeout_spinbox') else 30
+                    timeout=self.timeout_spinbox.value() if hasattr(self, "timeout_spinbox") else 30,
                 )
 
                 # Обновляем интерфейс
-                if hasattr(self, 'scan_status'):
+                if hasattr(self, "scan_status"):
                     self.scan_status.setText("Сканирование запущено")
-                if hasattr(self, 'scan_progress'):
+                if hasattr(self, "scan_progress"):
                     self.scan_progress.setVisible(True)
                     self.scan_progress.setRange(0, 0)
                     self.scan_progress.setValue(0)
 
                 # Логируем успешный запуск сканирования
                 logger.info(f"Scan started with ID {scan_id} for URL: {scan_url}")
-                
+
             except Exception as e:
                 error_msg = f"Ошибка при запуске сканирования: {e}"
                 logger.error(error_msg)
                 self._handle_error(error_msg)
-        
+
         # Возвращаем корутину для запуска сканирования
         coroutine = _start_scan_impl()
         return coroutine
@@ -253,12 +261,12 @@ class ScanMixin:
     def _handle_error(self, error_msg: str) -> None:
         """
         Обработка ошибок с отправкой сигнала, если он доступен
-        
+
         Args:
             error_msg: Сообщение об ошибке
         """
         # Проверяем наличие сигнала и отправляем его, если он есть
-        error_signal = getattr(self, 'error_occurred', None)
+        error_signal = getattr(self, "error_occurred", None)
         if error_signal is not None and callable(error_signal.emit):
             error_signal.emit(error_msg)
         logger.error(error_msg)

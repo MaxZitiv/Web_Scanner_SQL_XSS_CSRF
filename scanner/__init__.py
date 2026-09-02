@@ -7,4 +7,4 @@
 
 from .scanner_fixed import ScanWorker
 
-__all__ = ['ScanWorker']
+__all__ = ["ScanWorker"]

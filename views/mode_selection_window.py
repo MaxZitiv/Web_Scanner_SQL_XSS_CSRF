@@ -1,16 +1,16 @@
-from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QLabel, QPushButton, QMessageBox
-)
-from PyQt6.QtCore import pyqtSignal
-from typing import Any, Optional, cast
-from utils.logger import logger
 import os
+from typing import Any, cast
+
+from PyQt6.QtCore import pyqtSignal
+from PyQt6.QtWidgets import QLabel, QMessageBox, QPushButton, QVBoxLayout, QWidget
+
+from utils.logger import logger
 
 
 class ModeSelectionWindow(QWidget):
     mode_selected = pyqtSignal(str, int, str)  # mode, user_id, username
 
-    def __init__(self, user_id: int, username: str, parent: Optional['QWidget'] = None):
+    def __init__(self, user_id: int, username: str, parent: QWidget | None = None):
         super().__init__(parent)
         self.user_id = user_id
         self.username = username
@@ -22,9 +22,10 @@ class ModeSelectionWindow(QWidget):
         """Загрузка стилей из файла styles.qss"""
         try:
             from main import resource_path
+
             style_path = resource_path("styles.qss")
             if os.path.exists(style_path):
-                with open(style_path, 'r', encoding='utf-8') as f:
+                with open(style_path, encoding="utf-8") as f:
                     self.setStyleSheet(f.read())
                 logger.info("Стили успешно загружены для окна выбора режима")
             else:
@@ -79,10 +80,10 @@ class ModeSelectionWindow(QWidget):
     def select_cli_mode(self):
         # Подтверждение перехода в CLI режим
         reply = QMessageBox.question(
-            self, 
-            "Подтверждение", 
+            self,
+            "Подтверждение",
             "Вы уверены, что хотите перейти в CLI режим? Графический интерфейс будет закрыт.",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
 
         if reply == QMessageBox.StandardButton.Yes:

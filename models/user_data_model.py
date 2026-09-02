@@ -1,30 +1,32 @@
 from dataclasses import dataclass, field
-from typing import Dict, Any, Optional
 from datetime import datetime
+from typing import Any
 
-PreferencesDict = Dict[str, Any]
+PreferencesDict = dict[str, Any]
+
 
 @dataclass
 class User:
     """
     Датакласс для представления пользователя.
     """
-    id: Optional[int] = None
+
+    id: int | None = None
     username: str = ""
     email: str = ""
     password_hash: str = ""
     is_active: bool = True
-    created_at: Optional[datetime] = None
-    last_login: Optional[datetime] = None
-    avatar_path: Optional[str] = None
-    preferences: PreferencesDict = field(default_factory=lambda: {})
+    created_at: datetime | None = None
+    last_login: datetime | None = None
+    avatar_path: str | None = None
+    preferences: PreferencesDict = field(default_factory=dict)
 
     def __post_init__(self):
         """Инициализация значений по умолчанию после создания."""
         if self.created_at is None:
             self.created_at = datetime.now()
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Преобразование датакласса в словарь для сохранения в JSON."""
         return {
             "id": self.id,
@@ -35,11 +37,11 @@ class User:
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "last_login": self.last_login.isoformat() if self.last_login else None,
             "avatar_path": self.avatar_path,
-            "preferences": self.preferences
+            "preferences": self.preferences,
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'User':
+    def from_dict(cls, data: dict[str, Any]) -> User:
         """Создание датакласса из словаря."""
         created_at = None
         if data.get("created_at"):
@@ -58,5 +60,5 @@ class User:
             created_at=created_at,
             last_login=last_login,
             avatar_path=data.get("avatar_path"),
-            preferences=data.get("preferences", {})
+            preferences=data.get("preferences", {}),
         )

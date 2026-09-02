@@ -4,30 +4,32 @@ views/statistics_window.py
 """
 
 # Исправление импортов
+from typing import Any, cast
+
+from PyQt6.QtCharts import QBarSet, QChart, QChartView, QHorizontalBarSeries, QPieSeries
+from PyQt6.QtCore import QRect, Qt
+from PyQt6.QtGui import QColor, QFont, QPainter
 from PyQt6.QtWidgets import (
-    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QLabel, QTableWidget, QTableWidgetItem, QPushButton,
-    QTabWidget
+    QHBoxLayout,
+    QLabel,
+    QMainWindow,
+    QPushButton,
+    QTableWidget,
+    QTableWidgetItem,
+    QTabWidget,
+    QVBoxLayout,
+    QWidget,
 )
-from PyQt6.QtCore import (
-    Qt, QRect
-)
-from PyQt6.QtGui import (
-    QFont, QPainter, QColor
-)
-from typing import Any, List, Optional, cast
+
 from utils import logger
 from utils.database import db
 from utils.encryption import decrypt_sensitive_data_safe
-from PyQt6.QtCharts import (
-    QChart, QChartView, QPieSeries, QHorizontalBarSeries, QBarSet
-)
 
 
 class StatisticsWindow(QMainWindow):
     """Окно для просмотра подробной статистики"""
 
-    def __init__(self, user_id: int, parent: Optional[QWidget] = None):
+    def __init__(self, user_id: int, parent: QWidget | None = None):
         super().__init__(parent)
         self.user_id: int = user_id
         self.setWindowTitle("📊 Статистика сканирования")
@@ -58,9 +60,9 @@ class StatisticsWindow(QMainWindow):
         # Вкладка с таблицей сканирований
         self.scans_table = QTableWidget()
         self.scans_table.setColumnCount(6)
-        cast(Any, self.scans_table).setHorizontalHeaderLabels([
-            "ID сканирования", "URL", "Дата", "Найдено уязвимостей", "Время сканирования", "Статус"
-        ])
+        cast(Any, self.scans_table).setHorizontalHeaderLabels(
+            ["ID сканирования", "URL", "Дата", "Найдено уязвимостей", "Время сканирования", "Статус"]
+        )
         self.tabs.addTab(self.scans_table, "История сканирований")
         self.charts_widget = QWidget()
         self.charts_layout = QVBoxLayout()
@@ -81,7 +83,7 @@ class StatisticsWindow(QMainWindow):
         main_layout.addWidget(close_btn)
 
         central_widget.setLayout(main_layout)
-        
+
     def close_window(self) -> None:
         """Закрытие окна"""
         self.close()
@@ -119,7 +121,8 @@ class StatisticsWindow(QMainWindow):
             conn = db.get_db_connection()
             cursor = conn.cursor()
 
-            cursor.execute("""
+            cursor.execute(
+                """
                 SELECT s.id, s.url, s.timestamp,
                        COUNT(v.id) as vulnerabilities_found,
                        s.scan_duration, s.status
@@ -129,7 +132,9 @@ class StatisticsWindow(QMainWindow):
                 GROUP BY s.id
                 ORDER BY s.timestamp DESC
                 LIMIT 100
-            """, (self.user_id,))
+            """,
+                (self.user_id,),
+            )
 
             rows = cursor.fetchall()
             conn.close()
@@ -141,10 +146,10 @@ class StatisticsWindow(QMainWindow):
                 url = str(decrypt_sensitive_data_safe(row[1], None)) if row[1] else "N/A"
                 if not url:
                     url = "N/A"
-                start_time = row[2] if row[2] else "N/A"
+                start_time = row[2] or "N/A"
                 vulns_found = str(row[3]) if row[3] is not None else "0"
                 duration = f"{row[4]}с" if row[4] else "N/A"
-                status = row[5] if row[5] else "N/A"
+                status = row[5] or "N/A"
 
                 self.scans_table.setItem(i, 0, QTableWidgetItem(scan_id))
                 self.scans_table.setItem(i, 1, QTableWidgetItem(url))
@@ -160,7 +165,7 @@ class StatisticsWindow(QMainWindow):
             logger.error(f"Ошибка при загрузке истории сканирований: {e}")
 
     def load_charts(self):
-        """Загрузка диаграмм"""   
+        """Загрузка диаграмм"""
         try:
             for i in reversed(range(self.charts_layout.count())):
                 widget_item = self.charts_layout.itemAt(i)
@@ -168,7 +173,7 @@ class StatisticsWindow(QMainWindow):
                     widget = widget_item.widget()
                     if widget:
                         widget.setParent(None)
-                
+
             # Создаем круговую диаграмму типов уязвимостей
             self.create_vulnerability_pie_chart()
 
@@ -179,18 +184,21 @@ class StatisticsWindow(QMainWindow):
             logger.error(f"Ошибка при загрузке диаграмм: {e}")
 
     def create_vulnerability_pie_chart(self):
-        """Создание круговой диаграммы типов уязвимостей"""  
+        """Создание круговой диаграммы типов уязвимостей"""
         try:
             conn = db.get_db_connection()
             cursor = conn.cursor()
 
-            cursor.execute("""
+            cursor.execute(
+                """
                 SELECT v.type, COUNT(*) as count
                 FROM vulnerabilities v
                 JOIN scans s ON v.scan_id = s.id
                 WHERE s.user_id = ?
                 GROUP BY v.type
-            """, (self.user_id,))
+            """,
+                (self.user_id,),
+            )
 
             rows = cursor.fetchall()
             conn.close()
@@ -204,7 +212,7 @@ class StatisticsWindow(QMainWindow):
             # Создаем круговую диаграмму
             series = QPieSeries()
             series_any = cast(Any, series)
-            
+
             for row in rows:
                 vuln_type = row[0]
                 count = row[1]
@@ -228,14 +236,14 @@ class StatisticsWindow(QMainWindow):
         except Exception as e:
             logger.error(f"Ошибка при создании круговой диаграммы: {e}")
 
-
     def create_vulnerability_bar_chart(self):
         """Создание столбчатой диаграммы уязвимостей по времени"""
         try:
             conn = db.get_db_connection()
             cursor = conn.cursor()
 
-            cursor.execute("""
+            cursor.execute(
+                """
                 SELECT DATE(s.timestamp) as date, v.type, COUNT(*) as count
                 FROM vulnerabilities v
                 JOIN scans s ON v.scan_id = s.id
@@ -243,7 +251,9 @@ class StatisticsWindow(QMainWindow):
                 GROUP BY date, v.type
                 ORDER BY date
                 LIMIT 30
-            """, (self.user_id,))
+            """,
+                (self.user_id,),
+            )
 
             rows = cursor.fetchall()
             conn.close()
@@ -268,16 +278,14 @@ class StatisticsWindow(QMainWindow):
                 vuln_types[vuln_type][date] = count
 
             # Создаем столбчатую диаграмму
-            series_list: List[QBarSet] = []
-            
+            series_list: list[QBarSet] = []
+
             colors = ["#FF9999", "#66B2FF", "#99FF99"]
-            color_index = 0
-            
-            for vuln_type, data in vuln_types.items():
+
+            for color_index, (vuln_type, data) in enumerate(vuln_types.items()):
                 bar_set = QBarSet(vuln_type)
                 bar_set_any = cast(Any, bar_set)
                 bar_set_any.setColor(QColor(colors[color_index % len(colors)]))
-                color_index += 1
 
                 for date in sorted(dates):
                     bar_set_any.append(data.get(date, 0))
@@ -315,7 +323,8 @@ class StatisticsWindow(QMainWindow):
             cursor = conn.cursor()
 
             # Общая статистика
-            cursor.execute("""
+            cursor.execute(
+                """
                 SELECT 
                     COUNT(DISTINCT s.id) as total_scans,
                     COUNT(v.id) as total_vulnerabilities,
@@ -323,18 +332,23 @@ class StatisticsWindow(QMainWindow):
                 FROM scans s
                 LEFT JOIN vulnerabilities v ON v.scan_id = s.id
                 WHERE s.user_id = ?
-            """, (self.user_id,))
+            """,
+                (self.user_id,),
+            )
 
             general_stats = cursor.fetchone()
 
             # Статистика по типам уязвимостей
-            cursor.execute("""
+            cursor.execute(
+                """
                 SELECT v.type, COUNT(*) as count
                 FROM vulnerabilities v
                 JOIN scans s ON v.scan_id = s.id
                 WHERE s.user_id = ?
                 GROUP BY v.type
-            """, (self.user_id,))
+            """,
+                (self.user_id,),
+            )
 
             vuln_stats = cursor.fetchall()
 
@@ -359,9 +373,9 @@ class StatisticsWindow(QMainWindow):
             general_stats_layout = QHBoxLayout()
 
             if general_stats:
-                total_scans = general_stats[0] if general_stats[0] else 0
-                total_vulns = general_stats[1] if general_stats[1] else 0
-                unique_urls = general_stats[2] if general_stats[2] else 0
+                total_scans = general_stats[0] or 0
+                total_vulns = general_stats[1] or 0
+                unique_urls = general_stats[2] or 0
 
                 scans_label = QLabel(f"Всего сканирований: {total_scans}")
                 vulns_label = QLabel(f"Всего уязвимостей: {total_vulns}")

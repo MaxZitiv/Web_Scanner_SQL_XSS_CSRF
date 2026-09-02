@@ -10,10 +10,10 @@
 - User: датакласс пользователя
 """
 
-from .user_model import UserModel
-from .scan_model import ScanModel
 from .policy_model import SecurityPolicy
+from .scan_model import ScanModel
 from .scan_result_model import ScanResult, Vulnerability
 from .user_data_model import User
+from .user_model import UserModel
 
-__all__ = ['UserModel', 'ScanModel', 'SecurityPolicy', 'ScanResult', 'Vulnerability', 'User']
+__all__ = ["ScanModel", "ScanResult", "SecurityPolicy", "User", "UserModel", "Vulnerability"]

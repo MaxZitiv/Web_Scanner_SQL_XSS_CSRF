@@ -9,23 +9,25 @@ from dotenv import load_dotenv
 
 # Уровни логирования
 LOG_LEVELS = {
-    'DEBUG': logging.DEBUG,
-    'INFO': logging.INFO,
-    'WARNING': logging.WARNING,
-    'ERROR': logging.ERROR,
-    'CRITICAL': logging.CRITICAL
+    "DEBUG": logging.DEBUG,
+    "INFO": logging.INFO,
+    "WARNING": logging.WARNING,
+    "ERROR": logging.ERROR,
+    "CRITICAL": logging.CRITICAL,
 }
 
 # Загружаем переменные из .env
-env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env')
+env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env")
 load_dotenv(dotenv_path=env_path)
+
 
 def get_log_dir():
     """Возвращает путь к директории для хранения логов"""
-    log_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'logs')
+    log_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "logs")
     if not os.path.exists(log_dir):
         os.makedirs(log_dir)
     return log_dir
+
 
 def set_log_level(logger_name: str, level: str):
     """Устанавливает уровень логирования для указанного логгера"""
@@ -45,20 +47,25 @@ FROM_EMAIL = SMTP_USERNAME
 if not all([SMTP_USERNAME, SMTP_PASSWORD, ADMIN_EMAIL]):
     # Импортируем logging для использования в случае отсутствия основного логгера
     import logging
-    logging.warning("SMTP_USERNAME, SMTP_PASSWORD или ADMIN_EMAIL не заданы в .env. Уведомления по email не будут работать.")
+
+    logging.warning(
+        "SMTP_USERNAME, SMTP_PASSWORD или ADMIN_EMAIL не заданы в .env. Уведомления по email не будут работать."
+    )
     # Используем локальные переменные вместо глобальных
     _smtp_username = SMTP_USERNAME or "default@example.com"
     _smtp_password = SMTP_PASSWORD or "default_password"
     _admin_email = ADMIN_EMAIL or "admin@example.com"
     _from_email = FROM_EMAIL or _smtp_username
-    
+
     # Обновляем глобальные переменные
-    globals().update({
-        "SMTP_USERNAME": _smtp_username,
-        "SMTP_PASSWORD": _smtp_password,
-        "ADMIN_EMAIL": _admin_email,
-        "FROM_EMAIL": _from_email
-    })
+    globals().update(
+        {
+            "SMTP_USERNAME": _smtp_username,
+            "SMTP_PASSWORD": _smtp_password,
+            "ADMIN_EMAIL": _admin_email,
+            "FROM_EMAIL": _from_email,
+        }
+    )
 
 # 📁 Папка логов
 LOG_DIR = "logs"
@@ -68,17 +75,19 @@ os.makedirs(LOG_DIR, exist_ok=True)
 LOG_FORMAT = "%(asctime)s | %(levelname)s | %(name)s | %(message)s"
 DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
 
+
 # 🔄 Функция создания обработчика по уровню
 def get_file_handler(level_name: str, log_file: str):
     handler = RotatingFileHandler(
         filename=os.path.join(LOG_DIR, log_file),
         maxBytes=2 * 1024 * 1024,  # 2 MB
         backupCount=5,
-        encoding="utf-8"
+        encoding="utf-8",
     )
     handler.setLevel(getattr(logging, level_name))
     handler.setFormatter(logging.Formatter(LOG_FORMAT, datefmt=DATE_FORMAT))
     return handler
+
 
 # 🧠 Уведомление об ошибке
 def notify_admin(level: str, message: str):
@@ -89,10 +98,10 @@ def notify_admin(level: str, message: str):
     body = f"Level: {level.upper()}\n\nMessage:\n{message}"
 
     msg = MIMEMultipart()
-    msg['From'] = str(FROM_EMAIL)
-    msg['To'] = str(ADMIN_EMAIL)
-    msg['Subject'] = subject
-    msg.attach(MIMEText(body, 'plain'))
+    msg["From"] = str(FROM_EMAIL)
+    msg["To"] = str(ADMIN_EMAIL)
+    msg["Subject"] = subject
+    msg.attach(MIMEText(body, "plain"))
 
     try:
         with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
@@ -103,6 +112,7 @@ def notify_admin(level: str, message: str):
     except Exception as e:
         print(f"Failed to send admin notification: {e}")
 
+
 # 🧩 Кастомный фильтр для разделения логов по уровню
 class LevelFilter(logging.Filter):
     def __init__(self, level: int):
@@ -111,6 +121,7 @@ class LevelFilter(logging.Filter):
 
     def filter(self, record: logging.LogRecord) -> bool:
         return record.levelno == self.level
+
 
 # 🧱 Инициализация логгера
 logger = logging.getLogger("WebScanner")
@@ -136,6 +147,7 @@ logger.addHandler(info_handler)
 logger.addHandler(warning_handler)
 logger.addHandler(error_handler)
 logger.addHandler(console_handler)
+
 
 # 📣 Использование с логированием и уведомлением
 def log_and_notify(level: str, message: str) -> None:

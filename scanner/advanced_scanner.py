@@ -1,20 +1,21 @@
-
 """
 Расширенный модуль сканера уязвимостей.
 Содержит продвинутые техники обнаружения уязвимостей.
 """
 
-import re
 import asyncio
+import re
 import time
-from typing import Dict, List, Optional
-from urllib.parse import urlparse, urljoin, parse_qs, urlencode
+from urllib.parse import parse_qs, urlencode, urljoin, urlparse
+
 import aiohttp
 from bs4.element import Tag
 
 from utils.logger import logger
 from utils.security import is_safe_url
+
 # Импорты из scanner_fixed.py не используются в этом файле
+
 
 class AdvancedScanner:
     """Продвинутый сканер уязвимостей с расширенными техниками обнаружения."""
@@ -132,8 +133,9 @@ class AdvancedScanner:
             "; ping -n 5 127.0.0.1",
         ]
 
-    async def advanced_sql_injection_check(self, session: aiohttp.ClientSession, url: str, 
-                                         forms: Optional[List[Tag]] = None) -> Optional[str]:
+    async def advanced_sql_injection_check(
+        self, session: aiohttp.ClientSession, url: str, forms: list[Tag] | None = None
+    ) -> str | None:
         """
         Расширенная проверка на SQL-инъекции с использованием time-based атак.
 
@@ -150,7 +152,7 @@ class AdvancedScanner:
 
         try:
             # Проверяем параметры URL
-            if '?' in url:
+            if "?" in url:
                 for payload in self.advanced_sql_payloads[:3]:  # Используем только time-based пейлоады
                     if self.semaphore:
                         async with self.semaphore:
@@ -168,23 +170,23 @@ class AdvancedScanner:
             for form in forms:
                 if self.semaphore:
                     async with self.semaphore:
-                        action = urljoin(url, str(form.get('action', '')))
-                        method = str(form.get('method', 'get')).upper()
+                        action = urljoin(url, str(form.get("action", "")))
+                        method = str(form.get("method", "get")).upper()
 
                         # Создаем тестовые данные для формы
-                        form_data: Dict[str, str] = {}
-                        input_elements = form.find_all('input')[:3]  # Максимум 3 поля
+                        form_data: dict[str, str] = {}
+                        input_elements = form.find_all("input")[:3]  # Максимум 3 поля
 
                         for input_elem in input_elements:
-                            input_name = str(input_elem.get('name', ''))
-                            if input_name and input_elem.get('type') in ['text', 'password', 'email', 'search', 'url']:
+                            input_name = str(input_elem.get("name", ""))
+                            if input_name and input_elem.get("type") in ["text", "password", "email", "search", "url"]:
                                 # Используем time-based пейлоад
                                 form_data[input_name] = self.advanced_sql_payloads[0]
 
                         if form_data:
                             start_time = time.time()
 
-                            if method == 'POST':
+                            if method == "POST":
                                 result = await session.post(action, data=form_data)
                             else:
                                 test_url = f"{action}?{urlencode(form_data)}"
@@ -201,8 +203,9 @@ class AdvancedScanner:
             logger.error(f"Error in advanced SQL injection check: {e}")
             return None
 
-    async def advanced_xss_check(self, session: aiohttp.ClientSession, url: str, 
-                               forms: Optional[List[Tag]] = None) -> Optional[str]:
+    async def advanced_xss_check(
+        self, session: aiohttp.ClientSession, url: str, forms: list[Tag] | None = None
+    ) -> str | None:
         """
         Расширенная проверка на XSS-уязвимости с использованием продвинутых пейлоадов.
 
@@ -219,7 +222,7 @@ class AdvancedScanner:
 
         try:
             # Проверяем параметры URL
-            if '?' in url:
+            if "?" in url:
                 for payload in self.advanced_xss_payloads[:3]:  # Используем только 3 пейлоада
                     if self.semaphore:
                         async with self.semaphore:
@@ -236,21 +239,21 @@ class AdvancedScanner:
             for form in forms:
                 if self.semaphore:
                     async with self.semaphore:
-                        action = urljoin(url, str(form.get('action', '')))
-                        method = str(form.get('method', 'get')).upper()
+                        action = urljoin(url, str(form.get("action", "")))
+                        method = str(form.get("method", "get")).upper()
 
                         # Создаем тестовые данные для формы
-                        form_data: Dict[str, str] = {}
-                        input_elements = form.find_all('input')[:3]  # Максимум 3 поля
+                        form_data: dict[str, str] = {}
+                        input_elements = form.find_all("input")[:3]  # Максимум 3 поля
 
                         for input_elem in input_elements:
-                            input_name = str(input_elem.get('name', ''))
-                            if input_name and input_elem.get('type') in ['text', 'password', 'email', 'search', 'url']:
+                            input_name = str(input_elem.get("name", ""))
+                            if input_name and input_elem.get("type") in ["text", "password", "email", "search", "url"]:
                                 # Используем продвинутый пейлоад
                                 form_data[input_name] = self.advanced_xss_payloads[0]
 
                         if form_data:
-                            if method == 'POST':
+                            if method == "POST":
                                 result = await session.post(action, data=form_data)
                             else:
                                 test_url = f"{action}?{urlencode(form_data)}"
@@ -268,8 +271,7 @@ class AdvancedScanner:
             logger.error(f"Error in advanced XSS check: {e}")
             return None
 
-    async def ssrf_check(self, session: aiohttp.ClientSession, url: str, 
-                        forms: Optional[List[Tag]] = None) -> Optional[str]:
+    async def ssrf_check(self, session: aiohttp.ClientSession, url: str, forms: list[Tag] | None = None) -> str | None:
         """
         Проверка на SSRF-уязвимости.
 
@@ -286,7 +288,7 @@ class AdvancedScanner:
 
         try:
             # Проверяем параметры URL
-            if '?' in url:
+            if "?" in url:
                 for payload in self.ssrf_payloads[:5]:  # Используем только 5 пейлоадов
                     if self.semaphore:
                         async with self.semaphore:
@@ -303,21 +305,21 @@ class AdvancedScanner:
             for form in forms:
                 if self.semaphore:
                     async with self.semaphore:
-                        action = urljoin(url, str(form.get('action', '')))
-                        method = str(form.get('method', 'get')).upper()
+                        action = urljoin(url, str(form.get("action", "")))
+                        method = str(form.get("method", "get")).upper()
 
                         # Создаем тестовые данные для формы
-                        form_data: Dict[str, str] = {}
-                        input_elements = form.find_all('input')[:3]  # Максимум 3 поля
+                        form_data: dict[str, str] = {}
+                        input_elements = form.find_all("input")[:3]  # Максимум 3 поля
 
                         for input_elem in input_elements:
-                            input_name = str(input_elem.get('name', ''))
-                            if input_name and input_elem.get('type') in ['text', 'password', 'email', 'search', 'url']:
+                            input_name = str(input_elem.get("name", ""))
+                            if input_name and input_elem.get("type") in ["text", "password", "email", "search", "url"]:
                                 # Используем SSRF пейлоад
                                 form_data[input_name] = self.ssrf_payloads[0]
 
                         if form_data:
-                            if method == 'POST':
+                            if method == "POST":
                                 result = await session.post(action, data=form_data)
                             else:
                                 test_url = f"{action}?{urlencode(form_data)}"
@@ -335,8 +337,7 @@ class AdvancedScanner:
             logger.error(f"Error in SSRF check: {e}")
             return None
 
-    async def xxe_check(self, session: aiohttp.ClientSession, url: str, 
-                       forms: Optional[List[Tag]] = None) -> Optional[str]:
+    async def xxe_check(self, session: aiohttp.ClientSession, url: str, forms: list[Tag] | None = None) -> str | None:
         """
         Проверка на XXE-уязвимости.
 
@@ -356,33 +357,33 @@ class AdvancedScanner:
             for form in forms:
                 if self.semaphore:
                     async with self.semaphore:
-                        action = urljoin(url, str(form.get('action', '')))
-                        method = str(form.get('method', 'get')).upper()
+                        action = urljoin(url, str(form.get("action", "")))
+                        method = str(form.get("method", "get")).upper()
 
                         # Ищем поля, которые могут принимать XML
-                        xml_fields: List[str] = []
-                        input_elements = form.find_all(['input', 'textarea'])
+                        xml_fields: list[str] = []
+                        input_elements = form.find_all(["input", "textarea"])
 
                         for input_elem in input_elements:
-                            input_name = str(input_elem.get('name', ''))
+                            input_name = str(input_elem.get("name", ""))
                             if input_name and (
-                                'xml' in input_name.lower() or 
-                                'data' in input_name.lower() or
-                                'config' in input_name.lower() or
-                                input_elem.get('type') in ['text', 'textarea', 'hidden']
+                                "xml" in input_name.lower()
+                                or "data" in input_name.lower()
+                                or "config" in input_name.lower()
+                                or input_elem.get("type") in ["text", "textarea", "hidden"]
                             ):
                                 xml_fields.append(input_name)
 
                         if xml_fields:
                             # Создаем тестовые данные для формы
-                            form_data: Dict[str, str] = {}
+                            form_data: dict[str, str] = {}
                             for field in xml_fields:
                                 # Используем XXE пейлоад
                                 form_data[field] = self.xxe_payloads[0]
 
-                            if method == 'POST':
+                            if method == "POST":
                                 # Устанавливаем правильный Content-Type для XML
-                                headers = {'Content-Type': 'application/xml'}
+                                headers = {"Content-Type": "application/xml"}
                                 # Отправляем XML как строку, а не как словарь
                                 xml_data = self.xxe_payloads[0]
                                 result = await session.post(action, data=xml_data, headers=headers)
@@ -402,8 +403,7 @@ class AdvancedScanner:
             logger.error(f"Error in XXE check: {e}")
             return None
 
-    async def rce_check(self, session: aiohttp.ClientSession, url: str, 
-                       forms: Optional[List[Tag]] = None) -> Optional[str]:
+    async def rce_check(self, session: aiohttp.ClientSession, url: str, forms: list[Tag] | None = None) -> str | None:
         """
         Проверка на RCE-уязвимости.
 
@@ -420,7 +420,7 @@ class AdvancedScanner:
 
         try:
             # Проверяем параметры URL
-            if '?' in url:
+            if "?" in url:
                 for payload in self.rce_payloads[:3]:  # Используем только 3 пейлоада
                     if self.semaphore:
                         async with self.semaphore:
@@ -437,36 +437,39 @@ class AdvancedScanner:
             for form in forms:
                 if self.semaphore:
                     async with self.semaphore:
-                        action = urljoin(url, str(form.get('action', '')))
-                        method = str(form.get('method', 'get')).upper()
+                        action = urljoin(url, str(form.get("action", "")))
+                        method = str(form.get("method", "get")).upper()
 
                         # Ищем поля, которые могут выполнять команды
-                        cmd_fields: List[str] = []
-                        input_elements = form.find_all(['input', 'textarea'])
+                        cmd_fields: list[str] = []
+                        input_elements = form.find_all(["input", "textarea"])
 
                         for input_elem in input_elements:
-                            input_name = str(input_elem.get('name', ''))
-                            if input_name and (
-                                'cmd' in input_name.lower() or 
-                                'command' in input_name.lower() or
-                                'exec' in input_name.lower() or
-                                'run' in input_name.lower() or
-                                'ping' in input_name.lower() or
-                                'query' in input_name.lower() or
-                                'search' in input_name.lower() or
-                                input_elem.get('type') in ['text', 'textarea']
+                            input_name = str(input_elem.get("name", ""))
+                            if (
+                                input_name
+                                and (
+                                    "cmd" in input_name.lower()
+                                    or "command" in input_name.lower()
+                                    or "exec" in input_name.lower()
+                                    or "run" in input_name.lower()
+                                    or "ping" in input_name.lower()
+                                    or "query" in input_name.lower()
+                                    or "search" in input_name.lower()
+                                    or input_elem.get("type") in ["text", "textarea"]
+                                )
+                                and isinstance(input_elem, str)
                             ):
-                                if isinstance(input_elem, str):
-                                    cmd_fields.append(input_name)
+                                cmd_fields.append(input_name)
 
                         if cmd_fields:
                             # Создаем тестовые данные для формы
-                            form_data: Dict[str, str] = {}
+                            form_data: dict[str, str] = {}
                             for field in cmd_fields:
                                 # Используем RCE пейлоад
                                 form_data[field] = self.rce_payloads[0]
 
-                            if method == 'POST':
+                            if method == "POST":
                                 result = await session.post(action, data=form_data)
                             else:
                                 test_url = f"{action}?{urlencode(form_data)}"
@@ -491,18 +494,19 @@ class AdvancedScanner:
 
         # Если параметры есть, внедряем пейлоад в первый параметр
         if query_params:
-            first_param = list(query_params.keys())[0]
+            first_param = next(iter(query_params.keys()))
             query_params[first_param] = [payload]
         else:
             # Если параметров нет, добавляем новый
-            query_params = {'param': [payload]}
+            query_params = {"param": [payload]}
 
         # Собираем URL обратно
         new_query = urlencode(query_params, doseq=True)
         return url.replace(parsed_url.query, new_query)
 
-    async def comprehensive_scan(self, session: aiohttp.ClientSession, url: str, 
-                               forms: Optional[List[Tag]] = None) -> List[str]:
+    async def comprehensive_scan(
+        self, session: aiohttp.ClientSession, url: str, forms: list[Tag] | None = None
+    ) -> list[str]:
         """
         Комплексное сканирование на все типы уязвимостей.
 
@@ -517,8 +521,8 @@ class AdvancedScanner:
         if not is_safe_url(url):
             logger.warning(f"URL {url} is not safe for scanning.")
             return []
-        
-        vulnerabilities: List[str] = []
+
+        vulnerabilities: list[str] = []
 
         # Запускаем все проверки параллельно
         tasks = [
@@ -526,7 +530,7 @@ class AdvancedScanner:
             self.advanced_xss_check(session, url, forms),
             self.ssrf_check(session, url, forms),
             self.xxe_check(session, url, forms),
-            self.rce_check(session, url, forms)
+            self.rce_check(session, url, forms),
         ]
 
         results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -536,5 +540,5 @@ class AdvancedScanner:
                 vulnerabilities.append(result)
             elif isinstance(result, Exception):  # Если произошла ошибка
                 logger.error(f"Error during vulnerability scan: {result}")
-        
+
         return vulnerabilities

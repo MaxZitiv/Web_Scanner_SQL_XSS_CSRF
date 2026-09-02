@@ -3,25 +3,35 @@
 views/reports_window.py
 """
 
-from PyQt6.QtWidgets import (
-    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QLabel, QTableWidget, QTableWidgetItem, QPushButton,
-    QComboBox, QMessageBox, QDateEdit, QAbstractItemView
-)
-from PyQt6.QtCore import (
-    Qt, QDate
-)
+from typing import Any, cast
+
+from PyQt6.QtCore import QDate, Qt
 from PyQt6.QtGui import QFont
-from typing import Any, Dict, List, Optional, cast
+from PyQt6.QtWidgets import (
+    QAbstractItemView,
+    QComboBox,
+    QDateEdit,
+    QHBoxLayout,
+    QLabel,
+    QMainWindow,
+    QMessageBox,
+    QPushButton,
+    QTableWidget,
+    QTableWidgetItem,
+    QVBoxLayout,
+    QWidget,
+)
+
 from utils.database import db
 from utils.encryption import decrypt_sensitive_data_safe
-from utils.logger import logger
 from utils.export_utils import ExportUtils
+from utils.logger import logger
+
 
 class ReportsWindow(QMainWindow):
     """Окно для просмотра и экспорта отчетов"""
 
-    def __init__(self, user_id: int, parent: Optional[QWidget] = None):
+    def __init__(self, user_id: int, parent: QWidget | None = None):
         super().__init__(parent)
         self.user_id = user_id
         self.setWindowTitle("📋 Отчеты")
@@ -89,10 +99,9 @@ class ReportsWindow(QMainWindow):
         # Таблица отчетов
         self.reports_table = QTableWidget()
         self.reports_table.setColumnCount(7)
-        cast(Any, self.reports_table).setHorizontalHeaderLabels([
-            "ID сканирования", "URL", "Дата", "Тип уязвимости", 
-            "Место в коде", "Серьезность", "Подробности"
-        ])
+        cast(Any, self.reports_table).setHorizontalHeaderLabels(
+            ["ID сканирования", "URL", "Дата", "Тип уязвимости", "Место в коде", "Серьезность", "Подробности"]
+        )
         self.reports_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         main_layout.addWidget(self.reports_table)
 
@@ -116,7 +125,7 @@ class ReportsWindow(QMainWindow):
         main_layout.addWidget(close_btn)
 
         central_widget.setLayout(main_layout)
-        
+
     def close_window(self) -> None:
         """Закрытие окна"""
         self.close()
@@ -130,7 +139,8 @@ class ReportsWindow(QMainWindow):
             start_date_str = self.start_date.date().toString("yyyy-MM-dd")
             end_date_str = self.end_date.date().toString("yyyy-MM-dd")
 
-            cursor.execute("""
+            cursor.execute(
+                """
                 SELECT s.id, s.url, s.timestamp, v.type,
                        v.request_params, v.severity,
                        COALESCE(v.details, v.description, '')
@@ -139,7 +149,9 @@ class ReportsWindow(QMainWindow):
                 WHERE s.user_id = ? AND DATE(s.timestamp) BETWEEN ? AND ?
                 ORDER BY s.timestamp DESC
                 LIMIT 500
-            """, (self.user_id, start_date_str, end_date_str))
+            """,
+                (self.user_id, start_date_str, end_date_str),
+            )
 
             rows = cursor.fetchall()
             conn.close()
@@ -151,11 +163,11 @@ class ReportsWindow(QMainWindow):
                 url = str(decrypt_sensitive_data_safe(row[1], None)) if row[1] else "N/A"
                 if not url:
                     url = "N/A"
-                timestamp = row[2] if row[2] else "N/A"
-                vuln_type = row[3] if row[3] else "N/A"
-                parameter = row[4] if row[4] else "N/A"
-                severity = row[5] if row[5] else "N/A"
-                details = row[6] if row[6] else "N/A"
+                timestamp = row[2] or "N/A"
+                vuln_type = row[3] or "N/A"
+                parameter = row[4] or "N/A"
+                severity = row[5] or "N/A"
+                details = row[6] or "N/A"
 
                 self.reports_table.setItem(i, 0, QTableWidgetItem(scan_id))
                 self.reports_table.setItem(i, 1, QTableWidgetItem(url))
@@ -195,22 +207,22 @@ class ReportsWindow(QMainWindow):
             file_extension = format_name.lower()
 
             # Собираем данные для экспорта
-            reports_data: List[Dict[str, str]] = []
+            reports_data: list[dict[str, str]] = []
 
             for row in range(self.reports_table.rowCount()):
                 # Безопасно получаем значения из ячеек
-                def get_item_text(col: int) -> str:
+                def get_item_text(col: int, *, row: int = row) -> str:
                     item = self.reports_table.item(row, col)
                     return item.text() if item else "N/A"
-                
+
                 report_data = {
-                    'scan_id': get_item_text(0),
-                    'url': get_item_text(1),
-                    'timestamp': get_item_text(2),
-                    'vulnerability_type': get_item_text(3),
-                    'parameter': get_item_text(4),
-                    'severity': get_item_text(5),
-                    'details': get_item_text(6)
+                    "scan_id": get_item_text(0),
+                    "url": get_item_text(1),
+                    "timestamp": get_item_text(2),
+                    "vulnerability_type": get_item_text(3),
+                    "parameter": get_item_text(4),
+                    "severity": get_item_text(5),
+                    "details": get_item_text(6),
                 }
                 reports_data.append(report_data)
 
@@ -219,25 +231,11 @@ class ReportsWindow(QMainWindow):
                 return
 
             # Экспортируем данные
-            success = ExportUtils.export_data(
-                self, 
-                reports_data, 
-                format_name, 
-                file_extension, 
-                self.user_id
-            )
+            success = ExportUtils.export_data(self, reports_data, format_name, file_extension, self.user_id)
 
             if success:
-                QMessageBox.information(
-                    self, 
-                    "Успех", 
-                    f"Отчет успешно экспортирован в формате {format_name}"
-                )
+                QMessageBox.information(self, "Успех", f"Отчет успешно экспортирован в формате {format_name}")
 
         except Exception as e:
             logger.error(f"Ошибка при экспорте отчета: {e}")
-            QMessageBox.critical(
-                self, 
-                "Ошибка", 
-                f"Не удалось экспортировать отчет: {str(e)}"
-            )
+            QMessageBox.critical(self, "Ошибка", f"Не удалось экспортировать отчет: {e!s}")

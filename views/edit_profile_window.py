@@ -1,13 +1,11 @@
-import bcrypt
-from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QLabel, QLineEdit,
-    QPushButton, QMessageBox, QDialog
-)
-from typing import Any, Union, List, cast
 import sqlite3
+from typing import Any, cast
+
+import bcrypt
+from PyQt6.QtWidgets import QDialog, QLabel, QLineEdit, QMessageBox, QPushButton, QVBoxLayout, QWidget
 
 from utils.database import db
-from utils.logger import logger, log_and_notify
+from utils.logger import log_and_notify, logger
 
 
 class EditProfileWindow(QDialog):
@@ -67,19 +65,18 @@ class EditProfileWindow(QDialog):
         confirm_password = self.confirm_password_input.text().strip()
 
         if not all([new_username, new_email, old_password]):
-            QMessageBox.warning(self, "Ошибка ввода", 
-                               "Поля имени пользователя, email и старого пароля обязательны для заполнения.")
+            QMessageBox.warning(
+                self, "Ошибка ввода", "Поля имени пользователя, email и старого пароля обязательны для заполнения."
+            )
             return
 
         # Проверка паролей только если введен новый пароль
         if new_password or confirm_password:
             if not new_password or not confirm_password:
-                QMessageBox.warning(self, "Ошибка", 
-                                   "Для смены пароля необходимо заполнить оба поля нового пароля.")
+                QMessageBox.warning(self, "Ошибка", "Для смены пароля необходимо заполнить оба поля нового пароля.")
                 return
             if new_password != confirm_password:
-                QMessageBox.warning(self, "Ошибка", 
-                                   "Новый пароль и его подтверждение не совпадают.")
+                QMessageBox.warning(self, "Ошибка", "Новый пароль и его подтверждение не совпадают.")
                 return
 
         try:
@@ -88,7 +85,7 @@ class EditProfileWindow(QDialog):
             cursor = conn.cursor()
 
             # Получаем хеш старого пароля
-            cursor.execute('SELECT password_hash FROM users WHERE id = ?', (self.user_id,))
+            cursor.execute("SELECT password_hash FROM users WHERE id = ?", (self.user_id,))
             result = cursor.fetchone()
 
             if not result:
@@ -101,37 +98,34 @@ class EditProfileWindow(QDialog):
                 raise ValueError("В базе данных отсутствует хеш пароля")
 
             # Проверка правильности старого пароля
-            if not bcrypt.checkpw(old_password.encode('utf-8'), 
-                                 stored_hash.encode('utf-8')):
+            if not bcrypt.checkpw(old_password.encode("utf-8"), stored_hash.encode("utf-8")):
                 QMessageBox.warning(self, "Ошибка", "Старый пароль неверен.")
                 conn.close()
                 return
 
             # Проверка уникальности имени пользователя и email
             cursor.execute(
-                'SELECT id FROM users WHERE (username = ? OR email = ?) AND id != ?',
-                (new_username, new_email, self.user_id)
+                "SELECT id FROM users WHERE (username = ? OR email = ?) AND id != ?",
+                (new_username, new_email, self.user_id),
             )
             existing_user = cursor.fetchone()
             if existing_user:
-                QMessageBox.warning(self, "Ошибка", 
-                                   "Имя пользователя или email уже заняты.")
+                QMessageBox.warning(self, "Ошибка", "Имя пользователя или email уже заняты.")
                 conn.close()
                 return
 
             # Подготавливаем данные для обновления с явным указанием типа
-            update_data: List[Union[str, int]] = [new_username, new_email]
-            update_query = 'UPDATE users SET username = ?, email = ?'
-            
+            update_data: list[str | int] = [new_username, new_email]
+            update_query = "UPDATE users SET username = ?, email = ?"
+
             # Хешируем новый пароль если он был введен
             if new_password:
-                new_hash = bcrypt.hashpw(new_password.encode('utf-8'), 
-                                        bcrypt.gensalt()).decode('utf-8')
+                new_hash = bcrypt.hashpw(new_password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
                 update_data.append(new_hash)
-                update_query += ', password_hash = ?'
-            
+                update_query += ", password_hash = ?"
+
             update_data.append(self.user_id)  # Теперь тип List[Union[str, int]] принимает int
-            update_query += ' WHERE id = ?'
+            update_query += " WHERE id = ?"
 
             # Обновляем данные в БД
             cursor.execute(update_query, update_data)
@@ -139,20 +133,19 @@ class EditProfileWindow(QDialog):
             conn.commit()
             conn.close()
 
-            QMessageBox.information(self, "Успех", 
-                                   "Данные профиля успешно обновлены!")
+            QMessageBox.information(self, "Успех", "Данные профиля успешно обновлены!")
             logger.info(f"User {self.user_id} updated profile.")
 
             # Обновляем данные в родительском окне
-            if hasattr(self.parent_dashboard, 'username'):
-                setattr(self.parent_dashboard, 'username', new_username)
-            if hasattr(self.parent_dashboard, 'update_profile_info'):
+            if hasattr(self.parent_dashboard, "username"):
+                self.parent_dashboard.username = new_username
+            if hasattr(self.parent_dashboard, "update_profile_info"):
                 # Используем getattr для безопасного доступа к методу
-                update_method = getattr(self.parent_dashboard, 'update_profile_info')
+                update_method = self.parent_dashboard.update_profile_info
                 update_method()
-                
+
             self.close()
 
         except (ValueError, sqlite3.Error, KeyError, AttributeError) as e:
-            log_and_notify('error', f"Profile update error: {e}")
+            log_and_notify("error", f"Profile update error: {e}")
             QMessageBox.warning(self, "Ошибка", "Не удалось обновить профиль.")

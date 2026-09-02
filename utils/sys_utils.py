@@ -12,8 +12,9 @@ from __future__ import annotations
 
 import importlib
 import os
+from collections.abc import Callable
 from types import TracebackType
-from typing import Any, Callable, NoReturn, Optional, TextIO
+from typing import Any, NoReturn, TextIO
 
 # Импортируем sys динамически: это позволяет Pyright видеть sys как обычный
 # модуль даже в окружениях, где есть неполная сгенерированная заглушка sys.
@@ -25,38 +26,38 @@ ExceptionHook = Callable[[type[BaseException], BaseException, TracebackType | No
 
 def add_to_path(index: int, path: str) -> None:
     """Добавляет ``path`` в ``sys.path`` по указанному индексу."""
-    path_list: Any = getattr(sys_module, "path")
+    path_list: Any = sys_module.path
     path_list.insert(index, path)
 
 
 def get_argv() -> Any:
     """Возвращает список аргументов командной строки (sys.argv)."""
-    return getattr(sys_module, "argv")
+    return sys_module.argv
 
 
-def get_stdout() -> Optional[TextIO]:
+def get_stdout() -> TextIO | None:
     """Возвращает стандартный поток вывода (sys.stdout)."""
-    return getattr(sys_module, "stdout")
+    return sys_module.stdout
 
 
-def get_stderr() -> Optional[TextIO]:
+def get_stderr() -> TextIO | None:
     """Возвращает стандартный поток ошибок (sys.stderr)."""
-    return getattr(sys_module, "stderr")
+    return sys_module.stderr
 
 
-def get_stdin() -> Optional[TextIO]:
+def get_stdin() -> TextIO | None:
     """Возвращает стандартный поток ввода (sys.stdin)."""
-    return getattr(sys_module, "stdin")
+    return sys_module.stdin
 
 
 def get_executable() -> str:
     """Возвращает путь к исполняемому файлу интерпретатора (sys.executable)."""
-    return getattr(sys_module, "executable")
+    return sys_module.executable
 
 
 def get_platform() -> str:
     """Возвращает имя платформы (sys.platform)."""
-    return getattr(sys_module, "platform")
+    return sys_module.platform
 
 
 def get_bundle_root() -> str:
@@ -66,24 +67,24 @@ def get_bundle_root() -> str:
 
 def exit_process(code: int = 0) -> NoReturn:
     """Завершает процесс с указанным кодом (sys.exit)."""
-    exit_func: Any = getattr(sys_module, "exit")
+    exit_func: Any = sys_module.exit
     exit_func(code)
     raise SystemExit(code)
 
 
 def get_excepthook() -> ExceptionHook:
     """Возвращает текущий глобальный обработчик исключений."""
-    return getattr(sys_module, "excepthook")
+    return sys_module.excepthook
 
 
 def get_original_excepthook() -> ExceptionHook:
     """Возвращает исходный глобальный обработчик исключений."""
-    return getattr(sys_module, "__excepthook__")
+    return sys_module.__excepthook__
 
 
 def set_excepthook(hook: ExceptionHook) -> None:
     """Устанавливает глобальный обработчик исключений."""
-    setattr(sys_module, "excepthook", hook)
+    sys_module.excepthook = hook
 
 
 def set_stream(name: str, stream: Any) -> None:

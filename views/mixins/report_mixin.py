@@ -1,10 +1,12 @@
 import json
 import os
 from datetime import datetime
-from typing import Optional, Dict, Any
+from typing import Any
+
 from utils.logger import logger
 
-def generate_json_report(scan_details: Dict[str, Any]) -> Optional[str]:
+
+def generate_json_report(scan_details: dict[str, Any]) -> str | None:
     """Генерация JSON отчета"""
     try:
         # Создание имени файла
@@ -15,7 +17,7 @@ def generate_json_report(scan_details: Dict[str, Any]) -> Optional[str]:
         os.makedirs(os.path.dirname(filepath), exist_ok=True)
 
         # Сохранение JSON файла
-        with open(filepath, 'w', encoding='utf-8') as f:
+        with open(filepath, "w", encoding="utf-8") as f:
             json.dump(scan_details, f, ensure_ascii=False, indent=2)
 
         logger.info(f"Generated JSON report: {filepath}")

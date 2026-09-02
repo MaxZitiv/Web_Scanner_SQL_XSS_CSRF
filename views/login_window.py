@@ -5,25 +5,22 @@ from utils.sys_utils import add_to_path
 # Добавляем корневую директорию проекта в sys.path
 add_to_path(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from PyQt6.QtWidgets import (
-    QPushButton, QVBoxLayout, QLabel,
-    QMessageBox, QHBoxLayout, QApplication, QLineEdit
-)
-from PyQt6.QtWidgets import QWidget
-from PyQt6.QtWidgets import QLineEdit
+import sqlite3
+from typing import Any, cast
+
+from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtGui import QKeyEvent
-from typing import Optional, Any, cast
+from PyQt6.QtWidgets import QApplication, QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPushButton, QVBoxLayout, QWidget
+
 from controllers.auth_controller import AuthController
 from models.user_model import UserModel
-from utils.logger import logger, log_and_notify
-import sqlite3
-from PyQt6.QtCore import pyqtSignal
+from utils.logger import log_and_notify, logger
 
 
 class LoginWindow(QWidget):
     login_successful = pyqtSignal(int, str)
 
-    def __init__(self, user_model: UserModel, parent: Optional[Any] = None):
+    def __init__(self, user_model: UserModel, parent: Any | None = None):
         super().__init__()
         self.user_model = user_model
         self.controller = AuthController(self.user_model)
@@ -36,15 +33,16 @@ class LoginWindow(QWidget):
         """Загрузка стилей из файла styles.qss"""
         try:
             from main import resource_path
+
             style_path = resource_path("styles.qss")
             if os.path.exists(style_path):
-                with open(style_path, 'r', encoding='utf-8') as f:
+                with open(style_path, encoding="utf-8") as f:
                     self.setStyleSheet(f.read())
                 logger.info("Стили успешно загружены для окна авторизации")
             else:
                 logger.warning(f"Файл стилей styles.qss не найден: {style_path}")
         except (ValueError, sqlite3.Error, KeyError, AttributeError, OSError) as e:
-            log_and_notify('error', f"Ошибка при загрузке стилей: {e}")
+            log_and_notify("error", f"Ошибка при загрузке стилей: {e}")
 
     def init_ui(self):
         self.setWindowTitle("Вход в систему")
@@ -138,13 +136,13 @@ class LoginWindow(QWidget):
                     QApplication.processEvents()
                     self.login_successful.emit(user_id, username)
                 else:
-                    log_and_notify('error', "Parent window or user_id is not set")
+                    log_and_notify("error", "Parent window or user_id is not set")
                     QMessageBox.critical(self, "Ошибка", "Внутренняя ошибка приложения. Попробуйте перезапустить.")
             else:
                 logger.warning(f"Failed login attempt for {username}: {message}")
                 QMessageBox.warning(self, "Ошибка входа", message)
         except Exception as e:
-            log_and_notify('error', f"An error occurred during login: {e}")
+            log_and_notify("error", f"An error occurred during login: {e}")
             QMessageBox.critical(self, "Критическая ошибка", "Произошла непредвиденная ошибка.")
 
     def register(self):
@@ -152,13 +150,13 @@ class LoginWindow(QWidget):
             if self.parent_window:
                 self.parent_window.go_to_registration()
             else:
-                log_and_notify('error', "Parent window is not set")
+                log_and_notify("error", "Parent window is not set")
                 QMessageBox.critical(self, "Ошибка", "Внутренняя ошибка приложения. Попробуйте перезапустить.")
         except (ValueError, KeyError, AttributeError, ImportError, sqlite3.Error, OSError) as e:
-            log_and_notify('error', f"Error opening registration window: {e}")
+            log_and_notify("error", f"Error opening registration window: {e}")
             QMessageBox.critical(self, "Ошибка", "Не удалось открыть окно регистрации. Попробуйте позже.")
 
-    def keyPressEvent(self, a0: Optional[QKeyEvent]) -> None:
+    def keyPressEvent(self, a0: QKeyEvent | None) -> None:
         # Удаляем дублирующий обработчик Enter, так как он уже обрабатывается
         # через returnPressed сигналы полей ввода
         super().keyPressEvent(a0)
