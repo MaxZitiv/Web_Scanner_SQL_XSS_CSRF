@@ -210,9 +210,13 @@ class ScanTabWidget(ScanTabStatsMixin, QWidget):
             cast(Any, self.stop_button.clicked).connect(self.stop_scan)
             self.stop_button.setEnabled(False)
 
+            self.zap_viewer_button = QPushButton("🔎 Уязвимости (ZAP)")
+            cast(Any, self.zap_viewer_button.clicked).connect(self.open_zap_viewer)
+
             control_layout.addWidget(self.scan_button)
             control_layout.addWidget(self.pause_button)
             control_layout.addWidget(self.stop_button)
+            control_layout.addWidget(self.zap_viewer_button)
             control_group.setLayout(control_layout)
             layout.addWidget(control_group)
 
@@ -454,6 +458,23 @@ class ScanTabWidget(ScanTabStatsMixin, QWidget):
 
         except Exception as e:
             logger.error(f"Error adding log entry: {e}")
+
+    def open_zap_viewer(self) -> None:
+        """Открывает просмотр уязвимостей в стиле OWASP ZAP."""
+        try:
+            from ui.vulnerability_viewer import ZapStyleVulnerabilityViewer
+
+            viewer = getattr(self, 'zap_viewer', None)
+            if viewer is None:
+                viewer = ZapStyleVulnerabilityViewer(self.user_id, self)
+                self.zap_viewer = viewer
+
+            viewer.show()
+            viewer.raise_()
+            viewer.activateWindow()
+        except Exception as e:
+            logger.error(f"Ошибка при открытии просмотра уязвимостей: {e}")
+            QMessageBox.critical(self, "Ошибка", f"Не удалось открыть просмотр уязвимостей: {str(e)}")
 
     def pause_scan(self):
         """Приостановка/возобновление сканирования"""

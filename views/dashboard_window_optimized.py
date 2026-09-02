@@ -83,7 +83,12 @@ class DashboardWindow(QMainWindow):
             profile_layout.addWidget(profile_label)
             
             profile_layout.addStretch()
-            
+
+            zap_btn = QPushButton("🔎 Уязвимости (ZAP)")
+            zap_btn.setMaximumWidth(140)
+            cast(Any, zap_btn.clicked).connect(self.on_vulnerabilities)
+            profile_layout.addWidget(zap_btn)
+
             logout_btn = QPushButton("🚪 Выход")
             logout_btn.setMaximumWidth(100)
             cast(Any, logout_btn.clicked).connect(self.on_logout)
@@ -847,6 +852,25 @@ class DashboardWindow(QMainWindow):
         except Exception as e:
             logger.error(f"Ошибка при сбросе статистики: {e}")
     
+    def on_vulnerabilities(self):
+        """Открывает просмотр уязвимостей в стиле OWASP ZAP."""
+        try:
+            from ui.vulnerability_viewer import ZapStyleVulnerabilityViewer
+
+            viewer = getattr(self, 'vulnerability_viewer', None)
+            if viewer is None:
+                viewer = ZapStyleVulnerabilityViewer(self.user_id, self)
+                self.vulnerability_viewer = viewer
+
+            viewer.show()
+            viewer.raise_()
+            viewer.activateWindow()
+        except Exception as e:
+            logger.error(f"Ошибка при открытии просмотра уязвимостей: {e}")
+            error_handler.show_error_message(
+                "Ошибка", f"Не удалось открыть просмотр уязвимостей: {str(e)}"
+            )
+
     def on_logout(self):
         """
         Выход пользователя из системы

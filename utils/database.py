@@ -701,18 +701,29 @@ class Database:
         data.setdefault('created_date', '')
         return data
 
-    def get_all_vulnerabilities(self) -> List[Dict[str, Any]]:
-        """Возвращает все найденные уязвимости."""
+    def get_all_vulnerabilities(self, user_id: Optional[int] = None) -> List[Dict[str, Any]]:
+        """Возвращает найденные уязвимости (опционально — только указанного пользователя)."""
         try:
             with self.get_db_connection_cm() as conn:
                 cursor = conn.cursor()
-                cursor.execute('''
-                    SELECT id, scan_id, url, type, details, status, severity,
-                           description, response, request_params, recommendations,
-                           resources, comments, created_date
-                    FROM vulnerabilities
-                    ORDER BY id DESC
-                ''')
+                if user_id is not None and user_id > 0:
+                    cursor.execute('''
+                        SELECT v.id, v.scan_id, v.url, v.type, v.details, v.status, v.severity,
+                               v.description, v.response, v.request_params, v.recommendations,
+                               v.resources, v.comments, v.created_date
+                        FROM vulnerabilities v
+                        JOIN scans s ON v.scan_id = s.id
+                        WHERE s.user_id = ?
+                        ORDER BY v.id DESC
+                    ''', (user_id,))
+                else:
+                    cursor.execute('''
+                        SELECT id, scan_id, url, type, details, status, severity,
+                               description, response, request_params, recommendations,
+                               resources, comments, created_date
+                        FROM vulnerabilities
+                        ORDER BY id DESC
+                    ''')
                 rows: List[Dict[str, Any]] = [dict(row) for row in cursor.fetchall()]
             return [self._vulnerability_from_row(row) for row in rows]
         except Exception as e:
