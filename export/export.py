@@ -2,6 +2,8 @@ import csv
 import json
 import os
 import sqlite3
+from collections.abc import Callable
+from operator import attrgetter
 from typing import Any, cast
 
 from fpdf import FPDF
@@ -333,7 +335,7 @@ class PDFReport(FPDF):
         safe_text = self._sanitize_text(text)
         if url_mode:
             self.set_text_color(0, 0, 180)  # Синий для URL
-        multi_cell = self.multi_cell
+        multi_cell = cast(Callable[..., None], attrgetter("multi_cell")(self))
         multi_cell(0, 5 if not url_mode else 4, safe_text)
         if url_mode:
             self.set_text_color(0, 0, 0)
