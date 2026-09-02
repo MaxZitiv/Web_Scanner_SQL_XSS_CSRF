@@ -17,8 +17,8 @@ class SecurityPolicy:
     max_depth: int = 10
     max_concurrent: int = 5
     timeout: int = 30
-    exclude_urls: list[str] = field(default_factory=list)
-    custom_headers: dict[str, str] = field(default_factory=dict)
+    exclude_urls: list[str] = field(default_factory=lambda: list[str]())
+    custom_headers: dict[str, str] = field(default_factory=lambda: dict[str, str]())
     respect_robots_txt: bool = True
     rate_limit: int = 0
     stop_on_first_vuln: bool = False

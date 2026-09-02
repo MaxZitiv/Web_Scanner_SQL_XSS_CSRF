@@ -19,7 +19,7 @@ class User:
     created_at: datetime | None = None
     last_login: datetime | None = None
     avatar_path: str | None = None
-    preferences: PreferencesDict = field(default_factory=dict)
+    preferences: PreferencesDict = field(default_factory=lambda: PreferencesDict())
 
     def __post_init__(self):
         """Инициализация значений по умолчанию после создания."""

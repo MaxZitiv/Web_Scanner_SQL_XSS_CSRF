@@ -2,11 +2,25 @@
 Миксин для функциональности экспорта данных
 """
 
+from typing import Protocol, cast
+
 from PyQt6.QtWidgets import QWidget
 
 from utils import error_handler
 from utils.database import db
 from utils.export_utils import ExportUtils
+
+
+class _ParentAccess(Protocol):
+    """Виджет, предоставляющий метод parent()."""
+
+    def parent(self) -> QWidget | None: ...
+
+
+class _ParentWithUserId(Protocol):
+    """Родительский виджет с идентификатором пользователя."""
+
+    user_id: int
 
 
 class ExportMixin:
@@ -37,14 +51,14 @@ class ExportMixin:
             # Проверяем, является ли сам экземпляр виджетом
             if isinstance(self, QWidget):
                 parent_widget = self
-            # Если нет, пытаемся получить родительский виджет
-            elif hasattr(self, "parent") and callable(getattr(self, "parent", None)):
-                parent = self.parent()
+            # Если нет, пытаемся получить родительский виджет через parent().
+            elif (parent_provider := cast(_ParentAccess, self)).parent() is not None:
+                parent = parent_provider.parent()
                 if isinstance(parent, QWidget):
                     parent_widget = parent
             # Если user_id не указан, пытаемся получить его из родительского класса
             if user_id is None and parent_widget is not None and hasattr(parent_widget, "user_id"):
-                user_id = getattr(parent_widget, "user_id", None)
+                user_id = cast(_ParentWithUserId, parent_widget).user_id
 
             if user_id is not None and parent_widget is not None:
                 scans = db.get_scans_by_user(user_id)

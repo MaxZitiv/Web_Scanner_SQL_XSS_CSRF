@@ -258,7 +258,10 @@ class MainWindow(QMainWindow):
             # Аргументы передаются списком без shell=True, поэтому команда не
             # интерпретируется оболочкой и инъекция команд невозможна.
             if get_platform() == "win32":
-                create_new_console: Any = subprocess.CREATE_NEW_CONSOLE
+                # CREATE_NEW_CONSOLE доступен только в Windows; typeshed на
+                # других платформах его не содержит, поэтому получаем через
+                # getattr и явно приводим к int.
+                create_new_console = cast(int, getattr(subprocess, "CREATE_NEW_CONSOLE", 0))
                 subprocess.Popen(  # nosec B603  # list argv, no shell
                     [get_executable(), main_script, "--cli", "--username", username], creationflags=create_new_console
                 )

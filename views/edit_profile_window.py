@@ -1,11 +1,20 @@
 import sqlite3
-from typing import Any, cast
+from collections.abc import Callable
+from operator import attrgetter
+from typing import Any, Protocol, cast
 
 import bcrypt
 from PyQt6.QtWidgets import QDialog, QLabel, QLineEdit, QMessageBox, QPushButton, QVBoxLayout, QWidget
 
 from utils.database import db
 from utils.logger import log_and_notify, logger
+
+
+class _DashboardParent(Protocol):
+    """Родительское окно, в которое обновляется имя пользователя."""
+
+    username: str
+    update_profile_info: Callable[[], object]
 
 
 class EditProfileWindow(QDialog):
@@ -136,13 +145,16 @@ class EditProfileWindow(QDialog):
             QMessageBox.information(self, "Успех", "Данные профиля успешно обновлены!")
             logger.info(f"User {self.user_id} updated profile.")
 
-            # Обновляем данные в родительском окне
-            if hasattr(self.parent_dashboard, "username"):
-                self.parent_dashboard.username = new_username
-            if hasattr(self.parent_dashboard, "update_profile_info"):
-                # Используем getattr для безопасного доступа к методу
-                update_method = self.parent_dashboard.update_profile_info
-                update_method()
+            # Обновляем данные в родительском окне.
+            # Родительский виджет в этой точке уже является окном профиля,
+            # поэтому приводим его к протоколу с нужными атрибутами.
+            parent = cast(_DashboardParent, self.parent_dashboard)
+            if hasattr(parent, "username"):
+                parent.username = new_username
+            if hasattr(parent, "update_profile_info"):
+                update_method = cast(Callable[[], object], attrgetter("update_profile_info")(parent))
+                if callable(update_method):
+                    update_method()
 
             self.close()
 

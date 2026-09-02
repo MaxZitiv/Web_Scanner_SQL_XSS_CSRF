@@ -1,6 +1,8 @@
 import json
 import sqlite3
-from typing import Any
+from collections.abc import Callable
+from operator import attrgetter
+from typing import Any, cast
 
 from fpdf import FPDF
 
@@ -189,8 +191,10 @@ class PDF(FPDF):
         self.set_font("times", "", 12)
         # Обработка текста для корректного отображения в PDF
         body = self._clean_text_for_pdf(body)
-        # Используем multi_cell и игнорируем возвращаемое значение
-        multi_cell = self.multi_cell
+        # Используем multi_cell и игнорируем возвращаемое значение.
+        # fpdf объявляет возвращаемый тип multi_cell как Unknown, поэтому
+        # явно приводим метод к типу Callable, чтобы не ругался Pyright.
+        multi_cell = cast(Callable[..., None], attrgetter("multi_cell")(self))
         multi_cell(0, 5, body)
         self.ln()
 
@@ -244,8 +248,10 @@ def generate_pdf_report(scan_id: int, filename: str):
         # Заменяем разделители для лучшего вида
         report_text = report_text.replace("=" * 60, "-" * 80)
 
-        # Добавляем содержимое в PDF
-        multi_cell = pdf.multi_cell
+        # Добавляем содержимое в PDF.
+        # fpdf объявляет возвращаемый тип multi_cell как Unknown, поэтому
+        # явно приводим метод к типу Callable, чтобы не ругался Pyright.
+        multi_cell = cast(Callable[..., None], attrgetter("multi_cell")(pdf))
         multi_cell(0, 5, report_text)
 
         # Сохраняем PDF
