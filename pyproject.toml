@@ -38,6 +38,7 @@ dev = [
     "flake8>=7.0.0",
     "pytest>=8.0.0",
     "pytest-asyncio>=0.23.0",
+    "pyright>=1.1.411,<2.0.0",
     "ruff>=0.16.0",
 ]
 
@@ -106,24 +107,3 @@ include = [
     "views*",
 ]
 exclude = ["data*", "logs*", "typings*", "plugins*", "build*", "dist*"]
-
-[tool.pyright]
-venvPath = "."
-venv = ".venv"
-stubPath = ".pylance_stubs"
-typeCheckingMode = "strict"
-pythonVersion = "3.14"
-include = ["."]
-exclude = [
-    "**/node_modules",
-    "**/__pycache__",
-    "**/.git",
-    "**/.venv/**",
-    "**/build/**",
-    "**/dist/**",
-    "**/data/**",
-    "**/logs/**",
-    "**/plugins/**",
-    "**/typings/**",
-    "**/.pylance_stubs/**",
-]

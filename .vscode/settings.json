@@ -1,9 +1,8 @@
 {
-  "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
+  "python.defaultInterpreterPath": "${workspaceFolder}/.venv",
   "python.analysis.autoImportCompletions": true,
   "python.analysis.typeCheckingMode": "strict",
   "python.analysis.diagnosticMode": "workspace",
-  "python.analysis.stubPath": "${workspaceFolder}/.pylance_stubs",
   "python.analysis.inlayHints.variableTypes": true,
   "python.analysis.inlayHints.functionReturnTypes": true,
   "python.analysis.indexing": false,
@@ -24,7 +23,6 @@
   "pyright.analysis.typeCheckingMode": "strict",
   "pyright.analysis.pythonVersion": "3.14",
   "pyright.analysis.diagnosticMode": "workspace",
-  "pyright.analysis.stubPath": "${workspaceFolder}/.pylance_stubs",
   "pyright.analysis.indexing": false,
   "pyright.analysis.exclude": [
     "**/.venv/**",
@@ -44,7 +42,6 @@
   "cursorpyright.analysis.typeCheckingMode": "strict",
   "cursorpyright.analysis.pythonVersion": "3.14",
   "cursorpyright.analysis.diagnosticMode": "workspace",
-  "cursorpyright.analysis.stubPath": "${workspaceFolder}/.pylance_stubs",
   "cursorpyright.analysis.indexing": false,
   "cursorpyright.analysis.exclude": [
     "**/.venv/**",

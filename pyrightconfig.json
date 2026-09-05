@@ -1,7 +1,6 @@
 {
   "venvPath": ".",
   "venv": ".venv",
-  "stubPath": ".pylance_stubs",
   "typeCheckingMode": "strict",
   "pythonVersion": "3.14",
   "include": ["."],
