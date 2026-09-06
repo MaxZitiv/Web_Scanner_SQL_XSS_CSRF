@@ -18,29 +18,6 @@ else:
     from views.statistics_window import StatisticsWindow
 
 
-@pytest.fixture(scope="module")
-def application() -> Iterator[QApplication]:
-    with pytest.MonkeyPatch.context() as monkeypatch:
-        monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
-        instance = QApplication.instance()
-        app = instance if isinstance(instance, QApplication) else QApplication([])
-        yield app
-        app.closeAllWindows()
-
-
-@pytest.fixture
-def dialogs(monkeypatch: pytest.MonkeyPatch) -> dict[str, Mock]:
-    mocks = {
-        "warning": Mock(return_value=QMessageBox.StandardButton.No),
-        "information": Mock(return_value=QMessageBox.StandardButton.Ok),
-        "critical": Mock(return_value=QMessageBox.StandardButton.Ok),
-        "question": Mock(return_value=QMessageBox.StandardButton.No),
-    }
-    for name, mock in mocks.items():
-        monkeypatch.setattr(QMessageBox, name, mock)
-    return mocks
-
-
 @pytest.fixture
 def make_window(
     application: QApplication,
@@ -261,7 +238,7 @@ def test_dashboard_refreshes_open_views_after_history_clear(
     dialogs: dict[str, Mock],
 ) -> None:
     from models.user_model import UserModel
-    from views.dashboard_window_updated import DashboardWindow
+    from views.dashboard_window import DashboardWindow
 
     monkeypatch.setattr(statistics_module, "db", history_database)
     monkeypatch.setattr(viewer_module, "db", history_database)
@@ -310,7 +287,7 @@ def test_dashboard_considers_stopping_task_active_until_save_finishes(
     import asyncio
 
     from models.user_model import UserModel
-    from views.dashboard_window_updated import DashboardWindow
+    from views.dashboard_window import DashboardWindow
 
     dashboard = DashboardWindow(1, "alice", UserModel())
     try:

@@ -1,13 +1,19 @@
 """Изолированные БД: тесты не открывают историю из рабочей копии приложения."""
 
+from __future__ import annotations
+
 from collections.abc import Iterator
 from contextlib import chdir
 from logging import FileHandler
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from typing import TYPE_CHECKING
 from unittest.mock import Mock
 
 import pytest
+
+if TYPE_CHECKING:
+    from PyQt6.QtWidgets import QApplication
 
 # Уже импорт utils.__init__ создаёт глобальную БД. Временно меняем рабочую
 # директорию ДО импорта любого utils-модуля, а не только Database.
@@ -64,3 +70,39 @@ def history_database(database: database_module.Database) -> database_module.Data
             ],
         )
     return database
+
+
+@pytest.fixture(scope="session")
+def application() -> Iterator[QApplication]:
+    try:
+        from PyQt6.QtWidgets import QApplication
+    except ImportError as error:
+        pytest.skip(f"Native Qt libraries are unavailable: {error}")
+
+    with pytest.MonkeyPatch.context() as monkeypatch:
+        monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+        instance = QApplication.instance()
+        app = instance if isinstance(instance, QApplication) else QApplication([])
+        app.setQuitOnLastWindowClosed(False)
+        yield app
+        app.closeAllWindows()
+
+
+@pytest.fixture
+def dialogs(monkeypatch: pytest.MonkeyPatch) -> dict[str, Mock]:
+    from PyQt6.QtWidgets import QMessageBox
+
+    from utils.error_handler import error_handler
+
+    mocks = {
+        "warning": Mock(return_value=QMessageBox.StandardButton.No),
+        "information": Mock(return_value=QMessageBox.StandardButton.Ok),
+        "critical": Mock(return_value=QMessageBox.StandardButton.Ok),
+        "question": Mock(return_value=QMessageBox.StandardButton.No),
+    }
+    for name, mock in mocks.items():
+        monkeypatch.setattr(QMessageBox, name, mock)
+    for name in ("error_message", "info_message", "warning_message"):
+        mocks[name] = Mock()
+        monkeypatch.setattr(error_handler, f"show_{name}", mocks[name])
+    return mocks

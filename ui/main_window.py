@@ -24,8 +24,7 @@ from utils.cache_cleanup import cleanup_on_exit
 from utils.database import db
 from utils.logger import log_and_notify, logger
 from utils.performance import measure_time
-from views.dashboard_window_updated import DashboardWindow
-from views.dashboard_window_wrapper import DashboardWindowWrapper
+from views.dashboard_window import DashboardWindow
 from views.login_window import LoginWindow
 from views.mode_selection_window import ModeSelectionWindow
 
@@ -44,7 +43,7 @@ class MainWindow(QMainWindow):
         # Создаем объекты окон
         self.login_window = LoginWindow(self.user_model, self)
         self.registration_window = RegistrationWindow(self.login_window)
-        self.dashboard_window: QWidget | None = None
+        self.dashboard_window: DashboardWindow | None = None
         self.mode_selection_window: ModeSelectionWindow | None = None
 
         # Подключаем сигналы
@@ -186,15 +185,20 @@ class MainWindow(QMainWindow):
             logger.error(f"Error navigating to registration: {e}")
             error_handler.show_error_message("Ошибка", f"Не удалось перейти к регистрации: {e}")
 
-    def go_to_login(self):
-        # Сначала скрываем dashboard_window если он существует
-        if self.dashboard_window is not None:
-            self.dashboard_window.hide()
-            self.stack.removeWidget(self.dashboard_window)
-            self.dashboard_window.deleteLater()
+    def _remove_dashboard(self) -> None:
+        """Удаляет подготовленную к закрытию панель из стека."""
+        dashboard = self.dashboard_window
+        if dashboard is not None:
             self.dashboard_window = None
+            dashboard.hide()
+            self.stack.removeWidget(dashboard)
+            dashboard.deleteLater()
 
-        # Затем переключаемся на окно авторизации
+    def go_to_login(self) -> None:
+        dashboard = self.dashboard_window
+        if dashboard is not None and not dashboard.prepare_close(self.go_to_login):
+            return
+        self._remove_dashboard()
         self.fade_to_widget(self.login_window)
 
     @measure_time
@@ -278,8 +282,12 @@ class MainWindow(QMainWindow):
             error_handler.show_error_message("Ошибка", f"Не удалось переключиться в CLI режим: {e}")
 
     @measure_time
-    def go_to_dashboard(self, user_id: int, username: str):
+    def go_to_dashboard(self, user_id: int, username: str) -> None:
+        """Единая точка создания панели для всех путей навигации."""
         try:
+            if user_id <= 0 or not username.strip():
+                logger.error("Cannot show dashboard without a valid user_id and username")
+                return
             # Проверяем наличие экземпляра QApplication
             app = QApplication.instance()
             if app is None:
@@ -291,14 +299,15 @@ class MainWindow(QMainWindow):
                 logger.error("Dashboard creation must be in main thread")
                 return
 
-            # Очищаем старый экземпляр панели управления
-            if self.dashboard_window is not None:
-                self.stack.removeWidget(self.dashboard_window)
-                self.dashboard_window.deleteLater()
-                self.dashboard_window = None
+            previous = self.dashboard_window
+            if previous is not None and not previous.prepare_close(lambda: self.go_to_dashboard(user_id, username)):
+                return
 
-            # Создаем новый экземпляр панели управления
-            dashboard: QWidget = DashboardWindow(user_id, username, self.user_model, self)
+            # Создаём панель до удаления старой: ошибка конструктора не должна
+            # оставлять пользователя без текущего экрана.
+            dashboard = DashboardWindow(user_id, username, self.user_model, self)
+            cast(Any, dashboard.logout_requested).connect(self.go_to_login)
+            self._remove_dashboard()
             self.dashboard_window = dashboard
             self.stack.addWidget(dashboard)
             self.stack.setCurrentWidget(dashboard)
@@ -345,7 +354,12 @@ class MainWindow(QMainWindow):
             self.showNormal()
 
     def closeEvent(self, a0: QCloseEvent | None) -> None:
-        """Обработчик закрытия главного окна: очищает кэши перед выходом"""
+        """Дожидается завершения сканирования и очищает кэши перед выходом."""
+        dashboard = self.dashboard_window
+        if dashboard is not None and not dashboard.prepare_close(self.close):
+            if a0 is not None:
+                a0.ignore()
+            return
         try:
             # Инициализация переменной со значением по умолчанию
             should_clear_cache: bool = True
@@ -398,50 +412,5 @@ class MainWindow(QMainWindow):
             a0.accept()
 
     def show_dashboard(self, user_id: int, username: str) -> None:
-        """Показывает главное окно приложения после успешной аутентификации"""
-        try:
-            # Проверка обязательных параметров
-            if not user_id:
-                logger.error("Cannot show dashboard: user_id is missing")
-                return
-
-            if not username:
-                logger.error("Cannot show dashboard: username is missing")
-                return
-
-            # Создаем экземпляр UserModel, если его нет
-            if not hasattr(self, "user_model"):
-                from models.user_model import UserModel
-
-                self.user_model = UserModel()
-
-            # Проверка инициализации компонентов
-            if not hasattr(self, "stack"):
-                logger.error("Stack not initialized")
-                return
-
-            # Очищаем старый экземпляр dashboard если есть
-            dashboard_widget: QWidget | None = self.dashboard_window
-            if dashboard_widget is not None:
-                self.stack.removeWidget(dashboard_widget)
-                self.dashboard_window = None
-                dashboard_widget.deleteLater()
-
-            # Создаем новый экземпляр dashboard
-            dashboard: QWidget = DashboardWindowWrapper(
-                user_id=user_id, username=username, user_model=self.user_model, parent=self
-            )
-
-            # Добавляем в стек и показываем
-            self.dashboard_window = dashboard
-            self.stack.addWidget(dashboard)
-            self.stack.setCurrentWidget(dashboard)
-
-            self.safe_resize_window(dashboard)
-
-            # Максимизируем окно после перехода к дашборду
-            self.showMaximized()
-
-        except Exception as e:
-            logger.error(f"Error showing dashboard: {e}")
-            error_handler.show_error_message("Ошибка", f"Не удалось показать панель управления: {e}")
+        """Совместимый метод навигации, использующий тот же DashboardWindow."""
+        self.go_to_dashboard(user_id, username)
