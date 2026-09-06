@@ -78,7 +78,9 @@ class ControlledScan:
 @pytest.fixture
 def scan(monkeypatch: pytest.MonkeyPatch) -> ControlledScan:
     """Настоящие Qt-сигналы, но вместо сетевого сканирования — управляемые события."""
-    controller = ScanController("https://example.com", ["sql", "xss", "csrf"], 1)
+    # example.com включён в DANGEROUS_DOMAINS; зарезервированный домен
+    # scanner.example проходит штатную проверку. Сеть заменена AsyncMock ниже.
+    controller = ScanController("https://scanner.example", ["sql", "xss", "csrf"], 1)
     started, release, result_ready, settle = (asyncio.Event() for _ in range(4))
     settle.set()
 
@@ -112,7 +114,7 @@ def assert_idle(window: DashboardWindow) -> None:
 
 
 async def start(window: DashboardWindow, scan: ControlledScan) -> asyncio.Task[None]:
-    window.url_input.setText("example.com")
+    window.url_input.setText("scanner.example")
     window.start_scan_btn.click()
     task = window.current_scan_task
     assert task is not None
@@ -156,7 +158,7 @@ async def test_one_task_and_controller_per_scan(scanning_dashboard: DashboardWin
     await scanning_dashboard.on_start_scan()  # Повторный программный вызов также не запускает второй скан.
     assert scanning_dashboard.current_scan_task is task
     scan.factory.assert_called_once_with(
-        url="https://example.com", scan_types=["sql", "xss", "csrf"], user_id=1, username="alice", timeout=30
+        url="https://scanner.example", scan_types=["sql", "xss", "csrf"], user_id=1, username="alice", timeout=30
     )
     assert scan.start.await_count == 1
     assert not scanning_dashboard.url_input.isEnabled()
@@ -233,7 +235,7 @@ async def test_failure_restores_all_controls(
         scan.factory.side_effect = RuntimeError("constructor failed")
     else:
         scan.start.side_effect = RuntimeError("scan failed")
-    scanning_dashboard.url_input.setText("https://example.com")
+    scanning_dashboard.url_input.setText("https://scanner.example")
     scanning_dashboard.start_scan_btn.click()
     task = scanning_dashboard.current_scan_task
     assert task is not None
@@ -268,11 +270,11 @@ async def test_cancel_before_first_step_is_also_cleaned_up(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("url", ["", "ftp://example.com"])
+@pytest.mark.parametrize("url", ["", "ftp://scanner.example"])
 async def test_rejected_parameters_keep_previous_results(
     scanning_dashboard: DashboardWindow, scan: ControlledScan, dialogs: dict[str, Mock], url: str
 ) -> None:
-    scanning_dashboard.on_vulnerability_found("https://example.com", "sql", "parameter=id")
+    scanning_dashboard.on_vulnerability_found("https://scanner.example", "sql", "parameter=id")
     scanning_dashboard.url_input.setText(url)
     await scanning_dashboard.on_start_scan()
     scan.factory.assert_not_called()
@@ -289,7 +291,7 @@ async def test_security_warning_defaults_to_no_and_cancel_does_not_start_scan(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(dashboard_module, "is_safe_url", Mock(return_value=False))
-    scanning_dashboard.url_input.setText("https://example.com")
+    scanning_dashboard.url_input.setText("https://scanner.example")
     await scanning_dashboard.on_start_scan()
     assert dialogs["question"].call_args.args[-1] == QMessageBox.StandardButton.No
     scan.factory.assert_not_called()
@@ -304,7 +306,7 @@ async def test_controller_signals_update_statistics_progress_and_findings(
     scan.controller.signals.stats_updated.emit("urls_scanned", "7")
     scan.controller.signals.stats_updated.emit("scan_time", "00:00:03")
     scan.controller.signals.progress_updated.emit(150)
-    scan.controller.signals.vulnerability_found.emit("https://example.com", "sql", "parameter=id")
+    scan.controller.signals.vulnerability_found.emit("https://scanner.example", "sql", "parameter=id")
     message = "<script>not markup</script>\n  SELECT  'a  b'"
     scan.controller.signals.log_event.emit(message)
     stats = scanning_dashboard.statistics_widget.get_stats()
@@ -362,12 +364,12 @@ def test_export_preserves_columns_and_user_and_does_not_report_cancel_as_failure
     choose.assert_not_called()
     dialogs["info_message"].assert_called_once()
 
-    dashboard.on_vulnerability_found("https://example.com", "sql", "parameter=id")
+    dashboard.on_vulnerability_found("https://scanner.example", "sql", "parameter=id")
     dashboard.results_table.insertRow(1)  # Незавершённая строка не экспортируется.
     rows = reports.collect_report_rows(dashboard.results_table)
     assert len(rows) == 1
     assert tuple(rows[0]) == reports.REPORT_COLUMNS
-    assert rows[0]["URL"] == "https://example.com"
+    assert rows[0]["URL"] == "https://scanner.example"
     dashboard.ui.reports_btn.click()
     export.assert_called_once_with(dashboard, rows, "CSV", "csv", 1)
     dialogs["error_message"].assert_not_called()
@@ -526,7 +528,7 @@ async def test_main_window_close_waits_before_cache_cleanup(
 async def test_two_clicks_before_first_task_step_share_one_task(
     scanning_dashboard: DashboardWindow, scan: ControlledScan
 ) -> None:
-    scanning_dashboard.url_input.setText("https://example.com")
+    scanning_dashboard.url_input.setText("https://scanner.example")
     scanning_dashboard.start_scan_btn.click()
     task = scanning_dashboard.current_scan_task
     assert task is not None
@@ -543,13 +545,13 @@ async def test_two_clicks_before_first_task_step_share_one_task(
 async def test_direct_await_does_not_retain_caller_and_preserves_scan_settings(
     scanning_dashboard: DashboardWindow, scan: ControlledScan
 ) -> None:
-    scanning_dashboard.url_input.setText("https://example.com")
+    scanning_dashboard.url_input.setText("https://scanner.example")
     scanning_dashboard.sql_checkbox.setChecked(False)
     scanning_dashboard.csrf_checkbox.setChecked(False)
     scan.release.set()
     await scanning_dashboard.on_start_scan()
     scan.factory.assert_called_once_with(
-        url="https://example.com", scan_types=["xss"], user_id=1, username="alice", timeout=30
+        url="https://scanner.example", scan_types=["xss"], user_id=1, username="alice", timeout=30
     )
     assert scan.controller.max_depth == 10
     assert scan.controller.max_concurrent == 5
@@ -628,8 +630,8 @@ async def test_history_is_blocked_during_paused_stop_and_unlocked_after_settleme
 
 
 def test_results_preserve_location_tooltip_and_log_has_a_memory_bound(dashboard: DashboardWindow) -> None:
-    details = "SQL Injection | Параметр: id | Метод: GET | URL: https://example.com"
-    dashboard.on_vulnerability_found("https://example.com", "sql", details)
+    details = "SQL Injection | Параметр: id | Метод: GET | URL: https://scanner.example"
+    dashboard.on_vulnerability_found("https://scanner.example", "sql", details)
     location = dashboard.results_table.item(0, 2)
     assert location is not None
     assert location.text() == "Параметр: id | Метод: GET"
