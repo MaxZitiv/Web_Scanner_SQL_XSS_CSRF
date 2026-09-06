@@ -4,6 +4,9 @@ import time
 import aiohttp
 from PyQt6.QtCore import QObject, pyqtSignal
 
+from payloads.csrf import SAFE_CSRF_PAYLOADS
+from payloads.sql import SAFE_SQL_PAYLOADS
+from payloads.xss import SAFE_XSS_PAYLOADS
 from utils.database import db
 from utils.logger import logger
 
@@ -13,9 +16,6 @@ from ._scanner_config import (
     MAX_PAYLOADS_PER_URL,
     MAX_RETRIES,
     REQUEST_TIMEOUT,
-    SAFE_CSRF_PAYLOADS,
-    SAFE_SQL_PAYLOADS,
-    SAFE_XSS_PAYLOADS,
     SQL_ERROR_PATTERNS,
     ScanResults,
 )

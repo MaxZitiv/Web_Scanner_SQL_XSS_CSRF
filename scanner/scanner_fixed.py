@@ -4,6 +4,10 @@
 Точка входа, которая реэкспортирует сканер, разделённый на небольшие модули.
 """
 
+from payloads.csrf import SAFE_CSRF_PAYLOADS
+from payloads.sql import SAFE_SQL_PAYLOADS
+from payloads.xss import SAFE_XSS_PAYLOADS
+
 from ._scan_worker import ScanWorker, ScanWorkerSignals
 from ._scanner_config import (
     DEFAULT_HTML_PARSER,
@@ -18,9 +22,6 @@ from ._scanner_config import (
     MAX_PAYLOADS_PER_URL,
     MAX_RETRIES,
     REQUEST_TIMEOUT,
-    SAFE_CSRF_PAYLOADS,
-    SAFE_SQL_PAYLOADS,
-    SAFE_XSS_PAYLOADS,
     SKIP_EXTENSIONS,
     SQL_ERROR_PATTERNS,
     URL_PROCESSING_CACHE,

