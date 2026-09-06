@@ -3,16 +3,17 @@
 views/statistics_window.py
 """
 
-# Исправление импортов
+from collections.abc import Callable
 from typing import Any, cast
 
 from PyQt6.QtCharts import QBarSet, QChart, QChartView, QHorizontalBarSeries, QPieSeries
-from PyQt6.QtCore import QRect, Qt
+from PyQt6.QtCore import QRect, Qt, pyqtSignal
 from PyQt6.QtGui import QColor, QFont, QPainter
 from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QMainWindow,
+    QMessageBox,
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
@@ -29,9 +30,18 @@ from utils.encryption import decrypt_sensitive_data_safe
 class StatisticsWindow(QMainWindow):
     """Окно для просмотра подробной статистики"""
 
-    def __init__(self, user_id: int, parent: QWidget | None = None):
+    history_cleared = pyqtSignal()
+
+    def __init__(
+        self,
+        user_id: int,
+        parent: QWidget | None = None,
+        *,
+        is_scan_in_progress: Callable[[], bool] | None = None,
+    ):
         super().__init__(parent)
         self.user_id: int = user_id
+        self._is_scan_in_progress = is_scan_in_progress
         self.setWindowTitle("📊 Статистика сканирования")
         self.setGeometry(QRect(100, 100, 1200, 800))
 
@@ -59,6 +69,7 @@ class StatisticsWindow(QMainWindow):
 
         # Вкладка с таблицей сканирований
         self.scans_table = QTableWidget()
+        self.scans_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.scans_table.setColumnCount(6)
         cast(Any, self.scans_table).setHorizontalHeaderLabels(
             ["ID сканирования", "URL", "Дата", "Найдено уязвимостей", "Время сканирования", "Статус"]
@@ -77,16 +88,79 @@ class StatisticsWindow(QMainWindow):
 
         main_layout.addWidget(self.tabs)
 
-        # Кнопка закрытия
+        # Управление историей и закрытие окна
+        buttons_layout = QHBoxLayout()
+        self.refresh_btn = QPushButton("Обновить")
+        cast(Any, self.refresh_btn.clicked).connect(self.load_statistics)
+        buttons_layout.addWidget(self.refresh_btn)
+
+        self.clear_history_btn = QPushButton("Очистить историю…")
+        self.clear_history_btn.setToolTip("Удалить все ваши сканирования и связанные с ними уязвимости")
+        self.clear_history_btn.setEnabled(False)
+        cast(Any, self.clear_history_btn.clicked).connect(self.clear_scan_history)
+        buttons_layout.addWidget(self.clear_history_btn)
+        buttons_layout.addStretch()
+
         close_btn = QPushButton("Закрыть")
         cast(Any, close_btn.clicked).connect(self.close_window)
-        main_layout.addWidget(close_btn)
+        buttons_layout.addWidget(close_btn)
+        main_layout.addLayout(buttons_layout)
 
         central_widget.setLayout(main_layout)
 
     def close_window(self) -> None:
         """Закрытие окна"""
         self.close()
+
+    def _can_clear_history(self) -> bool:
+        """Не даёт удалить историю до завершения сканирования и сохранения результатов."""
+        if self._is_scan_in_progress is not None and self._is_scan_in_progress():
+            QMessageBox.information(
+                self,
+                "Сканирование выполняется",
+                "Дождитесь завершения сканирования и сохранения результатов, прежде чем очищать историю.",
+            )
+            return False
+        return True
+
+    def clear_scan_history(self) -> None:
+        """Удаляет всю историю текущего пользователя после явного подтверждения."""
+        if not self._can_clear_history():
+            return
+
+        if self.scans_table.rowCount() == 0:
+            QMessageBox.information(self, "История сканирований", "История сканирований уже пуста.")
+            return
+
+        reply = QMessageBox.warning(
+            self,
+            "Очистка истории сканирований",
+            "Удалить ВСЮ историю сканирований вашего аккаунта и все связанные с ней уязвимости?\n\n"
+            "Будут удалены все записи, а не только последние 100, показанные в таблице. "
+            "Это действие нельзя отменить.\n"
+            "Данные других пользователей и уже экспортированные файлы не будут затронуты.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        # Модальный диалог запускает вложенный цикл событий: за время
+        # подтверждения состояние асинхронной задачи могло измениться.
+        if not self._can_clear_history():
+            return
+
+        if not db.delete_scans_by_user(self.user_id):
+            QMessageBox.critical(
+                self,
+                "Ошибка очистки истории",
+                "Не удалось очистить историю сканирований. Данные не удалены. Попробуйте ещё раз.",
+            )
+            return
+
+        self.load_statistics()
+        self.history_cleared.emit()
+        QMessageBox.information(self, "История сканирований", "История сканирований очищена.")
 
     @staticmethod
     def _clear_layout(layout: Any) -> None:
@@ -117,6 +191,7 @@ class StatisticsWindow(QMainWindow):
 
     def load_scan_history(self):
         """Загрузка истории сканирований"""
+        self.clear_history_btn.setEnabled(False)
         try:
             conn = db.get_db_connection()
             cursor = conn.cursor()
@@ -160,6 +235,7 @@ class StatisticsWindow(QMainWindow):
 
             # Настраиваем ширину колонок
             self.scans_table.resizeColumnsToContents()
+            self.clear_history_btn.setEnabled(self.user_id > 0 and bool(rows))
 
         except Exception as e:
             logger.error(f"Ошибка при загрузке истории сканирований: {e}")
@@ -167,12 +243,7 @@ class StatisticsWindow(QMainWindow):
     def load_charts(self):
         """Загрузка диаграмм"""
         try:
-            for i in reversed(range(self.charts_layout.count())):
-                widget_item = self.charts_layout.itemAt(i)
-                if widget_item:
-                    widget = widget_item.widget()
-                    if widget:
-                        widget.setParent(None)
+            self._clear_layout(self.charts_layout)
 
             # Создаем круговую диаграмму типов уязвимостей
             self.create_vulnerability_pie_chart()

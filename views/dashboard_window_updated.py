@@ -4,7 +4,7 @@ views/dashboard_window_optimized.py
 """
 
 import asyncio
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from PyQt6.QtCore import QObject
 from PyQt6.QtGui import QCloseEvent, QColor, QFont
@@ -30,6 +30,10 @@ from utils.logger import logger
 from utils.security import is_safe_url, validate_input_length
 from utils.vulnerability_info import extract_location_from_details
 from views.statistics_widget import StatisticsWidget
+
+if TYPE_CHECKING:
+    from ui.vulnerability_viewer import ZapStyleVulnerabilityViewer
+    from views.statistics_window import StatisticsWindow
 
 # Определяем константы для кнопок
 Yes = QMessageBox.StandardButton.Yes
@@ -61,7 +65,8 @@ class DashboardWindow(QMainWindow):
         self.scan_controller: ScanController | None = None
         self.current_scan_task: asyncio.Task[None] | None = None
         self.is_scanning = False
-        self.statistics_window: Any = None
+        self.statistics_window: StatisticsWindow | None = None
+        self.vulnerability_viewer: ZapStyleVulnerabilityViewer | None = None
 
         logger.info(f"Инициализация DashboardWindow для пользователя {username} (ID: {user_id})")
 
@@ -362,7 +367,7 @@ class DashboardWindow(QMainWindow):
         try:
             from ui.vulnerability_viewer import ZapStyleVulnerabilityViewer
 
-            viewer = getattr(self, "vulnerability_viewer", None)
+            viewer = self.vulnerability_viewer
             if viewer is None:
                 viewer = ZapStyleVulnerabilityViewer(self.user_id, self)
                 self.vulnerability_viewer = viewer
@@ -380,7 +385,10 @@ class DashboardWindow(QMainWindow):
             from views.statistics_window import StatisticsWindow
 
             if self.statistics_window is None:
-                self.statistics_window = StatisticsWindow(self.user_id, self)
+                self.statistics_window = StatisticsWindow(self.user_id, self, is_scan_in_progress=self.has_active_scan)
+                cast(Any, self.statistics_window.history_cleared).connect(self.on_scan_history_cleared)
+            else:
+                self.statistics_window.load_statistics()
 
             self.statistics_window.show()
             self.statistics_window.raise_()
@@ -388,6 +396,18 @@ class DashboardWindow(QMainWindow):
         except Exception as e:
             logger.error(f"Ошибка при открытии статистики: {e}")
             error_handler.show_error_message("Ошибка", f"Не удалось открыть статистику: {e!s}")
+
+    def has_active_scan(self) -> bool:
+        """Учитывает также паузу и сохранение результатов после нажатия «Остановить»."""
+        return self.is_scanning or (self.current_scan_task is not None and not self.current_scan_task.done())
+
+    def on_scan_history_cleared(self) -> None:
+        """Убирает удалённые результаты из открытых представлений пользователя."""
+        self.results_table.setRowCount(0)
+        self.reset_scan_stats()
+        if self.vulnerability_viewer is not None:
+            self.vulnerability_viewer.load_vulnerabilities()
+        self.log_text.append("🗑 История сканирований очищена")
 
     def on_reports(self):
         """Открывает окно отчетов"""

@@ -524,15 +524,25 @@ class Database:
             return False
 
     def delete_scans_by_user(self, user_id: int) -> bool:
-        """Удаляет все сканирования пользователя."""
+        """Атомарно удаляет историю и связанные уязвимости только этого пользователя."""
         if user_id <= 0:
             return False
 
         try:
             with self.get_db_connection_cm() as conn:
                 cursor = conn.cursor()
+                # В старых БД/соединениях foreign_keys может быть отключён.
+                # Не полагаемся на ON DELETE CASCADE и удаляем дочерние записи
+                # до сканирований, в той же транзакции.
+                cursor.execute(
+                    """
+                    DELETE FROM vulnerabilities
+                    WHERE scan_id IN (SELECT id FROM scans WHERE user_id = ?)
+                    """,
+                    (user_id,),
+                )
                 cursor.execute("DELETE FROM scans WHERE user_id = ?", (user_id,))
-                logger.info(f"All scans for user {user_id} deleted successfully")
+            logger.info(f"All scans for user {user_id} deleted successfully")
             return True
         except Exception as e:
             log_and_notify("error", f"Error deleting scans for user {user_id}: {e}")
