@@ -6,7 +6,9 @@ from urllib.parse import urlparse
 
 import aiohttp
 from bs4.element import Tag
+from multidict import CIMultiDict
 
+from utils.http_safety import HTTPPolicyError, create_session, request_text
 from utils.logger import logger
 from utils.performance import get_local_timestamp
 from utils.security import is_safe_url, validate_input_length
@@ -438,8 +440,9 @@ class ScanWorkerCore(_ScanWorkerProtocol):
 
         try:
             timeout = aiohttp.ClientTimeout(total=self.timeout)
-            async with aiohttp.ClientSession(timeout=timeout) as session, session.get(url) as response:
-                return await response.text()
+            async with create_session(timeout) as session:
+                result = await self.smart_request(session, "GET", url)
+                return result[1] if result is not None else None
         except Exception as e:
             logger.error(f"Error processing URL {url}: {e}")
             return None
@@ -569,51 +572,28 @@ class ScanWorkerCore(_ScanWorkerProtocol):
         retries: int = 2,
         **kwargs: Any,
     ) -> tuple[aiohttp.ClientResponse, str] | None:
-        """Умный HTTP запрос с обработкой ошибок."""
-        if self.should_stop or self._is_paused:
+        """Запрос в пределах цели, без общего кэша ответов и повторов POST."""
+        if self.should_stop or self._is_paused or not session or not url:
             return None
-
-        if not session or not url:
-            return None
-
-        # Проверяем кэш
-        cache_key = f"{method}:{url}:{hash(str(kwargs))}"
-        cached_result = cache_manager.URL_PROCESSING_CACHE.get(cache_key)
-        if cached_result is not None:
-            return cached_result
-
-        max_attempts = 3 if self.max_coverage_mode else retries
-
-        for attempt in range(max_attempts):
+        options = dict(kwargs)
+        headers = CIMultiDict[str](HTTP_OPTIMIZATIONS["headers"])
+        headers.update(options.pop("headers", {}))
+        options["headers"] = headers
+        options["timeout"] = self._client_timeout()
+        attempts = max(1, 3 if self.max_coverage_mode else retries) if method.upper() in {"GET", "HEAD"} else 1
+        for attempt in range(attempts):
             if self.should_stop:
                 return None
-
             try:
-                timeout = self._client_timeout()
-                headers = {**HTTP_OPTIMIZATIONS["headers"], **kwargs.get("headers", {})}
-
-                async with session.request(method, url, timeout=timeout, headers=headers, **kwargs) as response:
-                    # Проверяем Content-Type
-                    content_type = response.headers.get("Content-Type", "").lower()
-
-                    if not any(t in content_type for t in ["html", "text", "json", "xml", "javascript"]):
-                        await response.read()
-                        result = (response, "")
-                    else:
-                        try:
-                            response_text = await response.text()
-                        except UnicodeDecodeError:
-                            response_text = await response.text(errors="replace")
-
-                        result = (response, response_text)
-
-                    cache_manager.URL_PROCESSING_CACHE.set(cache_key, result)
-                    return result
-
-            except Exception as e:
-                logger.warning(f"Request attempt {attempt + 1} failed for {url}: {e}")
-                if attempt < max_attempts - 1:
+                return await request_text(session, method, url, scope_url=self.base_url, **options)
+            except HTTPPolicyError as error:
+                # Нарушение политики не исправится повтором запроса.
+                logger.warning(f"Запрос пропущен: {error}")
+                self.signals.log_event.emit(f"⚠️ Запрос пропущен: {error}")
+                break
+            except (TimeoutError, aiohttp.ClientError) as error:
+                logger.warning(f"Request attempt {attempt + 1} failed: {type(error).__name__}")
+                if attempt < attempts - 1:
                     await asyncio.sleep(1)
-
         self.unscanned_urls.add(url)
         return None

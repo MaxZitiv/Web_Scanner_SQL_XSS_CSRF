@@ -240,15 +240,25 @@ def is_safe_url(url: str) -> bool:
             _cache_result(cache_key, False)
             return False
 
-        # Проверяем на опасные домены
-        if parsed.netloc.lower() in DANGEROUS_DOMAINS:
+        # Проверяем hostname отдельно от порта и userinfo.
+        hostname = (parsed.hostname or "").rstrip(".").lower()
+        if not hostname or parsed.username is not None or parsed.password is not None:
+            _cache_result(cache_key, False)
+            return False
+        if "\\" in parsed.netloc or "%" in parsed.netloc or any(ord(char) < 32 or ord(char) == 127 for char in url):
+            _cache_result(cache_key, False)
+            return False
+        if parsed.port is not None and not 1 <= parsed.port <= 65535:
+            _cache_result(cache_key, False)
+            return False
+        if hostname in DANGEROUS_DOMAINS or hostname.endswith((".localhost", ".local")):
             _cache_result(cache_key, False)
             return False
 
         # Проверяем на приватные IP адреса
         try:
-            ip = ipaddress.ip_address(parsed.netloc)
-            if ip.is_private:
+            ip = ipaddress.ip_address(hostname)
+            if not ip.is_global:
                 _cache_result(cache_key, False)
                 return False
             # Дополнительная проверка на зарезервированные и специальные IP
@@ -261,7 +271,7 @@ def is_safe_url(url: str) -> bool:
 
             # Проверка на наличие недопустимых символов в домене
             domain_regex = r"^(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$"
-            if not re.match(domain_regex, parsed.netloc):
+            if not re.fullmatch(domain_regex, hostname):
                 _cache_result(cache_key, False)
                 return False
 

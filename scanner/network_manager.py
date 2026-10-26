@@ -4,9 +4,8 @@ from typing import Any
 
 import aiohttp
 
+from utils.http_safety import HTTPPolicyError, create_session, origin, request_text
 from utils.logger import log_and_notify, logger
-
-from .cache_manager import cache_manager
 
 
 class NetworkManager:
@@ -18,6 +17,7 @@ class NetworkManager:
         self.max_concurrent = max_concurrent
         self.semaphore = asyncio.Semaphore(max_concurrent)
         self._session: aiohttp.ClientSession | None = None
+        self._scope_url: str | None = None
         self._headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
@@ -39,57 +39,43 @@ class NetworkManager:
         # Создаем новый семафор с актуальным значением max_concurrent
         self.semaphore = asyncio.Semaphore(self.max_concurrent)
         if not self._session:
-            self._session = aiohttp.ClientSession(
-                timeout=aiohttp.ClientTimeout(total=self.timeout), headers=self._headers
-            )
+            self._session = create_session(aiohttp.ClientTimeout(total=self.timeout), self._headers)
 
     async def cleanup(self) -> None:
         """Очистка ресурсов"""
         if self._session and not self._session.closed:
             await self._session.close()
         self._session = None
+        self._scope_url = None
         # Семафор не требует очистки
 
     async def request(self, method: str, url: str, **kwargs: Any) -> tuple[aiohttp.ClientResponse, str] | None:
-        """Выполнение HTTP запроса с поддержкой кэширования и повторных попыток"""
-        cache_key = f"{method}:{url}:{hash(str(kwargs))}"
-        cached_result = cache_manager.get_cached_data("URL_PROCESSING", cache_key)
-        if cached_result:
-            return cached_result
-
-        if not self._session:
-            await self.initialize()
-
-        if self._session is None:
-            raise RuntimeError("HTTP session is not initialized")
-
-        for attempt in range(self.max_retries):
-            try:
-                async with self.semaphore, self._session.request(method, url, **kwargs) as response:
-                    response.raise_for_status()
-
-                    content_type = response.headers.get("Content-Type", "").lower()
-                    if not any(t in content_type for t in ["html", "text", "json", "xml", "javascript"]):
-                        await response.read()
-                        result = (response, "")
-                    else:
-                        try:
-                            text = await response.text()
-                        except UnicodeDecodeError:
-                            text = await response.text(errors="replace")
-                        result = (response, text)
-
-                    cache_manager.set_cached_data("URL_PROCESSING", cache_key, result)
-                    return result
-
-            except (TimeoutError, aiohttp.ClientError) as e:
-                logger.warning(f"Attempt {attempt + 1}/{self.max_retries} failed for {url}: {e}")
-                if attempt == self.max_retries - 1:
-                    log_and_notify("error", f"All attempts failed for {url}: {e}")
-                    return None
-                await asyncio.sleep(1 * (attempt + 1))
-            except Exception as e:
-                log_and_notify("error", f"Unexpected error on attempt {attempt + 1} for {url}: {e}")
-                return None
-
-        return None
+        """Ограниченный запрос в пределах первого адреса этой сессии."""
+        try:
+            origin(url)
+            if self._scope_url is None:
+                self._scope_url = url
+            if not self._session:
+                await self.initialize()
+            if self._session is None:
+                raise RuntimeError("HTTP session is not initialized")
+            options = dict(kwargs)
+            options["timeout"] = aiohttp.ClientTimeout(total=self.timeout)
+            attempts = max(1, self.max_retries) if method.upper() in {"GET", "HEAD"} else 1
+            for attempt in range(attempts):
+                try:
+                    async with self.semaphore:
+                        result = await request_text(self._session, method, url, scope_url=self._scope_url, **options)
+                        result[0].raise_for_status()
+                        return result
+                except (TimeoutError, aiohttp.ClientError) as error:
+                    logger.warning(f"Request attempt {attempt + 1} failed: {type(error).__name__}")
+                    if attempt < attempts - 1:
+                        await asyncio.sleep(attempt + 1)
+            return None
+        except HTTPPolicyError as error:
+            logger.warning(f"Запрос пропущен: {error}")
+            return None
+        except Exception as error:
+            log_and_notify("error", f"Network request failed: {type(error).__name__}")
+            return None

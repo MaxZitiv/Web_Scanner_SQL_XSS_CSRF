@@ -308,3 +308,24 @@ def test_dashboard_considers_stopping_task_active_until_save_finishes(
         dashboard.close()
         dashboard.deleteLater()
         application.processEvents()
+
+
+def test_viewer_treats_payload_and_url_as_plain_text(
+    application: QApplication, history_database: Database, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from PyQt6.QtCore import Qt
+
+    monkeypatch.setattr(viewer_module, "db", history_database)
+    viewer = ZapStyleVulnerabilityViewer(1)
+    try:
+        marker = '<img src="file:///private-file" onerror="alert(1)">'
+        viewer.update_vulnerability_details({"url": marker, "type": "xss", "payload": marker})
+        for label in (viewer.detail_url, viewer.detail_payload, viewer.detail_parameter, viewer.detail_field):
+            assert label.textFormat() == Qt.TextFormat.PlainText
+        assert marker in viewer.detail_payload.text()
+        assert viewer.detail_url.text() == marker
+    finally:
+        viewer.refresh_timer.stop()
+        viewer.close()
+        viewer.deleteLater()
+        application.processEvents()

@@ -4,9 +4,8 @@ import time
 from datetime import datetime
 from typing import Any
 
-import aiohttp
-
 from utils.database import db
+from utils.http_safety import create_session
 from utils.logger import logger
 from utils.performance import get_local_timestamp
 
@@ -53,7 +52,7 @@ class ScanWorkerOrchestratorMixin(_ScanWorkerProtocol):
             # Основное сканирование
             timeout = self._client_timeout()
 
-            async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with create_session(timeout) as session:
                 semaphore = asyncio.Semaphore(self.max_concurrent)
                 self.session = session
 

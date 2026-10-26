@@ -328,6 +328,16 @@ class DashboardWindow(QMainWindow):
         logger.error(message)
 
     def on_scan_complete(self, result: dict[str, Any]) -> None:
+        if result.get("saved") is False:
+            # Не закрываем панель с единственной оставшейся копией результатов.
+            self._pending_exit = None
+            self.on_log_event("⚠️ Результаты не сохранены. Автоматический выход отменён; доступен экспорт отчёта.")
+            error_handler.show_error_message(
+                "Результаты не сохранены",
+                "Проверьте доступ к БД и исходному .db_key. Не удаляйте и не заменяйте ключ. "
+                "Результаты остаются в таблице; сохраните отчёт перед выходом.",
+            )
+            return
         if "error" in result:
             self.on_scan_error(str(result["error"]))
             return

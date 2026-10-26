@@ -673,3 +673,28 @@ async def test_navigation_does_not_delete_dashboard_while_scan_is_pending(
         if not task.done():
             task.cancel()
         await asyncio.gather(task, return_exceptions=True)
+
+
+@pytest.mark.asyncio
+async def test_failed_save_cancels_pending_logout_and_preserves_results(
+    scanning_dashboard: DashboardWindow, scan: ControlledScan, dialogs: dict[str, Mock]
+) -> None:
+    async def run(**kwargs: Any) -> None:
+        scan.started.set()
+        await scan.release.wait()
+        kwargs["on_result"]({"saved": False})
+
+    scan.start.side_effect = run
+    logout = Mock()
+    cast(Any, scanning_dashboard.logout_requested).connect(logout)
+    task = await start(scanning_dashboard, scan)
+    scanning_dashboard.on_vulnerability_found("https://scanner.example", "sql", "test finding")
+    dialogs["question"].return_value = QMessageBox.StandardButton.Yes
+    scanning_dashboard.on_logout()
+    scan.release.set()
+    await task
+    logout.assert_not_called()
+    dialogs["error_message"].assert_called_once()
+    assert scanning_dashboard.results_table.rowCount() == 1
+    assert scanning_dashboard.user_model.get_user_id() == 1
+    assert_idle(scanning_dashboard)

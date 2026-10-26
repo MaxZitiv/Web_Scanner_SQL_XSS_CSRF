@@ -106,3 +106,14 @@ def dialogs(monkeypatch: pytest.MonkeyPatch) -> dict[str, Mock]:
         mocks[name] = Mock()
         monkeypatch.setattr(error_handler, f"show_{name}", mocks[name])
     return mocks
+
+
+@pytest.fixture(autouse=True)
+def isolated_encryption(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # Тесты никогда не создают и не читают ключ реальной базы приложения.
+    from utils import encryption, key_storage
+
+    monkeypatch.delenv("WEB_SCANNER_KEY_FILE", raising=False)
+    monkeypatch.setattr(key_storage, "DEFAULT_KEY_PATH", tmp_path / ".db_key")
+    monkeypatch.setattr(encryption, "_encryption_instance", None)
+    monkeypatch.setattr(encryption, "log_and_notify", Mock())

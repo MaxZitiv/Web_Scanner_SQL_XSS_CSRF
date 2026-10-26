@@ -114,7 +114,7 @@ dmypy.json
 
 # Project specific
 # Database encryption key (CRITICAL - never commit this!)
-.db_key
+.db_key*
 
 # Logs
 logs/

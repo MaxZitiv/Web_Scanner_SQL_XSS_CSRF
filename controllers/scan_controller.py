@@ -278,9 +278,12 @@ class ScanController(QObject):
 
             # Сохраняем результат в БД, чтобы он появился в статистике и отчётах
             try:
-                await self.save_scan_result(scan_result)
+                scan_result["saved"] = await self.save_scan_result(scan_result)
             except Exception as e:
+                scan_result["saved"] = False
                 log_and_notify("error", f"Error saving scan result in start_scan: {e}")
+            if not scan_result["saved"]:
+                self.signals.scan_error.emit("Результаты не сохранены в БД. Проверьте доступ к БД и исходному .db_key.")
 
             # Вызываем callback с результатом
             if on_result:
@@ -437,7 +440,7 @@ class ScanController(QObject):
         except Exception as e:
             log_and_notify("error", f"Error resuming scan: {e}")
 
-    async def save_scan_result(self, result: dict[str, Any]) -> None:
+    async def save_scan_result(self, result: dict[str, Any]) -> bool:
         """Сохраняет результат сканирования в БД"""
         try:
             from utils.database import db
@@ -478,6 +481,8 @@ class ScanController(QObject):
                 logger.info(f"Scan result saved successfully for URL: {url}")
             else:
                 log_and_notify("error", f"Failed to save scan result for URL: {url}")
+            return success
 
         except Exception as e:
             log_and_notify("error", f"Error saving scan result: {e}")
+            return False

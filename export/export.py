@@ -1,4 +1,3 @@
-import csv
 import json
 import os
 import sqlite3
@@ -11,6 +10,7 @@ from fpdf import FPDF
 from utils.encryption import decrypt_sensitive_data_safe
 from utils.logger import log_and_notify, logger
 from utils.performance import get_local_timestamp
+from utils.report_safety import html_text, result_records, write_csv_rows
 from utils.vulnerability_info import extract_location_fields
 
 
@@ -38,17 +38,7 @@ def format_scan_data_for_export(scans: list[dict[str, Any]], user_id: int | None
         # данных: полные записи о сканировании (url/result) и строки таблицы
         # уязвимостей (URL + тип + параметр + серьёзность), которые приходят
         # из окна «Отчёты».
-        results: list[dict[str, Any]] = []
-        raw_results: Any = scan.get("result", scan.get("results", []))
-        if isinstance(raw_results, str):
-            try:
-                parsed_results = json.loads(raw_results)
-            except json.JSONDecodeError:
-                parsed_results = []
-            if isinstance(parsed_results, list):
-                results = cast(list[dict[str, Any]], parsed_results)
-        elif isinstance(raw_results, list):
-            results = cast(list[dict[str, Any]], raw_results)
+        results = result_records(scan.get("result", scan.get("results", [])))
 
         is_vulnerability_row = (not results) and any(
             key in scan for key in ("URL", "Тип уязвимости", "vulnerability_type", "parameter", "Параметр")
@@ -60,7 +50,12 @@ def format_scan_data_for_export(scans: list[dict[str, Any]], user_id: int | None
             vuln_row: dict[str, Any] = {
                 "type": str(scan.get("vulnerability_type", scan.get("Тип уязвимости", "Unknown"))),
                 "status": str(
-                    scan.get("status", "Vulnerable" if severity.lower() in ("high", "высокий") else "Проверено")
+                    scan.get(
+                        "status",
+                        "Vulnerable"
+                        if severity.lower() in ("high", "высокий", "высокая", "critical", "критический", "критическая")
+                        else "Проверено",
+                    )
                 ),
                 "url": str(scan.get("url", scan.get("URL", ""))),
                 "parameter": str(scan.get("parameter", scan.get("Параметр", scan.get("request_params", "")))),
@@ -120,7 +115,7 @@ def format_scan_data_for_export(scans: list[dict[str, Any]], user_id: int | None
             is_vulnerable = (
                 "Vulnerable" in status
                 or "уязвим" in status.lower()
-                or severity.lower() in ("high", "высокий", "critical", "критический")
+                or severity.lower() in ("high", "высокий", "высокая", "critical", "критический", "критическая")
             )
             if is_vulnerable:
                 vuln_summary[vuln_type]["vulnerable"] += 1
@@ -245,11 +240,8 @@ def export_to_csv(data: list[dict[str, Any]], filename: str = "report.csv", user
             csv_rows.append(base_row)
 
         if csv_rows:
-            fieldnames = csv_rows[0].keys()
             with open(filename, "w", newline="", encoding="utf-8") as f:
-                writer = csv.DictWriter(f, fieldnames=fieldnames)
-                writer.writeheader()
-                writer.writerows(csv_rows)
+                write_csv_rows(f, csv_rows)
 
         logger.info(f"CSV file saved: {filename}")
         return True
@@ -466,6 +458,10 @@ def export_to_html(data: list[dict[str, Any]], filename: str = "report.html", us
         <html>
         <head>
             <meta charset="utf-8">
+            <meta http-equiv="Content-Security-Policy"
+                  content="default-src 'none'; script-src 'none'; style-src 'unsafe-inline';
+                           base-uri 'none'; form-action 'none'">
+            <meta name="referrer" content="no-referrer">
             <title>Отчет о сканировании уязвимостей</title>
             <style>
                 body {{ font-family: Arial, sans-serif; margin: 20px; }}
@@ -482,8 +478,8 @@ def export_to_html(data: list[dict[str, Any]], filename: str = "report.html", us
         <body>
             <div class="header">
                 <h1>Отчет о сканировании уязвимостей</h1>
-                <p><strong>Сгенерирован:</strong> {get_local_timestamp()}</p>
-                <p><strong>Всего сканирований:</strong> {len(formatted_data)}</p>
+                <p><strong>Сгенерирован:</strong> {html_text(get_local_timestamp())}</p>
+                <p><strong>Всего сканирований:</strong> {html_text(len(formatted_data))}</p>
             </div>
         """
 
@@ -495,9 +491,9 @@ def export_to_html(data: list[dict[str, Any]], filename: str = "report.html", us
             <div class="summary">
                 <h2>Общая статистика</h2>
                 <table>
-                    <tr><th>Всего сканирований</th><td>{len(formatted_data)}</td></tr>
-                    <tr><th>Обнаружено уязвимостей</th><td>{total_vulnerabilities}</td></tr>
-                    <tr><th>Целей с высоким риском</th><td>{high_risk_targets}</td></tr>
+                    <tr><th>Всего сканирований</th><td>{html_text(len(formatted_data))}</td></tr>
+                    <tr><th>Обнаружено уязвимостей</th><td>{html_text(total_vulnerabilities)}</td></tr>
+                    <tr><th>Целей с высоким риском</th><td>{html_text(high_risk_targets)}</td></tr>
                 </table>
             </div>
         """
@@ -506,16 +502,16 @@ def export_to_html(data: list[dict[str, Any]], filename: str = "report.html", us
         for i, scan in enumerate(formatted_data, 1):
             risk_class = "vulnerable" if scan["summary"]["risk_level"] == "HIGH" else "safe"
             html_content += f"""
-                <div class="scan-item {risk_class}">
-                    <h3>Сканирование {i}: {scan["target_url"]}</h3>
-                    <p><strong>Дата:</strong> {scan["scan_date"]}</p>
-                    <p><strong>Тип:</strong> {scan["scan_type"]}</p>
-                    <p><strong>Статус:</strong> {scan["status"]}</p>
-                    <p><strong>Длительность:</strong> {format_duration(scan.get("scan_duration", 0))}</p>
-                    <p><strong>Уровень риска:</strong> {scan["summary"]["risk_level"]}</p>
-                    <p><strong>Всего проверок:</strong> {scan["summary"]["total_checks"]}</p>
-                    <p><strong>Уязвимостей:</strong> {scan["summary"]["vulnerable_count"]}</p>
-                    <p><strong>Безопасно:</strong> {scan["summary"]["safe_count"]}</p>
+                <div class="scan-item {html_text(risk_class)}">
+                    <h3>Сканирование {html_text(i)}: {html_text(scan["target_url"])}</h3>
+                    <p><strong>Дата:</strong> {html_text(scan["scan_date"])}</p>
+                    <p><strong>Тип:</strong> {html_text(scan["scan_type"])}</p>
+                    <p><strong>Статус:</strong> {html_text(scan["status"])}</p>
+                    <p><strong>Длительность:</strong> {html_text(format_duration(scan.get("scan_duration", 0)))}</p>
+                    <p><strong>Уровень риска:</strong> {html_text(scan["summary"]["risk_level"])}</p>
+                    <p><strong>Всего проверок:</strong> {html_text(scan["summary"]["total_checks"])}</p>
+                    <p><strong>Уязвимостей:</strong> {html_text(scan["summary"]["vulnerable_count"])}</p>
+                    <p><strong>Безопасно:</strong> {html_text(scan["summary"]["safe_count"])}</p>
                 </div>
             """
             if scan["vulnerabilities"]:
@@ -541,14 +537,14 @@ def export_to_html(data: list[dict[str, Any]], filename: str = "report.html", us
                             continue
                         html_content += f"""
                             <tr>
-                                <td>{vuln_type}</td>
-                                <td>{detail.get("url", "")}</td>
-                                <td>{detail.get("parameter", "")}</td>
-                                <td>{detail.get("method", "")}</td>
-                                <td>{detail.get("field", "")}</td>
-                                <td>{detail.get("action", "")}</td>
-                                <td>{detail.get("payload", "")}</td>
-                                <td>{detail.get("test_url", "")}</td>
+                                <td>{html_text(vuln_type)}</td>
+                                <td>{html_text(detail.get("url", ""))}</td>
+                                <td>{html_text(detail.get("parameter", ""))}</td>
+                                <td>{html_text(detail.get("method", ""))}</td>
+                                <td>{html_text(detail.get("field", ""))}</td>
+                                <td>{html_text(detail.get("action", ""))}</td>
+                                <td>{html_text(detail.get("payload", ""))}</td>
+                                <td>{html_text(detail.get("test_url", ""))}</td>
                             </tr>
                         """
                     html_content += "</table><br>"
@@ -761,7 +757,7 @@ def export_single_scan_to_csv(
         csv_rows.append(base_row)
 
         # Добавляем детальные результаты
-        for result in scan.get("result", []):
+        for result in result_records(scan.get("result", [])):
             detail_row = {
                 "Scan ID": scan.get("id", "N/A"),
                 "Vulnerability Type": result.get("type", "N/A"),
@@ -778,20 +774,8 @@ def export_single_scan_to_csv(
             csv_rows.append(detail_row)
 
         if csv_rows:
-            fieldnames: set[str] = set()
-            for row in csv_rows:
-                fieldnames.update(row.keys())
-            sorted_fieldnames = sorted(fieldnames)
-
             with open(filename, "w", newline="", encoding="utf-8") as f:
-                writer = csv.DictWriter(f, fieldnames=sorted_fieldnames)
-                writer.writeheader()
-                for row in csv_rows:
-                    # Заполняем отсутствующие поля
-                    for field in sorted_fieldnames:
-                        if field not in row:
-                            row[field] = ""
-                    writer.writerow(row)
+                write_csv_rows(f, csv_rows)
 
         logger.info(f"Single scan CSV file saved: {filename}")
         return True
@@ -838,7 +822,7 @@ def export_single_scan_to_pdf(
         pdf.ln(5)
 
         # Детальные результаты
-        results = scan.get("result", [])
+        results = result_records(scan.get("result", []))
         if results:
             pdf.section_title("Детальные результаты")
 
@@ -891,7 +875,11 @@ def export_single_scan_to_html(
         <html>
         <head>
             <meta charset="utf-8">
-            <title>Отчет о сканировании #{scan.get("id", "N/A")}</title>
+            <meta http-equiv="Content-Security-Policy"
+                  content="default-src 'none'; script-src 'none'; style-src 'unsafe-inline';
+                           base-uri 'none'; form-action 'none'">
+            <meta name="referrer" content="no-referrer">
+            <title>Отчет о сканировании #{html_text(scan.get("id", "N/A"))}</title>
             <style>
                 body {{ font-family: Arial, sans-serif; margin: 20px; }}
                 .header {{ background-color: #f0f0f0; padding: 20px; border-radius: 5px; }}
@@ -907,21 +895,21 @@ def export_single_scan_to_html(
         </head>
         <body>
             <div class="header">
-                <h1>Отчет о сканировании #{scan.get("id", "N/A")}</h1>
-                <p><strong>Цель:</strong> {scan.get("url", "N/A")}</p>
-                <p><strong>Дата:</strong> {scan.get("timestamp", "N/A")}</p>
-                <p><strong>Тип:</strong> {scan.get("scan_type", "N/A")}</p>
-                <p><strong>Статус:</strong> {scan.get("status", "N/A")}</p>
-                <p><strong>Длительность:</strong> {format_duration(scan.get("scan_duration", 0))}</p>
+                <h1>Отчет о сканировании #{html_text(scan.get("id", "N/A"))}</h1>
+                <p><strong>Цель:</strong> {html_text(scan.get("url", "N/A"))}</p>
+                <p><strong>Дата:</strong> {html_text(scan.get("timestamp", "N/A"))}</p>
+                <p><strong>Тип:</strong> {html_text(scan.get("scan_type", "N/A"))}</p>
+                <p><strong>Статус:</strong> {html_text(scan.get("status", "N/A"))}</p>
+                <p><strong>Длительность:</strong> {html_text(format_duration(scan.get("scan_duration", 0)))}</p>
             </div>
             
             <div class="summary">
                 <h2>Статистика</h2>
                 <table>
-                    <tr><th>Всего проверок</th><td>{summary.get("total_checks", 0)}</td></tr>
-                    <tr><th>Уязвимостей</th><td>{summary.get("vulnerable_count", 0)}</td></tr>
-                    <tr><th>Безопасных</th><td>{summary.get("safe_count", 0)}</td></tr>
-                    <tr><th>Уровень риска</th><td>{summary.get("risk_level", "N/A")}</td></tr>
+                    <tr><th>Всего проверок</th><td>{html_text(summary.get("total_checks", 0))}</td></tr>
+                    <tr><th>Уязвимостей</th><td>{html_text(summary.get("vulnerable_count", 0))}</td></tr>
+                    <tr><th>Безопасных</th><td>{html_text(summary.get("safe_count", 0))}</td></tr>
+                    <tr><th>Уровень риска</th><td>{html_text(summary.get("risk_level", "N/A"))}</td></tr>
                 </table>
             </div>
             
@@ -929,21 +917,27 @@ def export_single_scan_to_html(
                 <h2>Детальные результаты</h2>
         """
 
-        results = scan.get("result", [])
+        results = result_records(scan.get("result", []))
         for i, result in enumerate(results, 1):
             status_class = "vulnerable" if "Vulnerable" in result.get("status", "") else "safe"
+            details_html = (
+                f"<p><strong>Детали:</strong> {html_text(result.get('details', ''))}</p>"
+                if result.get("details")
+                else ""
+            )
+            test_url = html_text(result.get("test_url", result.get("response", "")))
             html_content += f"""
-                <div class="result-item {status_class}">
-                    <h3>{i}. {result.get("type", "Unknown")}</h3>
-                    <p><strong>URL:</strong> {result.get("url", "Unknown")}</p>
-                    <p><strong>Место в коде:</strong> {result.get("parameter", "")}</p>
-                    <p><strong>Метод:</strong> {result.get("method", "")}</p>
-                    <p><strong>Поле:</strong> {result.get("field", "")}</p>
-                    <p><strong>Форма / действие:</strong> {result.get("action", "")}</p>
-                    <p><strong>Пейлоад:</strong> {result.get("payload", "")}</p>
-                    <p><strong>Тестовый URL:</strong> {result.get("test_url", result.get("response", ""))}</p>
-                    <p><strong>Статус:</strong> {result.get("status", "Unknown")}</p>
-                    {f"<p><strong>Детали:</strong> {result.get('details', '')}</p>" if result.get("details") else ""}
+                <div class="result-item {html_text(status_class)}">
+                    <h3>{html_text(i)}. {html_text(result.get("type", "Unknown"))}</h3>
+                    <p><strong>URL:</strong> {html_text(result.get("url", "Unknown"))}</p>
+                    <p><strong>Место в коде:</strong> {html_text(result.get("parameter", ""))}</p>
+                    <p><strong>Метод:</strong> {html_text(result.get("method", ""))}</p>
+                    <p><strong>Поле:</strong> {html_text(result.get("field", ""))}</p>
+                    <p><strong>Форма / действие:</strong> {html_text(result.get("action", ""))}</p>
+                    <p><strong>Пейлоад:</strong> {html_text(result.get("payload", ""))}</p>
+                    <p><strong>Тестовый URL:</strong> {test_url}</p>
+                    <p><strong>Статус:</strong> {html_text(result.get("status", "Unknown"))}</p>
+                    {details_html}
                 </div>
             """
         html_content += """
@@ -998,7 +992,7 @@ def export_single_scan_to_txt(
             "-" * 40,
         ]
 
-        results = scan.get("result", [])
+        results = result_records(scan.get("result", []))
         for i, result in enumerate(results, 1):
             report_lines.extend(
                 [

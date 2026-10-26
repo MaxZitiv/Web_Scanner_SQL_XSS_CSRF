@@ -548,6 +548,8 @@ class StatsTabWidget(QWidget):
         try:
             import csv
 
+            from utils.report_safety import csv_cell
+
             file_path, _ = QFileDialog.getSaveFileName(self, "Сохранить статистику", "", "CSV Files (*.csv)")
             if file_path:
                 with open(file_path, "w", newline="", encoding="utf-8") as csvfile:
@@ -575,7 +577,7 @@ class StatsTabWidget(QWidget):
                     ]
 
                     for row in stats_data:
-                        writer.writerow(row)
+                        writer.writerow([csv_cell(value) for value in row])
 
                 QMessageBox.information(self, "Успех", "Статистика успешно сохранена")
                 logger.info(f"Statistics exported to {file_path}")

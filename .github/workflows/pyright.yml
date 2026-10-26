@@ -26,6 +26,9 @@ jobs:
         run: .venv/bin/python -m ruff check .
       - name: Check types
         run: .venv/bin/python -m pyright
+      - name: Check security helpers
+        run: |
+          .venv/bin/python -m bandit -q utils/http_safety.py utils/key_storage.py utils/report_safety.py utils/encryption.py
       - name: Install Qt runtime libraries
         run: |
           sudo apt-get update
@@ -39,7 +42,7 @@ jobs:
           mkdir -p .cache
           .venv/bin/python -c "from PyQt6.QtWidgets import QApplication; from PyQt6.QtCharts import QChart"
           .venv/bin/python -m pytest -q --junitxml=.cache/test-results.xml 2>&1 | tee .cache/pytest.log
-          git diff --exit-code -- data/scanner.db scanner.db
+          git diff --exit-code -- '*.db'
       - name: Summarize tests
         if: always() && steps.tests.outcome != 'skipped'
         run: |
