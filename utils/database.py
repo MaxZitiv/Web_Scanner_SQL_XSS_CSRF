@@ -16,6 +16,7 @@ from utils.encryption import (
 from utils.logger import log_and_notify, logger
 from utils.sys_utils import get_bundle_root
 from utils.vulnerability_info import (
+    get_vulnerability_payload,
     location_for_database,
     vulnerability_dict_to_details,
 )
@@ -172,6 +173,7 @@ class Database:
                         description TEXT DEFAULT '',
                         response TEXT DEFAULT '',
                         request_params TEXT DEFAULT '',
+                        payload TEXT,
                         recommendations TEXT DEFAULT '[]',
                         resources TEXT DEFAULT '[]',
                         comments TEXT DEFAULT '[]',
@@ -196,6 +198,12 @@ class Database:
                     # Колонка уже может существовать — ошибка ожидаемая и не критичная.
                     with suppress(sqlite3.OperationalError):
                         cursor.execute(f"ALTER TABLE vulnerabilities ADD COLUMN {column} {ddl}")
+
+                # Аддитивная миграция без переписывания старых записей. Ошибки,
+                # кроме уже существующей колонки, не должны маскироваться.
+                columns = {str(row[1]) for row in cursor.execute("PRAGMA table_info(vulnerabilities)")}
+                if "payload" not in columns:
+                    cursor.execute("ALTER TABLE vulnerabilities ADD COLUMN payload TEXT")
 
                 cursor.execute("CREATE INDEX IF NOT EXISTS idx_users_username ON users(username)")
                 cursor.execute("CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)")
@@ -633,9 +641,9 @@ class Database:
                             """
                             INSERT INTO vulnerabilities (
                                 scan_id, url, type, details, status, severity,
-                                description, response, request_params
+                                description, response, request_params, payload
                             )
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                             (
                                 scan_id,
@@ -647,6 +655,7 @@ class Database:
                                 full_details,
                                 str(vuln.get("test_url", vuln.get("response", ""))),
                                 request_params,
+                                get_vulnerability_payload(vuln),
                             ),
                         )
             return True
@@ -742,6 +751,9 @@ class Database:
     def _vulnerability_from_row(self, row: dict[str, Any]) -> dict[str, Any]:
         """Преобразует строку таблицы vulnerabilities в словарь для UI."""
         data = dict(row)
+        # Сначала читаем исходный текст: _parse_json_field обрезает внешние
+        # пробелы, которые в старом payload в конце details могут быть значимы.
+        data["payload"] = get_vulnerability_payload(data)
         data["url"] = decrypt_sensitive_data_safe(
             str(data.get("url", "")),
             "[URL недоступен: ключ шифрования]",
@@ -771,7 +783,7 @@ class Database:
                         """
                         SELECT v.id, v.scan_id, v.url, v.type, v.details, v.status, v.severity,
                                v.description, v.response, v.request_params, v.recommendations,
-                               v.resources, v.comments, v.created_date
+                               v.resources, v.comments, v.created_date, v.payload
                         FROM vulnerabilities v
                         JOIN scans s ON v.scan_id = s.id
                         WHERE s.user_id = ?
@@ -783,7 +795,7 @@ class Database:
                     cursor.execute("""
                         SELECT id, scan_id, url, type, details, status, severity,
                                description, response, request_params, recommendations,
-                               resources, comments, created_date
+                               resources, comments, created_date, payload
                         FROM vulnerabilities
                         ORDER BY id DESC
                     """)
@@ -804,7 +816,7 @@ class Database:
                     """
                     SELECT id, scan_id, url, type, details, status, severity,
                            description, response, request_params, recommendations,
-                           resources, comments, created_date
+                           resources, comments, created_date, payload
                     FROM vulnerabilities
                     WHERE id = ?
                 """,

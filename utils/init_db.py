@@ -50,6 +50,7 @@ def create_base_tables():
             url TEXT NOT NULL,
             type TEXT NOT NULL,
             details TEXT,
+            payload TEXT,
             FOREIGN KEY(scan_id) REFERENCES scans(id) ON DELETE CASCADE
         )
         """)
@@ -148,12 +149,17 @@ def migrate_database():
                 url TEXT NOT NULL,
                 type TEXT NOT NULL,
                 details TEXT,
+                payload TEXT,
                 FOREIGN KEY(scan_id) REFERENCES scans(id) ON DELETE CASCADE
             )
             """)
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_vuln_url ON vulnerabilities(url)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_vuln_type ON vulnerabilities(type)")
             logger.info("Таблица vulnerabilities успешно создана")
+
+        columns = {str(row[1]) for row in cursor.execute("PRAGMA table_info(vulnerabilities)")}
+        if "payload" not in columns:
+            cursor.execute("ALTER TABLE vulnerabilities ADD COLUMN payload TEXT")
 
         conn.commit()
         logger.info("Database migration completed successfully")
